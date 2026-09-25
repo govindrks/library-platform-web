@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+.env.*
+application-local.properties
+
+# Dependencies
+node_modules/
+
+# Build
+target/
+dist/
+build/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
