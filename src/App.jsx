@@ -1,122 +1,152 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import {
+    Box,
+    Button,
+    Card,
+    CardContent,
+    Chip,
+    Grid,
+    Stack,
+    TextField,
+    Typography,
+} from "@mui/material";
 
 function App() {
-  const [count, setCount] = useState(0)
+    return (
+        <Box sx={{ p: 4 }}>
+            <Stack spacing={4}>
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+                <Box>
+                    <Typography variant="h3">
+                        Library Platform
+                    </Typography>
 
-      <div className="ticks"></div>
+                    <Typography
+                        variant="body1"
+                        color="text.secondary"
+                        sx={{ mt: 1 }}
+                    >
+                        Modern SaaS design system preview
+                    </Typography>
+                </Box>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+                <Grid container spacing={3}>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+                    <Grid size={{ xs: 12, md: 4 }}>
+                        <Card>
+                            <CardContent>
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                >
+                                    Total Members
+                                </Typography>
+
+                                <Typography
+                                    variant="h4"
+                                    sx={{ mt: 1 }}
+                                >
+                                    1,248
+                                </Typography>
+
+                                <Chip
+                                    label="+8.2%"
+                                    color="success"
+                                    size="small"
+                                    sx={{ mt: 2 }}
+                                />
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                        <Card>
+                            <CardContent>
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                >
+                                    Occupancy
+                                </Typography>
+
+                                <Typography
+                                    variant="h4"
+                                    sx={{ mt: 1 }}
+                                >
+                                    78.4%
+                                </Typography>
+
+                                <Chip
+                                    label="934 / 1200"
+                                    color="info"
+                                    size="small"
+                                    sx={{ mt: 2 }}
+                                />
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                    <Grid size={{ xs: 12, md: 4 }}>
+                        <Card>
+                            <CardContent>
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                >
+                                    Revenue
+                                </Typography>
+
+                                <Typography
+                                    variant="h4"
+                                    sx={{ mt: 1 }}
+                                >
+                                    ₹24,850
+                                </Typography>
+
+                                <Chip
+                                    label="+12.5%"
+                                    color="success"
+                                    size="small"
+                                    sx={{ mt: 2 }}
+                                />
+                            </CardContent>
+                        </Card>
+                    </Grid>
+
+                </Grid>
+
+                <Card>
+                    <CardContent>
+                        <Typography variant="h5" sx={{ mb: 3 }}>
+                            Components
+                        </Typography>
+
+                        <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={2}
+                        >
+                            <Button variant="contained">
+                                Add Member
+                            </Button>
+
+                            <Button variant="outlined">
+                                Export
+                            </Button>
+
+                            <Button color="error">
+                                Delete
+                            </Button>
+
+                            <TextField
+                                label="Search members"
+                                placeholder="Enter member name"
+                            />
+                        </Stack>
+                    </CardContent>
+                </Card>
+
+            </Stack>
+        </Box>
+    );
 }
 
-export default App
+export default App;
