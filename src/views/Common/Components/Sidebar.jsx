@@ -7,8 +7,8 @@ import {
     EventSeat,
     LibraryBooks,
     Notifications,
-    People,
     Payments,
+    People,
     ReceiptLong,
     Replay,
     Settings,
@@ -25,11 +25,24 @@ import {
     Typography,
 } from "@mui/material";
 
+import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
+
+import ownerMenu from "../../../navigation/ownerMenu";
 
 const drawerWidth = 250;
 
-const menuSections = [
+/*
+|--------------------------------------------------------------------------
+| Default User Menu
+|--------------------------------------------------------------------------
+|
+| This is the menu for normal library members/users.
+| We can move this to userMenu.js later when we build
+| the complete user module.
+|
+*/
+const userMenu = [
     {
         title: "OVERVIEW",
         items: [
@@ -40,6 +53,7 @@ const menuSections = [
             },
         ],
     },
+
     {
         title: "LIBRARY",
         items: [
@@ -70,6 +84,7 @@ const menuSections = [
             },
         ],
     },
+
     {
         title: "FINANCE",
         items: [
@@ -90,6 +105,7 @@ const menuSections = [
             },
         ],
     },
+
     {
         title: "INSIGHTS",
         items: [
@@ -105,6 +121,7 @@ const menuSections = [
             },
         ],
     },
+
     {
         title: "SYSTEM",
         items: [
@@ -122,9 +139,46 @@ const menuSections = [
     },
 ];
 
+/*
+|--------------------------------------------------------------------------
+| Convert ownerMenu format to Sidebar format
+|--------------------------------------------------------------------------
+|
+| ownerMenu uses:
+|
+| section
+| items
+|
+| Existing Sidebar uses:
+|
+| title
+| items
+|
+*/
+const normalizeOwnerMenu = ownerMenu.map((section) => ({
+    title: section.section,
+    items: section.items,
+}));
+
 function Sidebar({ mobileOpen, onMobileClose }) {
     const location = useLocation();
     const navigate = useNavigate();
+
+    const user = useSelector((state) => state.auth.user);
+
+    const role = user?.role;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Select menu according to logged-in role
+    |--------------------------------------------------------------------------
+    */
+
+    let menuSections = userMenu;
+
+    if (role === "LIBRARY_OWNER") {
+        menuSections = normalizeOwnerMenu;
+    }
 
     const handleNavigation = (path) => {
         navigate(path);
@@ -141,6 +195,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             }}
         >
             {/* Logo */}
+
             <Box
                 sx={{
                     height: 72,
@@ -189,6 +244,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             <Divider />
 
             {/* Navigation */}
+
             <Box
                 sx={{
                     flex: 1,
@@ -198,7 +254,10 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                 }}
             >
                 {menuSections.map((section) => (
-                    <Box key={section.title} sx={{ mb: 2.5 }}>
+                    <Box
+                        key={section.title}
+                        sx={{ mb: 2.5 }}
+                    >
                         <Typography
                             variant="caption"
                             sx={{
@@ -218,7 +277,8 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                                 const Icon = item.icon;
 
                                 const active =
-                                    location.pathname === item.path ||
+                                    location.pathname ===
+                                        item.path ||
                                     location.pathname.startsWith(
                                         `${item.path}/`
                                     );
@@ -228,7 +288,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                                         key={item.path}
                                         selected={active}
                                         onClick={() =>
-                                            handleNavigation(item.path)
+                                            handleNavigation(
+                                                item.path
+                                            )
                                         }
                                         sx={{
                                             minHeight: 42,
@@ -267,7 +329,8 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                                         <ListItemText
                                             primary={item.label}
                                             primaryTypographyProps={{
-                                                fontSize: "0.875rem",
+                                                fontSize:
+                                                    "0.875rem",
                                                 fontWeight: active
                                                     ? 600
                                                     : 500,
@@ -282,6 +345,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             </Box>
 
             {/* Footer */}
+
             <Box
                 sx={{
                     px: 2,
@@ -303,6 +367,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     return (
         <>
             {/* Desktop */}
+
             <Drawer
                 variant="permanent"
                 sx={{
@@ -323,6 +388,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             </Drawer>
 
             {/* Mobile */}
+
             <Drawer
                 variant="temporary"
                 open={mobileOpen}

@@ -4,7 +4,6 @@ import {
     Visibility,
     VisibilityOff,
 } from "@mui/icons-material";
-
 import {
     Alert,
     Box,
@@ -19,26 +18,24 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-
+import { useDispatch } from "react-redux";
+import { useLocation, useNavigate } from "react-router-dom";
 import authApi from "../../api/authApi";
-import storage from "../../utility/browserStorage";
+import { loginSuccess } from "../../redux/reducer/authReducer";
 
 function Login() {
     const navigate = useNavigate();
+    const dispatch = useDispatch();
+    const location = useLocation();
 
     const [form, setForm] = useState({
         email: "",
         password: "",
     });
 
-    const [showPassword, setShowPassword] =
-        useState(false);
-
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
-
     const [error, setError] = useState("");
 
     const handleChange = (event) => {
@@ -52,33 +49,28 @@ function Login() {
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-
         setError("");
 
         if (!form.email || !form.password) {
-            setError(
-                "Please enter your email and password."
-            );
+            setError("Please enter your email and password.");
             return;
         }
 
         try {
             setLoading(true);
 
-            const response =
-                await authApi.login(form);
+            const response = await authApi.login(form);
 
-            /*
-             * Adapt these property names if your
-             * backend LoginResponse uses different names.
-             */
             const token =
-                response.token ||
-                response.accessToken;
+                response?.token ||
+                response?.accessToken ||
+                response?.data?.token ||
+                response?.data?.accessToken;
 
             const user =
-                response.user ||
-                response.data?.user;
+                response?.user ||
+                response?.data?.user ||
+                null;
 
             if (!token) {
                 throw new Error(
@@ -86,15 +78,55 @@ function Login() {
                 );
             }
 
-            storage.setToken(token);
+            // Save authentication state
+            dispatch(
+                loginSuccess({
+                    token,
+                    user,
+                })
+            );
 
-            if (user) {
-                storage.setUser(user);
+            /*
+             * If the user came to login because they wanted
+             * to perform a specific action, return them there.
+             *
+             * Example:
+             * /libraries/10/seats
+             */
+            const destination = location.state?.from;
+
+            if (destination) {
+                navigate(destination, {
+                    replace: true,
+                    state: {
+                        action: location.state?.action,
+                        seatId: location.state?.seatId,
+                        libraryId: location.state?.libraryId,
+                    },
+                });
+
+                return;
             }
 
-            navigate("/dashboard", {
-                replace: true,
-            });
+            /*
+             * Normal login:
+             * redirect according to user role.
+             */
+            const role = user?.role;
+
+            if (role === "LIBRARY_OWNER") {
+                navigate("/owner/dashboard", {
+                    replace: true,
+                });
+            } else if (role === "ADMIN") {
+                navigate("/admin/dashboard", {
+                    replace: true,
+                });
+            } else {
+                navigate("/dashboard", {
+                    replace: true,
+                });
+            }
         } catch (err) {
             setError(
                 err.response?.data?.message ||
@@ -139,13 +171,11 @@ function Login() {
                                 width: 46,
                                 height: 46,
                                 borderRadius: 2,
-                                backgroundColor:
-                                    "primary.main",
+                                backgroundColor: "primary.main",
                                 color: "white",
                                 display: "flex",
                                 alignItems: "center",
-                                justifyContent:
-                                    "center",
+                                justifyContent: "center",
                                 fontSize: 22,
                                 fontWeight: 700,
                                 mb: 3,
@@ -163,17 +193,18 @@ function Login() {
                             color="text.secondary"
                             sx={{ mt: 0.75 }}
                         >
-                            Sign in to your LibraryHub
-                            account
+                            Sign in to your LibraryHub account
                         </Typography>
                     </Box>
 
+                    {/* Error */}
                     {error && (
                         <Alert severity="error">
                             {error}
                         </Alert>
                     )}
 
+                    {/* Login Form */}
                     <Box
                         component="form"
                         onSubmit={handleSubmit}
@@ -205,11 +236,10 @@ function Login() {
                                     input: {
                                         startAdornment: (
                                             <InputAdornment position="start">
-                                                <LockOutlined
-                                                    fontSize="small"
-                                                />
+                                                <LockOutlined fontSize="small" />
                                             </InputAdornment>
                                         ),
+
                                         endAdornment: (
                                             <InputAdornment position="end">
                                                 <IconButton
@@ -242,9 +272,7 @@ function Login() {
                                 }}
                             >
                                 <FormControlLabel
-                                    control={
-                                        <Checkbox />
-                                    }
+                                    control={<Checkbox />}
                                     label="Remember me"
                                 />
 
@@ -277,6 +305,7 @@ function Login() {
                         </Stack>
                     </Box>
 
+                    {/* Register */}
                     <Typography
                         variant="body2"
                         textAlign="center"
