@@ -6,12 +6,21 @@ import {
 } from "react-router-dom";
 
 import VerticalLayout from "../layouts/VerticalLayout";
+
 import Dashboard from "../views/Dashboard/Dashboard";
+import Login from "../views/Auth/Login";
 
 function AppRouter() {
     return (
         <BrowserRouter>
             <Routes>
+                {/* Authentication */}
+                <Route
+                    path="/login"
+                    element={<Login />}
+                />
+
+                {/* Application */}
                 <Route element={<VerticalLayout />}>
                     <Route
                         path="/"
