@@ -4,11 +4,7 @@ import {
     Card,
     CardContent,
     Chip,
-    FormControl,
     Grid,
-    InputLabel,
-    MenuItem,
-    Select,
     Stack,
     Table,
     TableBody,
@@ -18,26 +14,34 @@ import {
     TableRow,
     Typography,
 } from "@mui/material";
+
 import {
     AccountBalanceWallet,
-    ArrowDownward,
-    ArrowUpward,
     CalendarMonth,
     CreditCard,
     Payments,
     TrendingUp,
 } from "@mui/icons-material";
+
 import {
     Area,
     AreaChart,
+    Bar,
+    BarChart,
     CartesianGrid,
     ResponsiveContainer,
     Tooltip,
     XAxis,
     YAxis,
-    Bar,
-    BarChart,
 } from "recharts";
+
+import ReportHeader from "../../components/reports/ReportHeader";
+import ReportFilter from "../../components/reports/ReportFilter";
+import ReportStatCard from "../../components/reports/ReportStatCard";
+
+/* ============================================================
+   MOCK DATA
+============================================================ */
 
 const revenueData = [
     { date: "01 Sep", revenue: 7200 },
@@ -140,6 +144,10 @@ const transactions = [
     },
 ];
 
+/* ============================================================
+   HELPERS
+============================================================ */
+
 const formatCurrency = (value) =>
     new Intl.NumberFormat("en-IN", {
         style: "currency",
@@ -147,96 +155,9 @@ const formatCurrency = (value) =>
         maximumFractionDigits: 0,
     }).format(value);
 
-function StatCard({
-    title,
-    value,
-    change,
-    icon: Icon,
-    positive = true,
-}) {
-    return (
-        <Card sx={{ height: "100%" }}>
-            <CardContent>
-                <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="flex-start"
-                >
-                    <Box>
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            mb={1}
-                        >
-                            {title}
-                        </Typography>
-
-                        <Typography variant="h4" fontWeight={700}>
-                            {value}
-                        </Typography>
-
-                        <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                            mt={1}
-                        >
-                            {positive ? (
-                                <ArrowUpward
-                                    sx={{
-                                        fontSize: 16,
-                                        color: "success.main",
-                                    }}
-                                />
-                            ) : (
-                                <ArrowDownward
-                                    sx={{
-                                        fontSize: 16,
-                                        color: "error.main",
-                                    }}
-                                />
-                            )}
-
-                            <Typography
-                                variant="caption"
-                                color={
-                                    positive
-                                        ? "success.main"
-                                        : "error.main"
-                                }
-                                fontWeight={600}
-                            >
-                                {change}
-                            </Typography>
-
-                            <Typography
-                                variant="caption"
-                                color="text.secondary"
-                            >
-                                vs previous period
-                            </Typography>
-                        </Stack>
-                    </Box>
-
-                    <Box
-                        sx={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 2,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "primary.light",
-                            color: "primary.main",
-                        }}
-                    >
-                        <Icon />
-                    </Box>
-                </Stack>
-            </CardContent>
-        </Card>
-    );
-}
+/* ============================================================
+   COMPONENT
+============================================================ */
 
 function RevenueReport() {
     const [period, setPeriod] = useState("month");
@@ -250,55 +171,48 @@ function RevenueReport() {
         []
     );
 
+    const totalPaymentMethodRevenue = useMemo(
+        () =>
+            paymentMethodData.reduce(
+                (total, item) => total + item.amount,
+                0
+            ),
+        []
+    );
+
     return (
         <Box>
-            {/* Header */}
-            <Stack
-                direction={{ xs: "column", md: "row" }}
-                justifyContent="space-between"
-                alignItems={{ xs: "flex-start", md: "center" }}
-                spacing={2}
+            {/* ====================================================
+                HEADER
+            ===================================================== */}
+
+            <ReportHeader
+                title="Revenue"
+                description="Track your library revenue and payment performance."
+                action={
+                    <ReportFilter
+                        value={period}
+                        onChange={setPeriod}
+                    />
+                }
+            />
+
+            {/* ====================================================
+                SUMMARY CARDS
+            ===================================================== */}
+
+            <Grid
+                container
+                spacing={2.5}
                 mb={3}
             >
-                <Box>
-                    <Typography variant="h4" fontWeight={700}>
-                        Revenue
-                    </Typography>
-
-                    <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        mt={0.5}
-                    >
-                        Track your library revenue and payment performance.
-                    </Typography>
-                </Box>
-
-                <FormControl size="small" sx={{ minWidth: 160 }}>
-                    <InputLabel>Period</InputLabel>
-
-                    <Select
-                        value={period}
-                        label="Period"
-                        onChange={(event) =>
-                            setPeriod(event.target.value)
-                        }
-                    >
-                        <MenuItem value="today">Today</MenuItem>
-                        <MenuItem value="week">This Week</MenuItem>
-                        <MenuItem value="month">This Month</MenuItem>
-                        <MenuItem value="quarter">
-                            This Quarter
-                        </MenuItem>
-                        <MenuItem value="year">This Year</MenuItem>
-                    </Select>
-                </FormControl>
-            </Stack>
-
-            {/* Stats */}
-            <Grid container spacing={2.5} mb={3}>
-                <Grid item xs={12} sm={6} lg={3}>
-                    <StatCard
+                <Grid
+                    item
+                    xs={12}
+                    sm={6}
+                    lg={3}
+                >
+                    <ReportStatCard
                         title="Total Revenue"
                         value={formatCurrency(totalRevenue)}
                         change="+12.8%"
@@ -306,8 +220,13 @@ function RevenueReport() {
                     />
                 </Grid>
 
-                <Grid item xs={12} sm={6} lg={3}>
-                    <StatCard
+                <Grid
+                    item
+                    xs={12}
+                    sm={6}
+                    lg={3}
+                >
+                    <ReportStatCard
                         title="Today's Revenue"
                         value={formatCurrency(8450)}
                         change="+8.4%"
@@ -315,8 +234,13 @@ function RevenueReport() {
                     />
                 </Grid>
 
-                <Grid item xs={12} sm={6} lg={3}>
-                    <StatCard
+                <Grid
+                    item
+                    xs={12}
+                    sm={6}
+                    lg={3}
+                >
+                    <ReportStatCard
                         title="Average Daily Revenue"
                         value={formatCurrency(9840)}
                         change="+6.2%"
@@ -324,8 +248,13 @@ function RevenueReport() {
                     />
                 </Grid>
 
-                <Grid item xs={12} sm={6} lg={3}>
-                    <StatCard
+                <Grid
+                    item
+                    xs={12}
+                    sm={6}
+                    lg={3}
+                >
+                    <ReportStatCard
                         title="Successful Payments"
                         value="326"
                         change="+15.3%"
@@ -334,13 +263,22 @@ function RevenueReport() {
                 </Grid>
             </Grid>
 
-            {/* Revenue Chart */}
+            {/* ====================================================
+                REVENUE TREND
+            ===================================================== */}
+
             <Card sx={{ mb: 3 }}>
                 <CardContent>
                     <Stack
-                        direction={{ xs: "column", sm: "row" }}
+                        direction={{
+                            xs: "column",
+                            sm: "row",
+                        }}
                         justifyContent="space-between"
-                        alignItems={{ xs: "flex-start", sm: "center" }}
+                        alignItems={{
+                            xs: "flex-start",
+                            sm: "center",
+                        }}
                         mb={3}
                     >
                         <Box>
@@ -352,7 +290,8 @@ function RevenueReport() {
                                 variant="body2"
                                 color="text.secondary"
                             >
-                                Revenue generated during the selected period.
+                                Revenue generated during the
+                                selected period.
                             </Typography>
                         </Box>
 
@@ -364,9 +303,19 @@ function RevenueReport() {
                         />
                     </Stack>
 
-                    <Box sx={{ width: "100%", height: 340 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={revenueData}>
+                    <Box
+                        sx={{
+                            width: "100%",
+                            height: 340,
+                        }}
+                    >
+                        <ResponsiveContainer
+                            width="100%"
+                            height="100%"
+                        >
+                            <AreaChart
+                                data={revenueData}
+                            >
                                 <CartesianGrid
                                     strokeDasharray="3 3"
                                     vertical={false}
@@ -405,12 +354,25 @@ function RevenueReport() {
                 </CardContent>
             </Card>
 
-            {/* Revenue breakdown */}
-            <Grid container spacing={2.5} mb={3}>
-                <Grid item xs={12} lg={7}>
+            {/* ====================================================
+                REVENUE BREAKDOWN
+            ===================================================== */}
+
+            <Grid
+                container
+                spacing={2.5}
+                mb={3}
+            >
+                {/* Membership Plans */}
+
+                <Grid
+                    item
+                    xs={12}
+                    lg={7}
+                >
                     <Card sx={{ height: "100%" }}>
                         <CardContent>
-                            <Typography variant="h6" mb={0.5}>
+                            <Typography variant="h6">
                                 Revenue by Membership Plan
                             </Typography>
 
@@ -419,16 +381,23 @@ function RevenueReport() {
                                 color="text.secondary"
                                 mb={3}
                             >
-                                Revenue contribution from each membership
-                                plan.
+                                Revenue contribution from each
+                                membership plan.
                             </Typography>
 
-                            <Box sx={{ width: "100%", height: 280 }}>
+                            <Box
+                                sx={{
+                                    width: "100%",
+                                    height: 280,
+                                }}
+                            >
                                 <ResponsiveContainer
                                     width="100%"
                                     height="100%"
                                 >
-                                    <BarChart data={planRevenue}>
+                                    <BarChart
+                                        data={planRevenue}
+                                    >
                                         <CartesianGrid
                                             strokeDasharray="3 3"
                                             vertical={false}
@@ -457,7 +426,12 @@ function RevenueReport() {
                                         <Bar
                                             dataKey="revenue"
                                             fill="#4F46E5"
-                                            radius={[6, 6, 0, 0]}
+                                            radius={[
+                                                6,
+                                                6,
+                                                0,
+                                                0,
+                                            ]}
                                         />
                                     </BarChart>
                                 </ResponsiveContainer>
@@ -466,10 +440,16 @@ function RevenueReport() {
                     </Card>
                 </Grid>
 
-                <Grid item xs={12} lg={5}>
+                {/* Payment Methods */}
+
+                <Grid
+                    item
+                    xs={12}
+                    lg={5}
+                >
                     <Card sx={{ height: "100%" }}>
                         <CardContent>
-                            <Typography variant="h6" mb={0.5}>
+                            <Typography variant="h6">
                                 Revenue by Payment Method
                             </Typography>
 
@@ -478,83 +458,107 @@ function RevenueReport() {
                                 color="text.secondary"
                                 mb={3}
                             >
-                                Breakdown of successful payments.
+                                Breakdown of successful
+                                payments.
                             </Typography>
 
                             <Stack spacing={2.5}>
-                                {paymentMethodData.map((item) => {
-                                    const percentage =
-                                        (item.amount /
-                                            paymentMethodData.reduce(
-                                                (sum, data) =>
-                                                    sum + data.amount,
-                                                0
-                                            )) *
-                                        100;
+                                {paymentMethodData.map(
+                                    (item) => {
+                                        const percentage =
+                                            totalPaymentMethodRevenue >
+                                            0
+                                                ? (item.amount /
+                                                      totalPaymentMethodRevenue) *
+                                                  100
+                                                : 0;
 
-                                    return (
-                                        <Box key={item.method}>
-                                            <Stack
-                                                direction="row"
-                                                justifyContent="space-between"
-                                                mb={0.75}
-                                            >
-                                                <Typography variant="body2">
-                                                    {item.method}
-                                                </Typography>
-
-                                                <Typography
-                                                    variant="body2"
-                                                    fontWeight={600}
-                                                >
-                                                    {formatCurrency(
-                                                        item.amount
-                                                    )}
-                                                </Typography>
-                                            </Stack>
-
+                                        return (
                                             <Box
-                                                sx={{
-                                                    height: 7,
-                                                    borderRadius: 5,
-                                                    backgroundColor:
-                                                        "grey.200",
-                                                    overflow: "hidden",
-                                                }}
+                                                key={
+                                                    item.method
+                                                }
                                             >
+                                                <Stack
+                                                    direction="row"
+                                                    justifyContent="space-between"
+                                                    mb={0.75}
+                                                >
+                                                    <Typography variant="body2">
+                                                        {
+                                                            item.method
+                                                        }
+                                                    </Typography>
+
+                                                    <Typography
+                                                        variant="body2"
+                                                        fontWeight={
+                                                            600
+                                                        }
+                                                    >
+                                                        {formatCurrency(
+                                                            item.amount
+                                                        )}
+                                                    </Typography>
+                                                </Stack>
+
                                                 <Box
                                                     sx={{
-                                                        width: `${percentage}%`,
-                                                        height: "100%",
-                                                        backgroundColor:
-                                                            "primary.main",
+                                                        height: 7,
                                                         borderRadius: 5,
+                                                        backgroundColor:
+                                                            "grey.200",
+                                                        overflow:
+                                                            "hidden",
                                                     }}
-                                                />
-                                            </Box>
+                                                >
+                                                    <Box
+                                                        sx={{
+                                                            width: `${percentage}%`,
+                                                            height: "100%",
+                                                            backgroundColor:
+                                                                "primary.main",
+                                                            borderRadius:
+                                                                5,
+                                                        }}
+                                                    />
+                                                </Box>
 
-                                            <Typography
-                                                variant="caption"
-                                                color="text.secondary"
-                                            >
-                                                {percentage.toFixed(1)}%
-                                            </Typography>
-                                        </Box>
-                                    );
-                                })}
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                >
+                                                    {percentage.toFixed(
+                                                        1
+                                                    )}
+                                                    %
+                                                </Typography>
+                                            </Box>
+                                        );
+                                    }
+                                )}
                             </Stack>
                         </CardContent>
                     </Card>
                 </Grid>
             </Grid>
 
-            {/* Transactions */}
+            {/* ====================================================
+                RECENT TRANSACTIONS
+            ===================================================== */}
+
             <Card>
                 <CardContent>
                     <Stack
-                        direction={{ xs: "column", sm: "row" }}
+                        direction={{
+                            xs: "column",
+                            sm: "row",
+                        }}
                         justifyContent="space-between"
-                        alignItems={{ xs: "flex-start", sm: "center" }}
+                        alignItems={{
+                            xs: "flex-start",
+                            sm: "center",
+                        }}
                         mb={2}
                     >
                         <Box>
@@ -574,7 +578,9 @@ function RevenueReport() {
                             variant="body2"
                             color="primary.main"
                             fontWeight={600}
-                            sx={{ cursor: "pointer" }}
+                            sx={{
+                                cursor: "pointer",
+                            }}
                         >
                             View All Payments
                         </Typography>
@@ -584,72 +590,108 @@ function RevenueReport() {
                         <Table>
                             <TableHead>
                                 <TableRow>
-                                    <TableCell>Payment ID</TableCell>
-                                    <TableCell>Member</TableCell>
-                                    <TableCell>Plan</TableCell>
-                                    <TableCell>Amount</TableCell>
-                                    <TableCell>Method</TableCell>
-                                    <TableCell>Status</TableCell>
-                                    <TableCell>Date</TableCell>
+                                    <TableCell>
+                                        Payment ID
+                                    </TableCell>
+
+                                    <TableCell>
+                                        Member
+                                    </TableCell>
+
+                                    <TableCell>
+                                        Plan
+                                    </TableCell>
+
+                                    <TableCell>
+                                        Amount
+                                    </TableCell>
+
+                                    <TableCell>
+                                        Method
+                                    </TableCell>
+
+                                    <TableCell>
+                                        Status
+                                    </TableCell>
+
+                                    <TableCell>
+                                        Date
+                                    </TableCell>
                                 </TableRow>
                             </TableHead>
 
                             <TableBody>
-                                {transactions.map((transaction) => (
-                                    <TableRow
-                                        key={transaction.id}
-                                        hover
-                                    >
-                                        <TableCell>
-                                            <Typography
-                                                variant="body2"
-                                                fontWeight={600}
-                                            >
-                                                {transaction.id}
-                                            </Typography>
-                                        </TableCell>
+                                {transactions.map(
+                                    (transaction) => (
+                                        <TableRow
+                                            key={
+                                                transaction.id
+                                            }
+                                            hover
+                                        >
+                                            <TableCell>
+                                                <Typography
+                                                    variant="body2"
+                                                    fontWeight={
+                                                        600
+                                                    }
+                                                >
+                                                    {
+                                                        transaction.id
+                                                    }
+                                                </Typography>
+                                            </TableCell>
 
-                                        <TableCell>
-                                            {transaction.member}
-                                        </TableCell>
-
-                                        <TableCell>
-                                            {transaction.plan}
-                                        </TableCell>
-
-                                        <TableCell>
-                                            <Typography fontWeight={600}>
-                                                {formatCurrency(
-                                                    transaction.amount
-                                                )}
-                                            </Typography>
-                                        </TableCell>
-
-                                        <TableCell>
-                                            {transaction.method}
-                                        </TableCell>
-
-                                        <TableCell>
-                                            <Chip
-                                                size="small"
-                                                label={
-                                                    transaction.status
+                                            <TableCell>
+                                                {
+                                                    transaction.member
                                                 }
-                                                color={
-                                                    transaction.status ===
-                                                    "SUCCESS"
-                                                        ? "success"
-                                                        : "error"
-                                                }
-                                                variant="outlined"
-                                            />
-                                        </TableCell>
+                                            </TableCell>
 
-                                        <TableCell>
-                                            {transaction.date}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                            <TableCell>
+                                                {
+                                                    transaction.plan
+                                                }
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <Typography fontWeight={600}>
+                                                    {formatCurrency(
+                                                        transaction.amount
+                                                    )}
+                                                </Typography>
+                                            </TableCell>
+
+                                            <TableCell>
+                                                {
+                                                    transaction.method
+                                                }
+                                            </TableCell>
+
+                                            <TableCell>
+                                                <Chip
+                                                    size="small"
+                                                    label={
+                                                        transaction.status
+                                                    }
+                                                    color={
+                                                        transaction.status ===
+                                                        "SUCCESS"
+                                                            ? "success"
+                                                            : "error"
+                                                    }
+                                                    variant="outlined"
+                                                />
+                                            </TableCell>
+
+                                            <TableCell>
+                                                {
+                                                    transaction.date
+                                                }
+                                            </TableCell>
+                                        </TableRow>
+                                    )
+                                )}
                             </TableBody>
                         </Table>
                     </TableContainer>

@@ -1,25 +1,20 @@
-import {
-    AccessTime,
-    ArrowBack,
-    ArrowForward,
-    Check,
-    Chair,
-    LocationOn,
-    Person,
-    Wifi,
-} from "@mui/icons-material";
+import React, { useMemo, useState } from "react";
 
 import {
     Alert,
     Box,
     Button,
+    Card,
+    CardContent,
     Checkbox,
     Chip,
     Container,
+    Divider,
+    FormControl,
     FormControlLabel,
     Grid,
+    InputLabel,
     MenuItem,
-    Paper,
     Select,
     Stack,
     Step,
@@ -29,18 +24,50 @@ import {
     Typography,
 } from "@mui/material";
 
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+    AccessTime,
+    ArrowBack,
+    ArrowForward,
+    CheckCircle,
+    EventSeat,
+    LibraryBooks,
+    LocationOn,
+    Payment,
+    Person,
+    WorkspacePremium,
+} from "@mui/icons-material";
+
+import {
+    useLocation,
+    useNavigate,
+} from "react-router-dom";
+
+import PlanSelection from "./components/PlanSelection";
+
+import {
+    getPlanById,
+} from "../../utility/platformPlans";
+
+
+// ============================================================
+// REGISTRATION STEPS
+// ============================================================
 
 const steps = [
     "Owner Details",
     "Library Details",
     "Amenities",
     "Seats & Slots",
+    "LibraryHub Plan",
     "Review",
 ];
 
-const availableAmenities = [
+
+// ============================================================
+// AMENITIES
+// ============================================================
+
+const amenitiesList = [
     "Wi-Fi",
     "Air Conditioning",
     "Power Backup",
@@ -55,98 +82,293 @@ const availableAmenities = [
     "24/7 Access",
 ];
 
+
+// ============================================================
+// INITIAL FORM DATA
+// ============================================================
+
+const initialFormData = {
+    // Owner
+    ownerName: "",
+    email: "",
+    phone: "",
+    password: "",
+
+    // Library
+    libraryName: "",
+    description: "",
+    address: "",
+    city: "",
+    state: "",
+    pincode: "",
+    openingTime: "",
+    closingTime: "",
+
+    // Amenities
+    amenities: [],
+
+    // Seats
+    totalSeats: "",
+    rows: "",
+    seatsPerRow: "",
+
+    // Slots
+    slotType: "HOURLY",
+    slotDuration: 60,
+
+    // LibraryHub subscription
+    platformPlanId: "",
+
+    // Terms
+    termsAccepted: false,
+};
+
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const isValidEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+};
+
+const isValidPhone = (phone) => {
+    return /^[6-9]\d{9}$/.test(phone);
+};
+
+const isValidPincode = (pincode) => {
+    return /^\d{6}$/.test(pincode);
+};
+
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
 function RegisterLibrary() {
     const navigate = useNavigate();
+    const location = useLocation();
+
+    // --------------------------------------------------------
+    // Selected plan passed from PlatformPlans page
+    // --------------------------------------------------------
+
+    const selectedPlanIdFromNavigation =
+        location.state?.selectedPlanId || "";
+
+    // --------------------------------------------------------
+    // State
+    // --------------------------------------------------------
 
     const [activeStep, setActiveStep] = useState(0);
 
     const [formData, setFormData] = useState({
-        ownerName: "",
-        email: "",
-        phone: "",
-        password: "",
-
-        libraryName: "",
-        description: "",
-        address: "",
-        city: "Bengaluru",
-        state: "Karnataka",
-        pincode: "",
-
-        openingTime: "06:00",
-        closingTime: "22:00",
-
-        amenities: [],
-
-        totalSeats: 100,
-        rows: 10,
-        seatsPerRow: 10,
-
-        slotDuration: "60",
-        slotType: "HOURLY",
-
-        termsAccepted: false,
+        ...initialFormData,
+        platformPlanId: selectedPlanIdFromNavigation,
     });
 
     const [error, setError] = useState("");
 
-    const handleChange = (event) => {
-        const { name, value } = event.target;
+    const [submitted, setSubmitted] = useState(false);
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+
+    // --------------------------------------------------------
+    // Selected plan
+    // --------------------------------------------------------
+
+    const selectedPlan = useMemo(
+        () =>
+            getPlanById(
+                formData.platformPlanId
+            ),
+        [formData.platformPlanId]
+    );
+
+
+    // ========================================================
+    // FIELD UPDATE
+    // ========================================================
+
+    const updateField = (field, value) => {
         setFormData((previous) => ({
             ...previous,
-            [name]: value,
+            [field]: value,
         }));
 
         setError("");
     };
 
+
+    // ========================================================
+    // AMENITY TOGGLE
+    // ========================================================
+
     const toggleAmenity = (amenity) => {
-        setFormData((previous) => ({
-            ...previous,
-            amenities:
-                previous.amenities.includes(amenity)
+        setFormData((previous) => {
+            const exists =
+                previous.amenities.includes(amenity);
+
+            return {
+                ...previous,
+
+                amenities: exists
                     ? previous.amenities.filter(
-                          (item) => item !== amenity
+                          (item) =>
+                              item !== amenity
                       )
                     : [
                           ...previous.amenities,
                           amenity,
                       ],
-        }));
+            };
+        });
+
+        setError("");
     };
 
+
+    // ========================================================
+    // STEP VALIDATION
+    // ========================================================
+
     const validateStep = () => {
+        setError("");
+
+        // ----------------------------------------------------
+        // STEP 0 - OWNER DETAILS
+        // ----------------------------------------------------
+
         if (activeStep === 0) {
-            if (
-                !formData.ownerName.trim() ||
-                !formData.email.trim() ||
-                !formData.phone.trim() ||
-                !formData.password
-            ) {
+            if (!formData.ownerName.trim()) {
                 setError(
-                    "Please complete all owner account fields."
+                    "Please enter the owner name."
+                );
+                return false;
+            }
+
+            if (!formData.email.trim()) {
+                setError(
+                    "Please enter the owner email."
+                );
+                return false;
+            }
+
+            if (!isValidEmail(formData.email.trim())) {
+                setError(
+                    "Please enter a valid email address."
+                );
+                return false;
+            }
+
+            if (!formData.phone.trim()) {
+                setError(
+                    "Please enter the owner phone number."
+                );
+                return false;
+            }
+
+            if (!isValidPhone(formData.phone.trim())) {
+                setError(
+                    "Please enter a valid 10-digit Indian mobile number."
+                );
+                return false;
+            }
+
+            if (!formData.password.trim()) {
+                setError(
+                    "Please create a password."
+                );
+                return false;
+            }
+
+            if (formData.password.length < 8) {
+                setError(
+                    "Password must contain at least 8 characters."
                 );
                 return false;
             }
         }
+
+
+        // ----------------------------------------------------
+        // STEP 1 - LIBRARY DETAILS
+        // ----------------------------------------------------
 
         if (activeStep === 1) {
+            if (!formData.libraryName.trim()) {
+                setError(
+                    "Please enter the library name."
+                );
+                return false;
+            }
+
+            if (!formData.address.trim()) {
+                setError(
+                    "Please enter the library address."
+                );
+                return false;
+            }
+
+            if (!formData.city.trim()) {
+                setError(
+                    "Please enter the city."
+                );
+                return false;
+            }
+
+            if (!formData.state.trim()) {
+                setError(
+                    "Please enter the state."
+                );
+                return false;
+            }
+
+            if (!formData.pincode.trim()) {
+                setError(
+                    "Please enter the pincode."
+                );
+                return false;
+            }
+
+            if (!isValidPincode(formData.pincode.trim())) {
+                setError(
+                    "Please enter a valid 6-digit pincode."
+                );
+                return false;
+            }
+
             if (
-                !formData.libraryName.trim() ||
-                !formData.address.trim() ||
-                !formData.city ||
-                !formData.pincode
+                !formData.openingTime ||
+                !formData.closingTime
             ) {
                 setError(
-                    "Please complete the required library details."
+                    "Please provide library operating hours."
+                );
+                return false;
+            }
+
+            if (
+                formData.openingTime ===
+                formData.closingTime
+            ) {
+                setError(
+                    "Opening time and closing time cannot be the same."
                 );
                 return false;
             }
         }
 
+
+        // ----------------------------------------------------
+        // STEP 2 - AMENITIES
+        // ----------------------------------------------------
+
         if (activeStep === 2) {
-            if (formData.amenities.length === 0) {
+            if (
+                formData.amenities.length === 0
+            ) {
                 setError(
                     "Please select at least one amenity."
                 );
@@ -154,485 +376,894 @@ function RegisterLibrary() {
             }
         }
 
+
+        // ----------------------------------------------------
+        // STEP 3 - SEATS & SLOTS
+        // ----------------------------------------------------
+
         if (activeStep === 3) {
+            const totalSeats =
+                Number(formData.totalSeats);
+
+            const rows =
+                Number(formData.rows);
+
+            const seatsPerRow =
+                Number(formData.seatsPerRow);
+
             if (
                 !formData.totalSeats ||
-                !formData.rows ||
-                !formData.seatsPerRow
+                !Number.isInteger(totalSeats) ||
+                totalSeats <= 0
             ) {
                 setError(
-                    "Please configure your seating arrangement."
+                    "Please enter a valid total number of seats."
+                );
+                return false;
+            }
+
+            if (
+                !formData.rows ||
+                !Number.isInteger(rows) ||
+                rows <= 0
+            ) {
+                setError(
+                    "Please enter a valid number of rows."
+                );
+                return false;
+            }
+
+            if (
+                !formData.seatsPerRow ||
+                !Number.isInteger(seatsPerRow) ||
+                seatsPerRow <= 0
+            ) {
+                setError(
+                    "Please enter a valid number of seats per row."
+                );
+                return false;
+            }
+
+            const calculatedSeats =
+                rows * seatsPerRow;
+
+            if (calculatedSeats !== totalSeats) {
+                setError(
+                    `Total seats must match rows × seats per row. ${rows} × ${seatsPerRow} = ${calculatedSeats}.`
+                );
+                return false;
+            }
+
+            if (!formData.slotType) {
+                setError(
+                    "Please select a slot type."
+                );
+                return false;
+            }
+
+            if (
+                formData.slotType === "HOURLY" &&
+                !formData.slotDuration
+            ) {
+                setError(
+                    "Please select a slot duration."
                 );
                 return false;
             }
         }
 
-        if (
-            activeStep === 4 &&
-            !formData.termsAccepted
-        ) {
-            setError(
-                "Please accept the terms to submit your library."
-            );
-            return false;
+
+        // ----------------------------------------------------
+        // STEP 4 - LIBRARYHUB PLAN
+        // ----------------------------------------------------
+
+        if (activeStep === 4) {
+            if (!formData.platformPlanId) {
+                setError(
+                    "Please select a LibraryHub plan."
+                );
+                return false;
+            }
+
+            if (!selectedPlan) {
+                setError(
+                    "The selected LibraryHub plan is invalid. Please select another plan."
+                );
+                return false;
+            }
         }
 
-        setError("");
+
+        // ----------------------------------------------------
+        // STEP 5 - REVIEW
+        // ----------------------------------------------------
+
+        if (activeStep === 5) {
+            if (!formData.termsAccepted) {
+                setError(
+                    "Please accept the terms and conditions."
+                );
+                return false;
+            }
+        }
+
         return true;
     };
+
+
+    // ========================================================
+    // NEXT
+    // ========================================================
 
     const handleNext = () => {
         if (!validateStep()) {
             return;
         }
 
-        if (activeStep === steps.length - 1) {
-            handleSubmit();
-            return;
-        }
+        setActiveStep(
+            (previous) =>
+                Math.min(
+                    previous + 1,
+                    steps.length - 1
+                )
+        );
 
-        setActiveStep((previous) => previous + 1);
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
     };
+
+
+    // ========================================================
+    // BACK
+    // ========================================================
 
     const handleBack = () => {
         setError("");
 
-        setActiveStep((previous) =>
-            Math.max(previous - 1, 0)
-        );
-    };
-
-    const handleSubmit = () => {
-        /*
-         * API integration will be added later.
-         *
-         * For now this represents the completed
-         * owner registration workflow.
-         */
-
-        console.log(
-            "Library registration:",
-            formData
+        setActiveStep(
+            (previous) =>
+                Math.max(previous - 1, 0)
         );
 
-        navigate("/owner/dashboard", {
-            replace: true,
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
         });
     };
+
+
+    // ========================================================
+    // PLAN CHANGE
+    // ========================================================
+
+    const handlePlanChange = (planId) => {
+        updateField(
+            "platformPlanId",
+            planId
+        );
+    };
+
+
+    // ========================================================
+    // SUBMIT
+    // ========================================================
+
+    const handleSubmit = async () => {
+        if (!validateStep()) {
+            return;
+        }
+
+        if (isSubmitting) {
+            return;
+        }
+
+        setIsSubmitting(true);
+        setError("");
+
+        try {
+            const payload = {
+                ownerName:
+                    formData.ownerName.trim(),
+
+                email:
+                    formData.email.trim(),
+
+                phone:
+                    formData.phone.trim(),
+
+                password:
+                    formData.password,
+
+                libraryName:
+                    formData.libraryName.trim(),
+
+                description:
+                    formData.description.trim(),
+
+                address:
+                    formData.address.trim(),
+
+                city:
+                    formData.city.trim(),
+
+                state:
+                    formData.state.trim(),
+
+                pincode:
+                    formData.pincode.trim(),
+
+                openingTime:
+                    formData.openingTime,
+
+                closingTime:
+                    formData.closingTime,
+
+                amenities:
+                    [...formData.amenities],
+
+                totalSeats:
+                    Number(formData.totalSeats),
+
+                rows:
+                    Number(formData.rows),
+
+                seatsPerRow:
+                    Number(formData.seatsPerRow),
+
+                slotType:
+                    formData.slotType,
+
+                slotDuration:
+                    Number(formData.slotDuration),
+
+                platformPlanId:
+                    formData.platformPlanId,
+
+                termsAccepted:
+                    formData.termsAccepted,
+            };
+
+            // ------------------------------------------------
+            // API integration will be added here.
+            // ------------------------------------------------
+
+            console.log(
+                "Library registration payload:",
+                payload
+            );
+
+            setSubmitted(true);
+
+            window.scrollTo({
+                top: 0,
+                behavior: "smooth",
+            });
+        } catch (submissionError) {
+            console.error(
+                "Library registration failed:",
+                submissionError
+            );
+
+            setError(
+                "Unable to submit the registration. Please try again."
+            );
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+
+    // ========================================================
+    // CHANGE PLAN FROM REVIEW
+    // ========================================================
+
+    const handleChangePlan = () => {
+        setActiveStep(4);
+        setError("");
+
+        window.scrollTo({
+            top: 0,
+            behavior: "smooth",
+        });
+    };
+
+
+    // ========================================================
+    // SUBMITTED SCREEN
+    // ========================================================
+
+    if (submitted) {
+        return (
+            <Box
+                sx={{
+                    minHeight:
+                        "calc(100vh - 72px)",
+                    backgroundColor:
+                        "background.default",
+                    py: {
+                        xs: 4,
+                        md: 8,
+                    },
+                }}
+            >
+                <Container maxWidth="md">
+                    <Card>
+                        <CardContent
+                            sx={{
+                                p: {
+                                    xs: 3,
+                                    md: 6,
+                                },
+                            }}
+                        >
+                            <Stack
+                                spacing={3}
+                                alignItems="center"
+                                textAlign="center"
+                            >
+                                <CheckCircle
+                                    sx={{
+                                        fontSize: 72,
+                                        color: "success.main",
+                                    }}
+                                />
+
+                                <Box>
+                                    <Typography
+                                        variant="h4"
+                                        fontWeight={800}
+                                    >
+                                        Registration
+                                        Submitted
+                                    </Typography>
+
+                                    <Typography
+                                        variant="body1"
+                                        color="text.secondary"
+                                        mt={1}
+                                    >
+                                        Your library
+                                        registration
+                                        has been
+                                        submitted
+                                        successfully.
+                                    </Typography>
+                                </Box>
+
+                                {selectedPlan && (
+                                    <Card
+                                        sx={{
+                                            width: "100%",
+                                            backgroundColor:
+                                                "primary.light",
+                                            borderColor:
+                                                "primary.main",
+                                        }}
+                                    >
+                                        <CardContent>
+                                            <Stack
+                                                spacing={1}
+                                            >
+                                                <Typography
+                                                    variant="caption"
+                                                    color="text.secondary"
+                                                >
+                                                    Selected
+                                                    LibraryHub
+                                                    Plan
+                                                </Typography>
+
+                                                <Typography
+                                                    variant="h6"
+                                                    fontWeight={
+                                                        700
+                                                    }
+                                                >
+                                                    {
+                                                        selectedPlan.name
+                                                    }
+                                                </Typography>
+
+                                                <Typography
+                                                    color="primary.main"
+                                                    fontWeight={
+                                                        700
+                                                    }
+                                                >
+                                                    {selectedPlan.maxMembers
+                                                        ? `Up to ${selectedPlan.maxMembers.toLocaleString(
+                                                              "en-IN"
+                                                          )} active members`
+                                                        : "1,000+ active members"}
+                                                </Typography>
+
+                                                {selectedPlan.price && (
+                                                    <Typography
+                                                        variant="body2"
+                                                        color="text.secondary"
+                                                    >
+                                                        ₹
+                                                        {selectedPlan.price.toLocaleString(
+                                                            "en-IN"
+                                                        )}{" "}
+                                                        / month
+                                                    </Typography>
+                                                )}
+                                            </Stack>
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                <Alert
+                                    severity="info"
+                                    sx={{
+                                        width: "100%",
+                                        textAlign: "left",
+                                    }}
+                                >
+                                    The next step will be
+                                    subscription payment
+                                    and library activation.
+                                </Alert>
+
+                                <Button
+                                    variant="contained"
+                                    onClick={() =>
+                                        navigate("/")
+                                    }
+                                >
+                                    Back to Home
+                                </Button>
+                            </Stack>
+                        </CardContent>
+                    </Card>
+                </Container>
+            </Box>
+        );
+    }
+
+
+    // ========================================================
+    // MAIN PAGE
+    // ========================================================
 
     return (
         <Box
             sx={{
-                minHeight: "100vh",
-                backgroundColor: "#F8FBFF",
-                py: 5,
+                minHeight:
+                    "calc(100vh - 72px)",
+                backgroundColor:
+                    "background.default",
+                py: {
+                    xs: 3,
+                    md: 5,
+                },
             }}
         >
             <Container maxWidth="lg">
-                {/* Header */}
 
-                <Button
-                    startIcon={<ArrowBack />}
-                    onClick={() => navigate("/")}
-                    sx={{
-                        color: "#526B91",
-                        mb: 3,
-                    }}
-                >
-                    Back to LibraryHub
-                </Button>
+                {/* =================================================
+                    PAGE HEADER
+                ================================================== */}
 
                 <Stack
+                    alignItems="center"
+                    textAlign="center"
                     spacing={1}
-                    sx={{ mb: 4 }}
+                    mb={4}
                 >
                     <Typography
+                        variant="h3"
+                        fontWeight={800}
                         sx={{
                             fontSize: {
                                 xs: "2rem",
-                                md: "2.6rem",
+                                md: "2.5rem",
                             },
-                            fontWeight: 800,
-                            color: "#11194B",
-                            letterSpacing:
-                                "-0.03em",
                         }}
                     >
                         Register Your Library
                     </Typography>
 
                     <Typography
+                        variant="body1"
                         color="text.secondary"
-                        sx={{
-                            maxWidth: 700,
-                        }}
+                        maxWidth={650}
                     >
-                        Bring your library online, manage
-                        seats and slots, create membership
-                        plans and allow students to book
-                        directly through LibraryHub.
+                        Set up your library on LibraryHub
+                        and manage members, seats,
+                        bookings, payments and analytics
+                        from one platform.
                     </Typography>
                 </Stack>
 
-                <Paper
-                    elevation={0}
-                    sx={{
-                        border:
-                            "1px solid #E1E9F3",
-                        borderRadius: 3,
-                        overflow: "hidden",
-                    }}
-                >
-                    {/* Stepper */}
 
-                    <Box
+                {/* =================================================
+                    STEPPER
+                ================================================== */}
+
+                <Card sx={{ mb: 3 }}>
+                    <CardContent
                         sx={{
-                            p: {
-                                xs: 2,
+                            px: {
+                                xs: 1,
+                                sm: 2,
                                 md: 4,
                             },
-                            backgroundColor:
-                                "#FFFFFF",
-                            borderBottom:
-                                "1px solid #E5EDF7",
+                            py: 3,
                             overflowX: "auto",
                         }}
                     >
                         <Stepper
                             activeStep={activeStep}
                             alternativeLabel
+                            sx={{
+                                minWidth: {
+                                    xs: 650,
+                                    sm: "auto",
+                                },
+                            }}
                         >
-                            {steps.map((step) => (
-                                <Step key={step}>
+                            {steps.map((label) => (
+                                <Step key={label}>
                                     <StepLabel>
-                                        {step}
+                                        {label}
                                     </StepLabel>
                                 </Step>
                             ))}
                         </Stepper>
-                    </Box>
+                    </CardContent>
+                </Card>
 
-                    {/* Form */}
 
-                    <Box
+                {/* =================================================
+                    ERROR
+                ================================================== */}
+
+                {error && (
+                    <Alert
+                        severity="error"
+                        sx={{ mb: 3 }}
+                    >
+                        {error}
+                    </Alert>
+                )}
+
+
+                {/* =================================================
+                    STEP CONTENT
+                ================================================== */}
+
+                <Card>
+                    <CardContent
                         sx={{
                             p: {
-                                xs: 2.5,
-                                md: 5,
+                                xs: 2,
+                                sm: 3,
+                                md: 4,
                             },
                         }}
                     >
-                        {error && (
-                            <Alert
-                                severity="error"
-                                sx={{ mb: 3 }}
-                            >
-                                {error}
-                            </Alert>
-                        )}
 
-                        {/* =========================================
-                            STEP 1
-                        ========================================== */}
+                        {/* =================================================
+                            STEP 1 - OWNER DETAILS
+                        ================================================== */}
 
                         {activeStep === 0 && (
                             <Stack spacing={3}>
+
                                 <Box>
-                                    <Typography
-                                        variant="h5"
-                                        sx={{
-                                            fontWeight: 800,
-                                            color: "#11194B",
-                                        }}
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        alignItems="center"
                                     >
-                                        Create your owner
-                                        account
-                                    </Typography>
+                                        <Person color="primary" />
+
+                                        <Typography
+                                            variant="h5"
+                                            fontWeight={700}
+                                        >
+                                            Owner Details
+                                        </Typography>
+                                    </Stack>
 
                                     <Typography
+                                        variant="body2"
                                         color="text.secondary"
-                                        sx={{ mt: 0.5 }}
+                                        mt={0.5}
                                     >
-                                        These details will be
-                                        used to manage your
-                                        library.
+                                        Enter the primary
+                                        contact information
+                                        for the library.
                                     </Typography>
                                 </Box>
+
+                                <Divider />
 
                                 <Grid
                                     container
                                     spacing={2}
                                 >
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 6,
-                                        }}
+                                        item
+                                        xs={12}
+                                        md={6}
                                     >
                                         <TextField
                                             fullWidth
                                             label="Owner Name"
-                                            name="ownerName"
                                             value={
                                                 formData.ownerName
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "ownerName",
+                                                    event.target.value
+                                                )
                                             }
-                                            placeholder="Enter owner name"
-                                            InputProps={{
-                                                startAdornment:
-                                                    (
-                                                        <Person
-                                                            sx={{
-                                                                mr: 1,
-                                                                color: "text.secondary",
-                                                            }}
-                                                        />
-                                                    ),
-                                            }}
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 6,
-                                        }}
+                                        item
+                                        xs={12}
+                                        md={6}
+                                    >
+                                        <TextField
+                                            fullWidth
+                                            type="email"
+                                            label="Email"
+                                            value={
+                                                formData.email
+                                            }
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "email",
+                                                    event.target.value
+                                                )
+                                            }
+                                        />
+                                    </Grid>
+
+                                    <Grid
+                                        item
+                                        xs={12}
+                                        md={6}
                                     >
                                         <TextField
                                             fullWidth
                                             label="Phone Number"
-                                            name="phone"
                                             value={
                                                 formData.phone
                                             }
-                                            onChange={
-                                                handleChange
+                                            inputProps={{
+                                                maxLength: 10,
+                                            }}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "phone",
+                                                    event.target.value.replace(
+                                                        /\D/g,
+                                                        ""
+                                                    )
+                                                )
                                             }
-                                            placeholder="+91 XXXXX XXXXX"
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                        }}
+                                        item
+                                        xs={12}
+                                        md={6}
                                     >
                                         <TextField
                                             fullWidth
-                                            label="Email Address"
-                                            name="email"
-                                            type="email"
-                                            value={
-                                                formData.email
-                                            }
-                                            onChange={
-                                                handleChange
-                                            }
-                                            placeholder="owner@example.com"
-                                        />
-                                    </Grid>
-
-                                    <Grid
-                                        size={{
-                                            xs: 12,
-                                        }}
-                                    >
-                                        <TextField
-                                            fullWidth
-                                            label="Password"
-                                            name="password"
                                             type="password"
+                                            label="Create Password"
                                             value={
                                                 formData.password
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "password",
+                                                    event.target.value
+                                                )
                                             }
-                                            placeholder="Create a secure password"
                                         />
                                     </Grid>
                                 </Grid>
                             </Stack>
                         )}
 
-                        {/* =========================================
-                            STEP 2
-                        ========================================== */}
+
+                        {/* =================================================
+                            STEP 2 - LIBRARY DETAILS
+                        ================================================== */}
 
                         {activeStep === 1 && (
                             <Stack spacing={3}>
+
                                 <Box>
-                                    <Typography
-                                        variant="h5"
-                                        sx={{
-                                            fontWeight: 800,
-                                            color: "#11194B",
-                                        }}
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        alignItems="center"
                                     >
-                                        Tell us about your
-                                        library
-                                    </Typography>
+                                        <LibraryBooks color="primary" />
+
+                                        <Typography
+                                            variant="h5"
+                                            fontWeight={700}
+                                        >
+                                            Library Details
+                                        </Typography>
+                                    </Stack>
 
                                     <Typography
+                                        variant="body2"
                                         color="text.secondary"
-                                        sx={{ mt: 0.5 }}
+                                        mt={0.5}
                                     >
-                                        This information will
-                                        appear on your public
-                                        LibraryHub listing.
+                                        Provide the basic
+                                        information members
+                                        will see about your
+                                        library.
                                     </Typography>
                                 </Box>
+
+                                <Divider />
 
                                 <Grid
                                     container
                                     spacing={2}
                                 >
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                        }}
+                                        item
+                                        xs={12}
                                     >
                                         <TextField
                                             fullWidth
                                             label="Library Name"
-                                            name="libraryName"
                                             value={
                                                 formData.libraryName
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "libraryName",
+                                                    event.target.value
+                                                )
                                             }
-                                            placeholder="e.g. GNC Central Library"
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                        }}
+                                        item
+                                        xs={12}
                                     >
                                         <TextField
                                             fullWidth
                                             multiline
                                             minRows={3}
-                                            label="Library Description"
-                                            name="description"
+                                            label="Description"
                                             value={
                                                 formData.description
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "description",
+                                                    event.target.value
+                                                )
                                             }
-                                            placeholder="Describe your library..."
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                        }}
+                                        item
+                                        xs={12}
                                     >
                                         <TextField
                                             fullWidth
                                             multiline
                                             minRows={2}
-                                            label="Full Address"
-                                            name="address"
+                                            label="Address"
                                             value={
                                                 formData.address
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "address",
+                                                    event.target.value
+                                                )
                                             }
-                                            InputProps={{
-                                                startAdornment:
-                                                    (
-                                                        <LocationOn
-                                                            sx={{
-                                                                mr: 1,
-                                                                color: "text.secondary",
-                                                            }}
-                                                        />
-                                                    ),
-                                            }}
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 4,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={6}
                                     >
                                         <TextField
                                             fullWidth
                                             label="City"
-                                            name="city"
                                             value={
                                                 formData.city
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "city",
+                                                    event.target.value
+                                                )
                                             }
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 4,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={6}
                                     >
                                         <TextField
                                             fullWidth
                                             label="State"
-                                            name="state"
                                             value={
                                                 formData.state
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "state",
+                                                    event.target.value
+                                                )
                                             }
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 4,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={6}
                                     >
                                         <TextField
                                             fullWidth
                                             label="Pincode"
-                                            name="pincode"
                                             value={
                                                 formData.pincode
                                             }
-                                            onChange={
-                                                handleChange
+                                            inputProps={{
+                                                maxLength: 6,
+                                            }}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "pincode",
+                                                    event.target.value.replace(
+                                                        /\D/g,
+                                                        ""
+                                                    )
+                                                )
                                             }
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 6,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={3}
                                     >
                                         <TextField
                                             fullWidth
                                             type="time"
                                             label="Opening Time"
-                                            name="openingTime"
                                             value={
                                                 formData.openingTime
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "openingTime",
+                                                    event.target.value
+                                                )
                                             }
                                             InputLabelProps={{
                                                 shrink: true,
@@ -641,21 +1272,22 @@ function RegisterLibrary() {
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 6,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={3}
                                     >
                                         <TextField
                                             fullWidth
                                             type="time"
                                             label="Closing Time"
-                                            name="closingTime"
                                             value={
                                                 formData.closingTime
                                             }
-                                            onChange={
-                                                handleChange
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "closingTime",
+                                                    event.target.value
+                                                )
                                             }
                                             InputLabelProps={{
                                                 shrink: true,
@@ -666,37 +1298,40 @@ function RegisterLibrary() {
                             </Stack>
                         )}
 
-                        {/* =========================================
-                            STEP 3
-                        ========================================== */}
+
+                        {/* =================================================
+                            STEP 3 - AMENITIES
+                        ================================================== */}
 
                         {activeStep === 2 && (
                             <Stack spacing={3}>
+
                                 <Box>
                                     <Typography
                                         variant="h5"
-                                        sx={{
-                                            fontWeight: 800,
-                                            color: "#11194B",
-                                        }}
+                                        fontWeight={700}
                                     >
-                                        Amenities & facilities
+                                        Library Amenities
                                     </Typography>
 
                                     <Typography
+                                        variant="body2"
                                         color="text.secondary"
-                                        sx={{ mt: 0.5 }}
+                                        mt={0.5}
                                     >
-                                        Select everything your
-                                        library provides.
+                                        Select the facilities
+                                        available at your
+                                        library.
                                     </Typography>
                                 </Box>
 
+                                <Divider />
+
                                 <Grid
                                     container
-                                    spacing={2}
+                                    spacing={1.5}
                                 >
-                                    {availableAmenities.map(
+                                    {amenitiesList.map(
                                         (amenity) => {
                                             const selected =
                                                 formData.amenities.includes(
@@ -705,484 +1340,674 @@ function RegisterLibrary() {
 
                                             return (
                                                 <Grid
-                                                    key={
-                                                        amenity
-                                                    }
-                                                    size={{
-                                                        xs: 12,
-                                                        sm: 6,
-                                                        md: 4,
-                                                    }}
+                                                    item
+                                                    xs={12}
+                                                    sm={6}
+                                                    md={4}
+                                                    key={amenity}
                                                 >
-                                                    <Paper
-                                                        elevation={
-                                                            0
-                                                        }
+                                                    <Card
                                                         onClick={() =>
                                                             toggleAmenity(
                                                                 amenity
                                                             )
                                                         }
                                                         sx={{
-                                                            p: 2,
                                                             cursor: "pointer",
                                                             border:
+                                                                "1px solid",
+                                                            borderColor:
                                                                 selected
-                                                                    ? "2px solid #146EF5"
-                                                                    : "1px solid #E1E9F3",
+                                                                    ? "primary.main"
+                                                                    : "divider",
                                                             backgroundColor:
                                                                 selected
-                                                                    ? "#F1F7FF"
-                                                                    : "#FFFFFF",
-                                                            borderRadius: 2,
+                                                                    ? "primary.light"
+                                                                    : "background.paper",
+                                                            transition:
+                                                                "all 0.2s ease",
+                                                            "&:hover":
+                                                                {
+                                                                    borderColor:
+                                                                        "primary.main",
+                                                                },
                                                         }}
                                                     >
-                                                        <Stack
-                                                            direction="row"
-                                                            alignItems="center"
-                                                            spacing={
-                                                                1
-                                                            }
+                                                        <CardContent
+                                                            sx={{
+                                                                py: 1,
+                                                                "&:last-child":
+                                                                    {
+                                                                        pb: 1,
+                                                                    },
+                                                            }}
                                                         >
-                                                            <Checkbox
-                                                                checked={
-                                                                    selected
-                                                                }
-                                                            />
-
-                                                            <Typography
-                                                                sx={{
-                                                                    fontWeight: 600,
-                                                                }}
+                                                            <Stack
+                                                                direction="row"
+                                                                alignItems="center"
+                                                                spacing={1}
                                                             >
-                                                                {
-                                                                    amenity
-                                                                }
-                                                            </Typography>
-                                                        </Stack>
-                                                    </Paper>
+                                                                <Checkbox
+                                                                    checked={
+                                                                        selected
+                                                                    }
+                                                                    onChange={() =>
+                                                                        toggleAmenity(
+                                                                            amenity
+                                                                        )
+                                                                    }
+                                                                    onClick={(
+                                                                        event
+                                                                    ) =>
+                                                                        event.stopPropagation()
+                                                                    }
+                                                                />
+
+                                                                <Typography
+                                                                    variant="body2"
+                                                                    fontWeight={
+                                                                        selected
+                                                                            ? 600
+                                                                            : 400
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        amenity
+                                                                    }
+                                                                </Typography>
+                                                            </Stack>
+                                                        </CardContent>
+                                                    </Card>
                                                 </Grid>
                                             );
                                         }
                                     )}
                                 </Grid>
 
-                                <Box
-                                    sx={{
-                                        p: 2,
-                                        backgroundColor:
-                                            "#F8FBFF",
-                                        borderRadius: 2,
-                                    }}
-                                >
-                                    <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                    >
-                                        Selected amenities
-                                    </Typography>
-
-                                    <Stack
-                                        direction="row"
-                                        spacing={1}
-                                        flexWrap="wrap"
-                                        useFlexGap
-                                        sx={{
-                                            mt: 1,
-                                        }}
-                                    >
-                                        {formData.amenities.map(
-                                            (amenity) => (
-                                                <Chip
-                                                    key={
-                                                        amenity
-                                                    }
-                                                    label={
-                                                        amenity
-                                                    }
-                                                    color="primary"
-                                                />
-                                            )
-                                        )}
-                                    </Stack>
-                                </Box>
+                                {formData.amenities.length >
+                                    0 && (
+                                    <Alert severity="success">
+                                        {
+                                            formData
+                                                .amenities
+                                                .length
+                                        }{" "}
+                                        amenities selected.
+                                    </Alert>
+                                )}
                             </Stack>
                         )}
 
-                        {/* =========================================
-                            STEP 4
-                        ========================================== */}
+
+                        {/* =================================================
+                            STEP 4 - SEATS & SLOTS
+                        ================================================== */}
 
                         {activeStep === 3 && (
-                            <Stack spacing={4}>
+                            <Stack spacing={3}>
+
                                 <Box>
-                                    <Typography
-                                        variant="h5"
-                                        sx={{
-                                            fontWeight: 800,
-                                            color: "#11194B",
-                                        }}
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        alignItems="center"
                                     >
-                                        Configure seats &
-                                        booking slots
-                                    </Typography>
+                                        <EventSeat color="primary" />
+
+                                        <Typography
+                                            variant="h5"
+                                            fontWeight={700}
+                                        >
+                                            Seats & Slots
+                                        </Typography>
+                                    </Stack>
 
                                     <Typography
+                                        variant="body2"
                                         color="text.secondary"
-                                        sx={{ mt: 0.5 }}
+                                        mt={0.5}
                                     >
-                                        You can change this
-                                        configuration later
-                                        from your owner
-                                        dashboard.
+                                        Configure your
+                                        library's seat
+                                        capacity and booking
+                                        slots.
                                     </Typography>
                                 </Box>
+
+                                <Divider />
 
                                 <Grid
                                     container
                                     spacing={2}
                                 >
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 4,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={4}
                                     >
                                         <TextField
                                             fullWidth
                                             type="number"
                                             label="Total Seats"
-                                            name="totalSeats"
                                             value={
                                                 formData.totalSeats
                                             }
-                                            onChange={
-                                                handleChange
-                                            }
-                                            InputProps={{
-                                                startAdornment:
-                                                    (
-                                                        <Chair
-                                                            sx={{
-                                                                mr: 1,
-                                                                color: "text.secondary",
-                                                            }}
-                                                        />
-                                                    ),
+                                            inputProps={{
+                                                min: 1,
                                             }}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "totalSeats",
+                                                    event.target.value
+                                                )
+                                            }
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 4,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={4}
                                     >
                                         <TextField
                                             fullWidth
                                             type="number"
-                                            label="Number of Rows"
-                                            name="rows"
+                                            label="Rows"
                                             value={
                                                 formData.rows
                                             }
-                                            onChange={
-                                                handleChange
+                                            inputProps={{
+                                                min: 1,
+                                            }}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "rows",
+                                                    event.target.value
+                                                )
                                             }
                                         />
                                     </Grid>
 
                                     <Grid
-                                        size={{
-                                            xs: 12,
-                                            md: 4,
-                                        }}
+                                        item
+                                        xs={12}
+                                        sm={4}
                                     >
                                         <TextField
                                             fullWidth
                                             type="number"
                                             label="Seats Per Row"
-                                            name="seatsPerRow"
                                             value={
                                                 formData.seatsPerRow
                                             }
-                                            onChange={
-                                                handleChange
+                                            inputProps={{
+                                                min: 1,
+                                            }}
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "seatsPerRow",
+                                                    event.target.value
+                                                )
                                             }
                                         />
                                     </Grid>
-                                </Grid>
-
-                                <Box>
-                                    <Typography
-                                        sx={{
-                                            fontWeight: 700,
-                                            mb: 2,
-                                        }}
-                                    >
-                                        Booking configuration
-                                    </Typography>
 
                                     <Grid
-                                        container
-                                        spacing={2}
+                                        item
+                                        xs={12}
                                     >
-                                        <Grid
-                                            size={{
-                                                xs: 12,
-                                                md: 6,
-                                            }}
+                                        <Alert
+                                            severity="info"
                                         >
+                                            Total seats should
+                                            equal Rows × Seats
+                                            Per Row.
+                                        </Alert>
+                                    </Grid>
+
+                                    <Grid
+                                        item
+                                        xs={12}
+                                        sm={6}
+                                    >
+                                        <FormControl fullWidth>
+                                            <InputLabel>
+                                                Slot Type
+                                            </InputLabel>
+
                                             <Select
-                                                fullWidth
                                                 value={
                                                     formData.slotType
                                                 }
+                                                label="Slot Type"
                                                 onChange={(
                                                     event
                                                 ) =>
-                                                    setFormData(
-                                                        (
-                                                            previous
-                                                        ) => ({
-                                                            ...previous,
-                                                            slotType:
-                                                                event
-                                                                    .target
-                                                                    .value,
-                                                        })
+                                                    updateField(
+                                                        "slotType",
+                                                        event.target.value
                                                     )
                                                 }
                                             >
                                                 <MenuItem value="HOURLY">
-                                                    Hourly Slots
+                                                    Hourly
                                                 </MenuItem>
 
                                                 <MenuItem value="FIXED">
-                                                    Fixed Time Slots
+                                                    Fixed
                                                 </MenuItem>
 
                                                 <MenuItem value="FULL_DAY">
                                                     Full Day
                                                 </MenuItem>
                                             </Select>
-                                        </Grid>
+                                        </FormControl>
+                                    </Grid>
 
-                                        <Grid
-                                            size={{
-                                                xs: 12,
-                                                md: 6,
-                                            }}
+                                    <Grid
+                                        item
+                                        xs={12}
+                                        sm={6}
+                                    >
+                                        <FormControl
+                                            fullWidth
+                                            disabled={
+                                                formData.slotType !==
+                                                "HOURLY"
+                                            }
                                         >
+                                            <InputLabel>
+                                                Slot Duration
+                                            </InputLabel>
+
                                             <Select
-                                                fullWidth
                                                 value={
                                                     formData.slotDuration
                                                 }
+                                                label="Slot Duration"
                                                 onChange={(
                                                     event
                                                 ) =>
-                                                    setFormData(
-                                                        (
-                                                            previous
-                                                        ) => ({
-                                                            ...previous,
-                                                            slotDuration:
-                                                                event
-                                                                    .target
-                                                                    .value,
-                                                        })
+                                                    updateField(
+                                                        "slotDuration",
+                                                        Number(
+                                                            event
+                                                                .target
+                                                                .value
+                                                        )
                                                     )
                                                 }
-                                                startAdornment={
-                                                    <AccessTime
-                                                        sx={{
-                                                            mr: 1,
-                                                            color: "text.secondary",
-                                                        }}
-                                                    />
-                                                }
                                             >
-                                                <MenuItem value="30">
+                                                <MenuItem value={30}>
                                                     30 Minutes
                                                 </MenuItem>
 
-                                                <MenuItem value="60">
+                                                <MenuItem value={60}>
                                                     1 Hour
                                                 </MenuItem>
 
-                                                <MenuItem value="120">
+                                                <MenuItem value={120}>
                                                     2 Hours
                                                 </MenuItem>
 
-                                                <MenuItem value="240">
+                                                <MenuItem value={240}>
                                                     4 Hours
                                                 </MenuItem>
                                             </Select>
-                                        </Grid>
+                                        </FormControl>
                                     </Grid>
-                                </Box>
+                                </Grid>
 
-                                <Paper
-                                    elevation={0}
-                                    sx={{
-                                        p: 3,
-                                        backgroundColor:
-                                            "#F1F7FF",
-                                        borderRadius: 2,
-                                    }}
-                                >
-                                    <Typography
-                                        sx={{
-                                            fontWeight: 800,
-                                            color: "#11194B",
-                                        }}
-                                    >
-                                        Configuration preview
-                                    </Typography>
-
-                                    <Typography
-                                        color="text.secondary"
-                                        sx={{
-                                            mt: 1,
-                                        }}
-                                    >
-                                        {
-                                            formData.rows
-                                        }{" "}
-                                        rows ×{" "}
-                                        {
-                                            formData.seatsPerRow
-                                        }{" "}
-                                        seats ={" "}
-                                        <strong>
-                                            {
-                                                formData.totalSeats
-                                            }
-                                        </strong>{" "}
-                                        total seats
-                                    </Typography>
-
-                                    <Typography
-                                        color="text.secondary"
-                                    >
-                                        Booking type:{" "}
-                                        {
-                                            formData.slotType
-                                        }
-                                    </Typography>
-
-                                    <Typography
-                                        color="text.secondary"
-                                    >
-                                        Slot duration:{" "}
-                                        {
-                                            formData.slotDuration
-                                        }{" "}
-                                        minutes
-                                    </Typography>
-                                </Paper>
+                                <Alert severity="info">
+                                    You can configure
+                                    individual seats and
+                                    detailed slots later from
+                                    the LibraryHub owner
+                                    dashboard.
+                                </Alert>
                             </Stack>
                         )}
 
-                        {/* =========================================
-                            STEP 5
-                        ========================================== */}
+
+                        {/* =================================================
+                            STEP 5 - LIBRARYHUB PLAN
+                        ================================================== */}
 
                         {activeStep === 4 && (
                             <Stack spacing={3}>
                                 <Box>
-                                    <Typography
-                                        variant="h5"
-                                        sx={{
-                                            fontWeight: 800,
-                                            color: "#11194B",
-                                        }}
+                                    <Stack
+                                        direction="row"
+                                        spacing={1}
+                                        alignItems="center"
                                     >
-                                        Review your library
-                                    </Typography>
+                                        <WorkspacePremium color="primary" />
+
+                                        <Typography
+                                            variant="h5"
+                                            fontWeight={700}
+                                        >
+                                            Choose Your LibraryHub Plan
+                                        </Typography>
+                                    </Stack>
 
                                     <Typography
+                                        variant="body2"
                                         color="text.secondary"
-                                        sx={{ mt: 0.5 }}
+                                        mt={0.5}
                                     >
-                                        Check your information
-                                        before submitting.
+                                        Select a platform plan
+                                        based on the number
+                                        of active members your
+                                        library needs to manage.
                                     </Typography>
                                 </Box>
 
-                                <Paper
-                                    elevation={0}
-                                    sx={{
-                                        p: 3,
-                                        border:
-                                            "1px solid #E1E9F3",
-                                        borderRadius: 2,
-                                    }}
-                                >
-                                    <Stack spacing={2}>
-                                        <Typography
-                                            sx={{
-                                                fontSize: 20,
-                                                fontWeight: 800,
-                                            }}
-                                        >
-                                            {
-                                                formData.libraryName
-                                            }
-                                        </Typography>
+                                <Divider />
 
-                                        <Typography color="text.secondary">
-                                            {
-                                                formData.description
-                                            }
-                                        </Typography>
+                                <PlanSelection
+                                    selectedPlanId={
+                                        formData.platformPlanId
+                                    }
+                                    onSelect={
+                                        handlePlanChange
+                                    }
+                                />
+                            </Stack>
+                        )}
 
-                                        <Typography>
-                                            📍{" "}
-                                            {
-                                                formData.address
-                                            }
-                                            ,{" "}
-                                            {formData.city},{" "}
-                                            {
-                                                formData.state
-                                            }{" "}
-                                            -{" "}
-                                            {
-                                                formData.pincode
-                                            }
-                                        </Typography>
 
-                                        <Typography>
-                                            🕐{" "}
-                                            {
-                                                formData.openingTime
-                                            }{" "}
-                                            –{" "}
-                                            {
-                                                formData.closingTime
-                                            }
-                                        </Typography>
+                        {/* =================================================
+                            STEP 6 - REVIEW
+                        ================================================== */}
 
-                                        <Typography>
-                                            🪑{" "}
-                                            {
-                                                formData.totalSeats
-                                            }{" "}
-                                            seats
-                                        </Typography>
+                        {activeStep === 5 && (
+                            <Stack spacing={3}>
 
-                                        <Box>
+                                <Box>
+                                    <Typography
+                                        variant="h5"
+                                        fontWeight={700}
+                                    >
+                                        Review Your Registration
+                                    </Typography>
+
+                                    <Typography
+                                        variant="body2"
+                                        color="text.secondary"
+                                        mt={0.5}
+                                    >
+                                        Review the information
+                                        before submitting your
+                                        library registration.
+                                    </Typography>
+                                </Box>
+
+                                <Divider />
+
+
+                                {/* =========================================
+                                    OWNER DETAILS
+                                ========================================== */}
+
+                                <Card>
+                                    <CardContent>
+                                        <Stack spacing={2}>
+
+                                            <Stack
+                                                direction="row"
+                                                spacing={1}
+                                                alignItems="center"
+                                            >
+                                                <Person color="primary" />
+
+                                                <Typography
+                                                    variant="h6"
+                                                    fontWeight={700}
+                                                >
+                                                    Owner Details
+                                                </Typography>
+                                            </Stack>
+
+                                            <Divider />
+
+                                            <Grid
+                                                container
+                                                spacing={2}
+                                            >
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={6}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Name
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.ownerName
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={6}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Email
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.email
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={6}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Phone
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.phone
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+                                            </Grid>
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+
+
+                                {/* =========================================
+                                    LIBRARY DETAILS
+                                ========================================== */}
+
+                                <Card>
+                                    <CardContent>
+                                        <Stack spacing={2}>
+
+                                            <Stack
+                                                direction="row"
+                                                spacing={1}
+                                                alignItems="center"
+                                            >
+                                                <LibraryBooks color="primary" />
+
+                                                <Typography
+                                                    variant="h6"
+                                                    fontWeight={700}
+                                                >
+                                                    Library Details
+                                                </Typography>
+                                            </Stack>
+
+                                            <Divider />
+
+                                            <Grid
+                                                container
+                                                spacing={2}
+                                            >
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Library Name
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.libraryName
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Description
+                                                    </Typography>
+
+                                                    <Typography>
+                                                        {formData.description ||
+                                                            "Not provided"}
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                >
+                                                    <Stack
+                                                        direction="row"
+                                                        spacing={1}
+                                                        alignItems="flex-start"
+                                                    >
+                                                        <LocationOn
+                                                            color="primary"
+                                                            fontSize="small"
+                                                        />
+
+                                                        <Box>
+                                                            <Typography
+                                                                variant="caption"
+                                                                color="text.secondary"
+                                                            >
+                                                                Address
+                                                            </Typography>
+
+                                                            <Typography fontWeight={600}>
+                                                                {
+                                                                    formData.address
+                                                                }
+                                                            </Typography>
+
+                                                            <Typography
+                                                                variant="body2"
+                                                                color="text.secondary"
+                                                                mt={0.5}
+                                                            >
+                                                                {
+                                                                    formData.city
+                                                                }
+                                                                ,{" "}
+                                                                {
+                                                                    formData.state
+                                                                }{" "}
+                                                                -{" "}
+                                                                {
+                                                                    formData.pincode
+                                                                }
+                                                            </Typography>
+                                                        </Box>
+                                                    </Stack>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={6}
+                                                >
+                                                    <Stack
+                                                        direction="row"
+                                                        spacing={1}
+                                                        alignItems="center"
+                                                    >
+                                                        <AccessTime
+                                                            color="primary"
+                                                            fontSize="small"
+                                                        />
+
+                                                        <Box>
+                                                            <Typography
+                                                                variant="caption"
+                                                                color="text.secondary"
+                                                            >
+                                                                Operating
+                                                                Hours
+                                                            </Typography>
+
+                                                            <Typography fontWeight={600}>
+                                                                {
+                                                                    formData.openingTime
+                                                                }{" "}
+                                                                –{" "}
+                                                                {
+                                                                    formData.closingTime
+                                                                }
+                                                            </Typography>
+                                                        </Box>
+                                                    </Stack>
+                                                </Grid>
+                                            </Grid>
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+
+
+                                {/* =========================================
+                                    AMENITIES
+                                ========================================== */}
+
+                                <Card>
+                                    <CardContent>
+                                        <Stack spacing={2}>
+
                                             <Typography
-                                                sx={{
-                                                    fontWeight: 700,
-                                                    mb: 1,
-                                                }}
+                                                variant="h6"
+                                                fontWeight={700}
                                             >
                                                 Amenities
                                             </Typography>
+
+                                            <Divider />
 
                                             <Stack
                                                 direction="row"
@@ -1191,9 +2016,7 @@ function RegisterLibrary() {
                                                 useFlexGap
                                             >
                                                 {formData.amenities.map(
-                                                    (
-                                                        amenity
-                                                    ) => (
+                                                    (amenity) => (
                                                         <Chip
                                                             key={
                                                                 amenity
@@ -1201,13 +2024,291 @@ function RegisterLibrary() {
                                                             label={
                                                                 amenity
                                                             }
+                                                            color="primary"
+                                                            variant="outlined"
                                                         />
                                                     )
                                                 )}
                                             </Stack>
-                                        </Box>
-                                    </Stack>
-                                </Paper>
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+
+
+                                {/* =========================================
+                                    SEATS & SLOTS
+                                ========================================== */}
+
+                                <Card>
+                                    <CardContent>
+                                        <Stack spacing={2}>
+
+                                            <Stack
+                                                direction="row"
+                                                spacing={1}
+                                                alignItems="center"
+                                            >
+                                                <EventSeat color="primary" />
+
+                                                <Typography
+                                                    variant="h6"
+                                                    fontWeight={700}
+                                                >
+                                                    Seats & Slots
+                                                </Typography>
+                                            </Stack>
+
+                                            <Divider />
+
+                                            <Grid
+                                                container
+                                                spacing={2}
+                                            >
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={4}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Total Seats
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.totalSeats
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={4}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Rows
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.rows
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={4}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Seats Per Row
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.seatsPerRow
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={6}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Slot Type
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {
+                                                            formData.slotType
+                                                        }
+                                                    </Typography>
+                                                </Grid>
+
+                                                <Grid
+                                                    item
+                                                    xs={12}
+                                                    sm={6}
+                                                >
+                                                    <Typography
+                                                        variant="caption"
+                                                        color="text.secondary"
+                                                    >
+                                                        Slot Duration
+                                                    </Typography>
+
+                                                    <Typography fontWeight={600}>
+                                                        {formData.slotType ===
+                                                        "HOURLY"
+                                                            ? `${formData.slotDuration} minutes`
+                                                            : "Not applicable"}
+                                                    </Typography>
+                                                </Grid>
+                                            </Grid>
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+
+
+                                {/* =========================================
+                                    LIBRARYHUB PLAN
+                                ========================================== */}
+
+                                <Card
+                                    sx={{
+                                        border:
+                                            "2px solid",
+                                        borderColor:
+                                            "primary.main",
+                                        backgroundColor:
+                                            "primary.light",
+                                    }}
+                                >
+                                    <CardContent>
+                                        <Stack spacing={2}>
+
+                                            <Stack
+                                                direction={{
+                                                    xs: "column",
+                                                    sm: "row",
+                                                }}
+                                                justifyContent="space-between"
+                                                alignItems={{
+                                                    xs: "flex-start",
+                                                    sm: "center",
+                                                }}
+                                                spacing={1}
+                                            >
+                                                <Stack
+                                                    direction="row"
+                                                    spacing={1}
+                                                    alignItems="center"
+                                                >
+                                                    <WorkspacePremium color="primary" />
+
+                                                    <Typography
+                                                        variant="h6"
+                                                        fontWeight={700}
+                                                    >
+                                                        LibraryHub Plan
+                                                    </Typography>
+                                                </Stack>
+
+                                                <Button
+                                                    size="small"
+                                                    onClick={
+                                                        handleChangePlan
+                                                    }
+                                                >
+                                                    Change Plan
+                                                </Button>
+                                            </Stack>
+
+                                            <Divider />
+
+                                            {selectedPlan ? (
+                                                <Grid
+                                                    container
+                                                    spacing={2}
+                                                >
+                                                    <Grid
+                                                        item
+                                                        xs={12}
+                                                        sm={4}
+                                                    >
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            Plan
+                                                        </Typography>
+
+                                                        <Typography
+                                                            variant="h6"
+                                                            fontWeight={700}
+                                                        >
+                                                            {
+                                                                selectedPlan.name
+                                                            }
+                                                        </Typography>
+                                                    </Grid>
+
+                                                    <Grid
+                                                        item
+                                                        xs={12}
+                                                        sm={4}
+                                                    >
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            Member
+                                                            Capacity
+                                                        </Typography>
+
+                                                        <Typography fontWeight={700}>
+                                                            {selectedPlan.maxMembers
+                                                                ? `1–${selectedPlan.maxMembers.toLocaleString(
+                                                                      "en-IN"
+                                                                  )} members`
+                                                                : "1,000+ members"}
+                                                        </Typography>
+                                                    </Grid>
+
+                                                    <Grid
+                                                        item
+                                                        xs={12}
+                                                        sm={4}
+                                                    >
+                                                        <Typography
+                                                            variant="caption"
+                                                            color="text.secondary"
+                                                        >
+                                                            Subscription
+                                                        </Typography>
+
+                                                        <Typography
+                                                            fontWeight={700}
+                                                            color="primary.main"
+                                                        >
+                                                            {selectedPlan.price
+                                                                ? `₹${selectedPlan.price.toLocaleString(
+                                                                      "en-IN"
+                                                                  )} / month`
+                                                                : "Custom"}
+                                                        </Typography>
+                                                    </Grid>
+                                                </Grid>
+                                            ) : (
+                                                <Alert severity="error">
+                                                    No LibraryHub
+                                                    plan has been
+                                                    selected.
+                                                </Alert>
+                                            )}
+                                        </Stack>
+                                    </CardContent>
+                                </Card>
+
+
+                                {/* =========================================
+                                    TERMS
+                                ========================================== */}
 
                                 <FormControlLabel
                                     control={
@@ -1215,74 +2316,86 @@ function RegisterLibrary() {
                                             checked={
                                                 formData.termsAccepted
                                             }
-                                            onChange={(
-                                                event
-                                            ) =>
-                                                setFormData(
-                                                    (
-                                                        previous
-                                                    ) => ({
-                                                        ...previous,
-                                                        termsAccepted:
-                                                            event
-                                                                .target
-                                                                .checked,
-                                                    })
+                                            onChange={(event) =>
+                                                updateField(
+                                                    "termsAccepted",
+                                                    event.target.checked
                                                 )
                                             }
                                         />
                                     }
-                                    label="I confirm that the information provided is accurate and I agree to the LibraryHub partner terms."
+                                    label={
+                                        <Typography variant="body2">
+                                            I agree to the
+                                            LibraryHub terms
+                                            and conditions and
+                                            confirm that the
+                                            information provided
+                                            is accurate.
+                                        </Typography>
+                                    }
                                 />
                             </Stack>
                         )}
+                    </CardContent>
+                </Card>
 
-                        {/* Navigation */}
 
-                        <Stack
-                            direction="row"
-                            justifyContent="space-between"
-                            sx={{
-                                mt: 5,
-                                pt: 3,
-                                borderTop:
-                                    "1px solid #E5EDF7",
-                            }}
+                {/* =================================================
+                    NAVIGATION
+                ================================================== */}
+
+                <Stack
+                    direction={{
+                        xs: "column-reverse",
+                        sm: "row",
+                    }}
+                    justifyContent="space-between"
+                    spacing={2}
+                    mt={3}
+                >
+                    <Button
+                        variant="outlined"
+                        startIcon={<ArrowBack />}
+                        onClick={
+                            activeStep === 0
+                                ? () =>
+                                      navigate("/")
+                                : handleBack
+                        }
+                    >
+                        {activeStep === 0
+                            ? "Cancel"
+                            : "Back"}
+                    </Button>
+
+                    {activeStep <
+                    steps.length - 1 ? (
+                        <Button
+                            variant="contained"
+                            endIcon={
+                                <ArrowForward />
+                            }
+                            onClick={handleNext}
                         >
-                            <Button
-                                disabled={
-                                    activeStep === 0
-                                }
-                                onClick={handleBack}
-                                startIcon={<ArrowBack />}
-                            >
-                                Back
-                            </Button>
-
-                            <Button
-                                variant="contained"
-                                onClick={handleNext}
-                                endIcon={
-                                    activeStep ===
-                                    steps.length - 1 ? (
-                                        <Check />
-                                    ) : (
-                                        <ArrowForward />
-                                    )
-                                }
-                                sx={{
-                                    minWidth: 150,
-                                    minHeight: 45,
-                                }}
-                            >
-                                {activeStep ===
-                                steps.length - 1
-                                    ? "Register Library"
-                                    : "Continue"}
-                            </Button>
-                        </Stack>
-                    </Box>
-                </Paper>
+                            Continue
+                        </Button>
+                    ) : (
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={
+                                <CheckCircle />
+                            }
+                            onClick={handleSubmit}
+                            disabled={isSubmitting}
+                        >
+                            {isSubmitting
+                                ? "Submitting..."
+                                : "Submit Registration"}
+                        </Button>
+                    )}
+                </Stack>
             </Container>
         </Box>
     );

@@ -4,11 +4,7 @@ import {
     Card,
     CardContent,
     Chip,
-    FormControl,
     Grid,
-    InputLabel,
-    MenuItem,
-    Select,
     Stack,
     Table,
     TableBody,
@@ -21,8 +17,6 @@ import {
 
 import {
     AccessTime,
-    ArrowDownward,
-    ArrowUpward,
     CalendarMonth,
     EventSeat,
     Groups,
@@ -43,6 +37,10 @@ import {
     XAxis,
     YAxis,
 } from "recharts";
+
+import ReportHeader from "../../components/reports/ReportHeader";
+import ReportFilter from "../../components/reports/ReportFilter";
+import ReportStatCard from "../../components/reports/ReportStatCard";
 
 /* ============================================================
    MOCK DATA
@@ -176,105 +174,7 @@ const highOccupancyPeriods = [
 ];
 
 /* ============================================================
-   STAT CARD
-============================================================ */
-
-function StatCard({
-    title,
-    value,
-    change,
-    icon: Icon,
-    positive = true,
-}) {
-    return (
-        <Card sx={{ height: "100%" }}>
-            <CardContent>
-                <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="flex-start"
-                >
-                    <Box>
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            mb={1}
-                        >
-                            {title}
-                        </Typography>
-
-                        <Typography
-                            variant="h4"
-                            fontWeight={700}
-                        >
-                            {value}
-                        </Typography>
-
-                        <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                            mt={1}
-                        >
-                            {positive ? (
-                                <ArrowUpward
-                                    sx={{
-                                        fontSize: 16,
-                                        color: "success.main",
-                                    }}
-                                />
-                            ) : (
-                                <ArrowDownward
-                                    sx={{
-                                        fontSize: 16,
-                                        color: "error.main",
-                                    }}
-                                />
-                            )}
-
-                            <Typography
-                                variant="caption"
-                                color={
-                                    positive
-                                        ? "success.main"
-                                        : "error.main"
-                                }
-                                fontWeight={600}
-                            >
-                                {change}
-                            </Typography>
-
-                            <Typography
-                                variant="caption"
-                                color="text.secondary"
-                            >
-                                vs previous period
-                            </Typography>
-                        </Stack>
-                    </Box>
-
-                    <Box
-                        sx={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 2,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "primary.light",
-                            color: "primary.main",
-                        }}
-                    >
-                        <Icon />
-                    </Box>
-                </Stack>
-            </CardContent>
-        </Card>
-    );
-}
-
-/* ============================================================
-   OCCUPANCY REPORT
+   COMPONENT
 ============================================================ */
 
 function OccupancyReport() {
@@ -283,10 +183,10 @@ function OccupancyReport() {
     const totalSeats = 120;
     const occupiedSeats = 84;
     const availableSeats = 30;
-    const blockedSeats = 6;
 
     const currentOccupancy = useMemo(
-        () => ((occupiedSeats / totalSeats) * 100).toFixed(1),
+        () =>
+            ((occupiedSeats / totalSeats) * 100).toFixed(1),
         []
     );
 
@@ -296,7 +196,9 @@ function OccupancyReport() {
             0
         );
 
-        return (total / occupancyTrendData.length).toFixed(1);
+        return (
+            total / occupancyTrendData.length
+        ).toFixed(1);
     }, []);
 
     return (
@@ -305,69 +207,16 @@ function OccupancyReport() {
                 HEADER
             ===================================================== */}
 
-            <Stack
-                direction={{ xs: "column", md: "row" }}
-                justifyContent="space-between"
-                alignItems={{
-                    xs: "flex-start",
-                    md: "center",
-                }}
-                spacing={2}
-                mb={3}
-            >
-                <Box>
-                    <Typography
-                        variant="h4"
-                        fontWeight={700}
-                    >
-                        Occupancy Report
-                    </Typography>
-
-                    <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        mt={0.5}
-                    >
-                        Monitor seat utilization and library
-                        occupancy performance.
-                    </Typography>
-                </Box>
-
-                <FormControl
-                    size="small"
-                    sx={{ minWidth: 160 }}
-                >
-                    <InputLabel>Period</InputLabel>
-
-                    <Select
+            <ReportHeader
+                title="Occupancy Report"
+                description="Monitor seat utilization and library occupancy performance."
+                action={
+                    <ReportFilter
                         value={period}
-                        label="Period"
-                        onChange={(event) =>
-                            setPeriod(event.target.value)
-                        }
-                    >
-                        <MenuItem value="today">
-                            Today
-                        </MenuItem>
-
-                        <MenuItem value="week">
-                            This Week
-                        </MenuItem>
-
-                        <MenuItem value="month">
-                            This Month
-                        </MenuItem>
-
-                        <MenuItem value="quarter">
-                            This Quarter
-                        </MenuItem>
-
-                        <MenuItem value="year">
-                            This Year
-                        </MenuItem>
-                    </Select>
-                </FormControl>
-            </Stack>
+                        onChange={setPeriod}
+                    />
+                }
+            />
 
             {/* ====================================================
                 SUMMARY CARDS
@@ -384,7 +233,7 @@ function OccupancyReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Current Occupancy"
                         value={`${currentOccupancy}%`}
                         change="+8.4%"
@@ -398,7 +247,7 @@ function OccupancyReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Average Occupancy"
                         value={`${averageOccupancy}%`}
                         change="+6.7%"
@@ -412,7 +261,7 @@ function OccupancyReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Occupied Seats"
                         value={occupiedSeats}
                         change="+12.5%"
@@ -426,12 +275,12 @@ function OccupancyReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Available Seats"
                         value={availableSeats}
                         change="-5.8%"
-                        icon={EventSeat}
                         positive={false}
+                        icon={EventSeat}
                     />
                 </Grid>
             </Grid>
@@ -487,7 +336,9 @@ function OccupancyReport() {
                             height="100%"
                         >
                             <AreaChart
-                                data={occupancyTrendData}
+                                data={
+                                    occupancyTrendData
+                                }
                             >
                                 <CartesianGrid
                                     strokeDasharray="3 3"
@@ -537,8 +388,6 @@ function OccupancyReport() {
                 spacing={2.5}
                 mb={3}
             >
-                {/* Slot Occupancy */}
-
                 <Grid
                     item
                     xs={12}
@@ -617,8 +466,6 @@ function OccupancyReport() {
                     </Card>
                 </Grid>
 
-                {/* Seat Status */}
-
                 <Grid
                     item
                     xs={12}
@@ -664,11 +511,13 @@ function OccupancyReport() {
                                         >
                                             {seatStatusData.map(
                                                 (
-                                                    entry,
+                                                    item,
                                                     index
                                                 ) => (
                                                     <Cell
-                                                        key={`cell-${index}`}
+                                                        key={
+                                                            item.name
+                                                        }
                                                         fill={
                                                             [
                                                                 "#16A34A",
@@ -747,7 +596,9 @@ function OccupancyReport() {
                                                 />
 
                                                 <Typography variant="body2">
-                                                    {item.name}
+                                                    {
+                                                        item.name
+                                                    }
                                                 </Typography>
                                             </Stack>
 
@@ -863,7 +714,7 @@ function OccupancyReport() {
             </Card>
 
             {/* ====================================================
-                OCCUPANCY PERFORMANCE
+                PERFORMANCE
             ===================================================== */}
 
             <Card sx={{ mb: 3 }}>
@@ -1140,9 +991,5 @@ function OccupancyReport() {
         </Box>
     );
 }
-
-/* ============================================================
-   DEFAULT EXPORT
-============================================================ */
 
 export default OccupancyReport;

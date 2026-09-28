@@ -4,11 +4,7 @@ import {
     Card,
     CardContent,
     Chip,
-    FormControl,
     Grid,
-    InputLabel,
-    MenuItem,
-    Select,
     Stack,
     Table,
     TableBody,
@@ -20,8 +16,6 @@ import {
 } from "@mui/material";
 
 import {
-    ArrowDownward,
-    ArrowUpward,
     CalendarMonth,
     EventAvailable,
     EventSeat,
@@ -41,6 +35,10 @@ import {
     XAxis,
     YAxis,
 } from "recharts";
+
+import ReportHeader from "../../components/reports/ReportHeader";
+import ReportFilter from "../../components/reports/ReportFilter";
+import ReportStatCard from "../../components/reports/ReportStatCard";
 
 /* ============================================================
    MOCK DATA
@@ -149,116 +147,7 @@ const recentBookings = [
 ];
 
 /* ============================================================
-   HELPERS
-============================================================ */
-
-const formatCurrency = (value) =>
-    new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: "INR",
-        maximumFractionDigits: 0,
-    }).format(value);
-
-/* ============================================================
-   STAT CARD
-============================================================ */
-
-function StatCard({
-    title,
-    value,
-    change,
-    icon: Icon,
-    positive = true,
-}) {
-    return (
-        <Card sx={{ height: "100%" }}>
-            <CardContent>
-                <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="flex-start"
-                >
-                    <Box>
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            mb={1}
-                        >
-                            {title}
-                        </Typography>
-
-                        <Typography
-                            variant="h4"
-                            fontWeight={700}
-                        >
-                            {value}
-                        </Typography>
-
-                        <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                            mt={1}
-                        >
-                            {positive ? (
-                                <ArrowUpward
-                                    sx={{
-                                        fontSize: 16,
-                                        color: "success.main",
-                                    }}
-                                />
-                            ) : (
-                                <ArrowDownward
-                                    sx={{
-                                        fontSize: 16,
-                                        color: "error.main",
-                                    }}
-                                />
-                            )}
-
-                            <Typography
-                                variant="caption"
-                                color={
-                                    positive
-                                        ? "success.main"
-                                        : "error.main"
-                                }
-                                fontWeight={600}
-                            >
-                                {change}
-                            </Typography>
-
-                            <Typography
-                                variant="caption"
-                                color="text.secondary"
-                            >
-                                vs previous period
-                            </Typography>
-                        </Stack>
-                    </Box>
-
-                    <Box
-                        sx={{
-                            width: 44,
-                            height: 44,
-                            borderRadius: 2,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: "primary.light",
-                            color: "primary.main",
-                        }}
-                    >
-                        <Icon />
-                    </Box>
-                </Stack>
-            </CardContent>
-        </Card>
-    );
-}
-
-/* ============================================================
-   BOOKING REPORT
+   COMPONENT
 ============================================================ */
 
 function BookingReport() {
@@ -273,18 +162,24 @@ function BookingReport() {
         []
     );
 
-    const completedBookings = bookingStatusData.find(
-        (item) => item.name === "Completed"
-    )?.value || 0;
+    const completedBookings =
+        bookingStatusData.find(
+            (item) => item.name === "Completed"
+        )?.value || 0;
 
-    const cancelledBookings = bookingStatusData.find(
-        (item) => item.name === "Cancelled"
-    )?.value || 0;
+    const cancelledBookings =
+        bookingStatusData.find(
+            (item) => item.name === "Cancelled"
+        )?.value || 0;
 
     const completionRate =
         totalBookings > 0
-            ? ((completedBookings / totalBookings) * 100).toFixed(1)
-            : 0;
+            ? (
+                  (completedBookings /
+                      totalBookings) *
+                  100
+              ).toFixed(1)
+            : "0.0";
 
     return (
         <Box>
@@ -292,69 +187,16 @@ function BookingReport() {
                 HEADER
             ===================================================== */}
 
-            <Stack
-                direction={{ xs: "column", md: "row" }}
-                justifyContent="space-between"
-                alignItems={{
-                    xs: "flex-start",
-                    md: "center",
-                }}
-                spacing={2}
-                mb={3}
-            >
-                <Box>
-                    <Typography
-                        variant="h4"
-                        fontWeight={700}
-                    >
-                        Booking Reports
-                    </Typography>
-
-                    <Typography
-                        variant="body2"
-                        color="text.secondary"
-                        mt={0.5}
-                    >
-                        Track bookings, booking trends and seat
-                        reservations.
-                    </Typography>
-                </Box>
-
-                <FormControl
-                    size="small"
-                    sx={{ minWidth: 160 }}
-                >
-                    <InputLabel>Period</InputLabel>
-
-                    <Select
+            <ReportHeader
+                title="Booking Reports"
+                description="Track bookings, booking trends and seat reservations."
+                action={
+                    <ReportFilter
                         value={period}
-                        label="Period"
-                        onChange={(event) =>
-                            setPeriod(event.target.value)
-                        }
-                    >
-                        <MenuItem value="today">
-                            Today
-                        </MenuItem>
-
-                        <MenuItem value="week">
-                            This Week
-                        </MenuItem>
-
-                        <MenuItem value="month">
-                            This Month
-                        </MenuItem>
-
-                        <MenuItem value="quarter">
-                            This Quarter
-                        </MenuItem>
-
-                        <MenuItem value="year">
-                            This Year
-                        </MenuItem>
-                    </Select>
-                </FormControl>
-            </Stack>
+                        onChange={setPeriod}
+                    />
+                }
+            />
 
             {/* ====================================================
                 SUMMARY CARDS
@@ -371,7 +213,7 @@ function BookingReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Total Bookings"
                         value={totalBookings}
                         change="+14.6%"
@@ -385,7 +227,7 @@ function BookingReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Completed Bookings"
                         value={completedBookings}
                         change="+11.8%"
@@ -399,7 +241,7 @@ function BookingReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Active Members"
                         value="284"
                         change="+8.2%"
@@ -413,7 +255,7 @@ function BookingReport() {
                     sm={6}
                     lg={3}
                 >
-                    <StatCard
+                    <ReportStatCard
                         title="Cancelled Bookings"
                         value={cancelledBookings}
                         change="-4.5%"
@@ -450,8 +292,8 @@ function BookingReport() {
                                 variant="body2"
                                 color="text.secondary"
                             >
-                                Number of bookings during
-                                the selected period.
+                                Number of bookings during the
+                                selected period.
                             </Typography>
                         </Box>
 
@@ -568,11 +410,13 @@ function BookingReport() {
                                         >
                                             {bookingStatusData.map(
                                                 (
-                                                    entry,
+                                                    item,
                                                     index
                                                 ) => (
                                                     <Cell
-                                                        key={`cell-${index}`}
+                                                        key={
+                                                            item.name
+                                                        }
                                                         fill={
                                                             [
                                                                 "#16A34A",
@@ -653,7 +497,9 @@ function BookingReport() {
                                                 />
 
                                                 <Typography variant="body2">
-                                                    {item.name}
+                                                    {
+                                                        item.name
+                                                    }
                                                 </Typography>
                                             </Stack>
 
@@ -771,8 +617,8 @@ function BookingReport() {
                         color="text.secondary"
                         mb={3}
                     >
-                        Overall booking performance for
-                        the selected period.
+                        Overall booking performance for the
+                        selected period.
                     </Typography>
 
                     <Grid
@@ -867,7 +713,7 @@ function BookingReport() {
                                     fontWeight={700}
                                     mt={0.5}
                                 >
-                                    {formatCurrency(336)}
+                                    ₹336
                                 </Typography>
                             </Box>
                         </Grid>
@@ -1004,9 +850,10 @@ function BookingReport() {
 
                                             <TableCell>
                                                 <Typography fontWeight={600}>
-                                                    {formatCurrency(
+                                                    ₹
+                                                    {
                                                         booking.amount
-                                                    )}
+                                                    }
                                                 </Typography>
                                             </TableCell>
 
@@ -1042,9 +889,5 @@ function BookingReport() {
         </Box>
     );
 }
-
-/* ============================================================
-   DEFAULT EXPORT
-============================================================ */
 
 export default BookingReport;

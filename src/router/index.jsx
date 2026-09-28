@@ -5,33 +5,64 @@ import {
     Routes,
 } from "react-router-dom";
 
-// Layouts
+// ============================================================
+// LAYOUTS
+// ============================================================
+
 import PublicLayout from "../layouts/PublicLayout";
 import VerticalLayout from "../layouts/VerticalLayout";
 
-// Guards
+// ============================================================
+// GUARDS
+// ============================================================
+
 import ProtectedRoute from "./ProtectedRoute";
 import PublicRoute from "./PublicRoute";
 import RoleRoute from "./RoleRoute";
 
-// Public pages
+// ============================================================
+// PUBLIC PAGES
+// ============================================================
+
 import Home from "../views/Public/Home";
 import LibraryList from "../views/Public/LibraryList";
 import LibraryDetails from "../views/Public/LibraryDetails";
 import SeatAvailability from "../views/Public/SeatAvailability";
+import PlatformPlans from "../views/Public/PlatformPlans";
 
-// Auth
+// ============================================================
+// AUTH
+// ============================================================
+
 import Login from "../views/Auth/Login";
 import Register from "../views/Auth/Register";
 
-// Library Owner
+// ============================================================
+// LIBRARY OWNER
+// ============================================================
+
 import RegisterLibrary from "../views/LibraryOwner/RegisterLibrary";
+import SeatChangeRequests from "../views/LibraryOwner/SeatChangeRequests";
+import SubscriptionBilling from "../views/LibraryOwner/SubscriptionBilling";
 
-// Routes
+// ============================================================
+// ROUTES
+// ============================================================
+
 import reportRoutes from "./routes/Reports";
+import bookingRoutes from "./routes/Booking";
 
-// Dashboard
+// ============================================================
+// DASHBOARD
+// ============================================================
+
 import Dashboard from "../views/Dashboard/Dashboard";
+import AutomationCenter from "../views/LibraryOwner/AutomationCenter";
+
+
+// ============================================================
+// APP ROUTER
+// ============================================================
 
 function AppRouter() {
     return (
@@ -64,7 +95,11 @@ function AppRouter() {
                         element={<SeatAvailability />}
                     />
 
-                    {/* Register Your Library */}
+                    <Route
+                        path="/platform-plans"
+                        element={<PlatformPlans />}
+                    />
+
                     <Route
                         path="/register-library"
                         element={<RegisterLibrary />}
@@ -100,9 +135,9 @@ function AppRouter() {
 
                     <Route element={<VerticalLayout />}>
 
-                        {/* -----------------------------
+                        {/* =================================================
                             COMMON AUTHENTICATED ROUTES
-                        ------------------------------ */}
+                        ================================================== */}
 
                         <Route
                             path="/dashboard"
@@ -110,17 +145,36 @@ function AppRouter() {
                         />
 
 
-                        {/* -----------------------------
+                        {/* =================================================
+                            BOOKING / MEMBER ROUTES
+                        ================================================== */}
+
+                        {bookingRoutes.map((route) => (
+                            <Route
+                                key={route.path}
+                                path={route.path}
+                                element={route.element}
+                            />
+                        ))}
+
+
+                        {/* =================================================
                             LIBRARY OWNER ROUTES
-                        ------------------------------ */}
+                        ================================================== */}
 
                         <Route
                             element={
                                 <RoleRoute
-                                    allowedRoles={["LIBRARY_OWNER"]}
+                                    allowedRoles={[
+                                        "LIBRARY_OWNER",
+                                    ]}
                                 />
                             }
                         >
+
+                            {/* ---------------------------------------------
+                                REPORTS
+                            ---------------------------------------------- */}
 
                             {reportRoutes.map((route) => (
                                 <Route
@@ -129,6 +183,39 @@ function AppRouter() {
                                     element={route.element}
                                 />
                             ))}
+
+                {/* ---------------------------------------------
+                                AUTOMATION CENTER                   
+                ---------------------------------------------- */}            
+
+                            <Route
+                                 path="/owner/automation"
+                                 element={<AutomationCenter />}
+                               />
+
+
+                            {/* ---------------------------------------------
+                                SEAT CHANGE REQUESTS
+                            ---------------------------------------------- */}
+
+                            <Route
+                                path="/owner/seat-change-requests"
+                                element={
+                                    <SeatChangeRequests />
+                                }
+                            />
+
+
+                            {/* ---------------------------------------------
+                                SUBSCRIPTION & BILLING
+                            ---------------------------------------------- */}
+
+                            <Route
+                                path="/owner/subscription"
+                                element={
+                                    <SubscriptionBilling />
+                                }
+                            />
 
                         </Route>
 
@@ -143,7 +230,12 @@ function AppRouter() {
 
                 <Route
                     path="*"
-                    element={<Navigate to="/" replace />}
+                    element={
+                        <Navigate
+                            to="/"
+                            replace
+                        />
+                    }
                 />
 
             </Routes>
