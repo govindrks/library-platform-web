@@ -13,6 +13,7 @@ import {
   TrendingUp,
   WorkspacePremium,
   Autorenew,
+  LocalOffer,
 } from "@mui/icons-material";
 
 const ownerMenu = [
@@ -117,6 +118,11 @@ const ownerMenu = [
         label: "Invoices",
         path: "/owner/invoices",
         icon: Receipt,
+      },
+      {
+        label: "Coupons",
+        path: "/owner/coupons",
+        icon: LocalOffer,
       },
     ],
   },

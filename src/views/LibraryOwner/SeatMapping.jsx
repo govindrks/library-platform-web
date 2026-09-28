@@ -1,9 +1,9 @@
 import {
     Add,
     DeleteOutline,
-    Edit,
     EventSeat,
     Save,
+    Settings,
 } from "@mui/icons-material";
 
 import {
@@ -18,8 +18,12 @@ import {
     DialogContent,
     DialogTitle,
     Divider,
+    FormControl,
     Grid,
     IconButton,
+    InputLabel,
+    MenuItem,
+    Select,
     Stack,
     TextField,
     Typography,
@@ -33,6 +37,8 @@ const createSeat = (row, number) => ({
     row,
     number,
     status: "AVAILABLE",
+    type: "STANDARD",
+    features: [],
 });
 
 const createInitialRows = () => [
@@ -69,23 +75,32 @@ const createInitialRows = () => [
 function SeatMapping() {
     const [rows, setRows] = useState(createInitialRows);
 
+    const [selectedSeatId, setSelectedSeatId] = useState(null);
     const [selectedSeat, setSelectedSeat] = useState(null);
 
-    const [rowDialogOpen, setRowDialogOpen] =
-        useState(false);
+    const [configureOpen, setConfigureOpen] = useState(false);
+    const [rowDialogOpen, setRowDialogOpen] = useState(false);
+    const [addSeatsOpen, setAddSeatsOpen] = useState(false);
+    const [seatDialogOpen, setSeatDialogOpen] = useState(false);
 
     const [rowName, setRowName] = useState("");
 
-    const [seatDialogOpen, setSeatDialogOpen] =
-        useState(false);
+    const [layoutConfig, setLayoutConfig] = useState({
+        rowCount: 4,
+        seatsPerRow: 5,
+    });
+
+    const [addSeatsForm, setAddSeatsForm] = useState({
+        rowId: "",
+        count: 1,
+    });
 
     const [saved, setSaved] = useState(false);
 
     const totalSeats = useMemo(
         () =>
             rows.reduce(
-                (total, row) =>
-                    total + row.seats.length,
+                (total, row) => total + row.seats.length,
                 0
             ),
         [rows]
@@ -97,39 +112,88 @@ function SeatMapping() {
                 (total, row) =>
                     total +
                     row.seats.filter(
-                        (seat) =>
-                            seat.status === "AVAILABLE"
+                        (seat) => seat.status === "AVAILABLE"
                     ).length,
                 0
             ),
         [rows]
     );
 
-    const disabledSeats = totalSeats - availableSeats;
+    const disabledSeats = useMemo(
+        () =>
+            rows.reduce(
+                (total, row) =>
+                    total +
+                    row.seats.filter(
+                        (seat) => seat.status === "DISABLED"
+                    ).length,
+                0
+            ),
+        [rows]
+    );
 
-    const handleSeatClick = (rowId, seatId) => {
+    const handleSeatClick = (row, seat) => {
+        setSelectedSeatId(seat.id);
+
+        setSelectedSeat({
+            rowId: row.id,
+            rowName: row.name,
+            seat: { ...seat },
+        });
+    };
+
+    const handleOpenSeatDetails = (row, seat) => {
+        setSelectedSeatId(seat.id);
+
+        setSelectedSeat({
+            rowId: row.id,
+            rowName: row.name,
+            seat: { ...seat },
+        });
+
+        setSeatDialogOpen(true);
+    };
+
+    const handleSaveSeat = () => {
+        if (!selectedSeat) return;
+
         setRows((previous) =>
-            previous.map((row) =>
-                row.id === rowId
-                    ? {
-                          ...row,
-                          seats: row.seats.map((seat) =>
-                              seat.id === seatId
-                                  ? {
-                                        ...seat,
-                                        status:
-                                            seat.status ===
-                                            "AVAILABLE"
-                                                ? "DISABLED"
-                                                : "AVAILABLE",
-                                    }
-                                  : seat
-                          ),
-                      }
-                    : row
-            )
+            previous.map((row) => {
+                if (row.id !== selectedSeat.rowId) {
+                    return row;
+                }
+
+                return {
+                    ...row,
+                    seats: row.seats.map((seat) =>
+                        seat.id === selectedSeat.seat.id
+                            ? {
+                                  ...seat,
+                                  status:
+                                      selectedSeat.seat.status,
+                                  type:
+                                      selectedSeat.seat.type,
+                                  features:
+                                      selectedSeat.seat.features,
+                              }
+                            : seat
+                    ),
+                };
+            })
         );
 
+        setSeatDialogOpen(false);
+        setSelectedSeatId(null);
+        setSelectedSeat(null);
+        setSaved(false);
+    };
+
+    const handleDeleteRow = (rowId) => {
+        setRows((previous) =>
+            previous.filter((row) => row.id !== rowId)
+        );
+
+        setSelectedSeatId(null);
         setSaved(false);
     };
 
@@ -169,39 +233,50 @@ function SeatMapping() {
         setSaved(false);
     };
 
-    const handleDeleteRow = (rowId) => {
-        setRows((previous) =>
-            previous.filter(
-                (row) => row.id !== rowId
-            )
-        );
+    const handleAddSeats = () => {
+        if (!addSeatsForm.rowId) return;
 
-        setSaved(false);
-    };
+        const count = Number(addSeatsForm.count);
 
-    const handleAddSeat = (rowId) => {
+        if (!count || count < 1) return;
+
         setRows((previous) =>
             previous.map((row) => {
-                if (row.id !== rowId) {
+                if (
+                    String(row.id) !==
+                    String(addSeatsForm.rowId)
+                ) {
                     return row;
                 }
 
-                const nextNumber =
+                const startingNumber =
                     row.seats.length + 1;
+
+                const newSeats = Array.from(
+                    { length: count },
+                    (_, index) =>
+                        createSeat(
+                            row.name,
+                            startingNumber + index
+                        )
+                );
 
                 return {
                     ...row,
                     seats: [
                         ...row.seats,
-                        createSeat(
-                            row.name,
-                            nextNumber
-                        ),
+                        ...newSeats,
                     ],
                 };
             })
         );
 
+        setAddSeatsForm({
+            rowId: "",
+            count: 1,
+        });
+
+        setAddSeatsOpen(false);
         setSaved(false);
     };
 
@@ -220,28 +295,131 @@ function SeatMapping() {
             )
         );
 
+        setSelectedSeatId(null);
         setSelectedSeat(null);
         setSeatDialogOpen(false);
         setSaved(false);
     };
 
-    const handleOpenSeatDetails = (row, seat) => {
-        setSelectedSeat({
-            rowId: row.id,
-            rowName: row.name,
-            seat,
-        });
+    const handleApplyLayout = () => {
+        const rowCount = Number(
+            layoutConfig.rowCount
+        );
 
-        setSeatDialogOpen(true);
+        const seatsPerRow = Number(
+            layoutConfig.seatsPerRow
+        );
+
+        if (
+            rowCount < 1 ||
+            seatsPerRow < 1
+        ) {
+            return;
+        }
+
+        const generatedRows = Array.from(
+            { length: rowCount },
+            (_, rowIndex) => {
+                const rowName =
+                    String.fromCharCode(
+                        65 + rowIndex
+                    );
+
+                const existingRow =
+                    rows.find(
+                        (row) =>
+                            row.name === rowName
+                    );
+
+                const existingSeats =
+                    existingRow?.seats || [];
+
+                const generatedSeats =
+                    Array.from(
+                        {
+                            length: seatsPerRow,
+                        },
+                        (_, seatIndex) => {
+                            const seatNumber =
+                                seatIndex + 1;
+
+                            const existingSeat =
+                                existingSeats.find(
+                                    (seat) =>
+                                        seat.number ===
+                                        seatNumber
+                                );
+
+                            return (
+                                existingSeat || {
+                                    ...createSeat(
+                                        rowName,
+                                        seatNumber
+                                    ),
+                                    number:
+                                        seatNumber,
+                                }
+                            );
+                        }
+                    );
+
+                return {
+                    id:
+                        existingRow?.id ||
+                        Date.now() +
+                            rowIndex,
+                    name: rowName,
+                    seats: generatedSeats,
+                };
+            }
+        );
+
+        setRows(generatedRows);
+        setConfigureOpen(false);
+        setSelectedSeatId(null);
+        setSelectedSeat(null);
+        setSaved(false);
     };
 
     const handleSaveLayout = () => {
-        console.log(
-            "Seat layout:",
-            rows
-        );
-
+        console.log("Seat layout:", rows);
         setSaved(true);
+    };
+
+    const updateSelectedSeat = (field, value) => {
+        setSelectedSeat((previous) => ({
+            ...previous,
+            seat: {
+                ...previous.seat,
+                [field]: value,
+            },
+        }));
+    };
+
+    const toggleFeature = (feature) => {
+        setSelectedSeat((previous) => {
+            const currentFeatures =
+                previous?.seat?.features || [];
+
+            const exists =
+                currentFeatures.includes(feature);
+
+            return {
+                ...previous,
+                seat: {
+                    ...previous.seat,
+                    features: exists
+                        ? currentFeatures.filter(
+                              (item) =>
+                                  item !== feature
+                          )
+                        : [
+                              ...currentFeatures,
+                              feature,
+                          ],
+                },
+            };
+        });
     };
 
     return (
@@ -273,15 +451,32 @@ function SeatMapping() {
                         color="text.secondary"
                         mt={0.5}
                     >
-                        Configure the physical seat
-                        layout of your library.
+                        Design and manage the seat
+                        layout for your library.
                     </Typography>
                 </Box>
 
                 <Stack
-                    direction="row"
+                    direction={{
+                        xs: "column",
+                        sm: "row",
+                    }}
                     spacing={1}
+                    width={{
+                        xs: "100%",
+                        md: "auto",
+                    }}
                 >
+                    <Button
+                        variant="outlined"
+                        startIcon={<Settings />}
+                        onClick={() =>
+                            setConfigureOpen(true)
+                        }
+                    >
+                        Configure Layout
+                    </Button>
+
                     <Button
                         variant="outlined"
                         startIcon={<Add />}
@@ -293,16 +488,17 @@ function SeatMapping() {
                     </Button>
 
                     <Button
-                        variant="contained"
-                        startIcon={<Save />}
-                        onClick={handleSaveLayout}
+                        variant="outlined"
+                        startIcon={<EventSeat />}
+                        onClick={() =>
+                            setAddSeatsOpen(true)
+                        }
                     >
-                        Save Seat Layout
+                        Add Seats
                     </Button>
                 </Stack>
             </Stack>
 
-            {/* Success */}
             {saved && (
                 <Alert
                     severity="success"
@@ -316,175 +512,21 @@ function SeatMapping() {
                 </Alert>
             )}
 
-            {/* Summary */}
-            <Grid
-                container
-                spacing={2}
-                mb={3}
-            >
-                <Grid
-                    size={{
-                        xs: 12,
-                        sm: 4,
-                    }}
-                >
-                    <Card>
-                        <CardContent>
-                            <Stack
-                                direction="row"
-                                spacing={2}
-                                alignItems="center"
-                            >
-                                <Box
-                                    sx={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 2,
-                                        display:
-                                            "flex",
-                                        alignItems:
-                                            "center",
-                                        justifyContent:
-                                            "center",
-                                        bgcolor:
-                                            "primary.light",
-                                        color:
-                                            "primary.main",
-                                    }}
-                                >
-                                    <EventSeat />
-                                </Box>
-
-                                <Box>
-                                    <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                    >
-                                        Total Seats
-                                    </Typography>
-
-                                    <Typography
-                                        variant="h5"
-                                        fontWeight={700}
-                                    >
-                                        {totalSeats}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                <Grid
-                    size={{
-                        xs: 12,
-                        sm: 4,
-                    }}
-                >
-                    <Card>
-                        <CardContent>
-                            <Stack
-                                direction="row"
-                                spacing={2}
-                                alignItems="center"
-                            >
-                                <Box
-                                    sx={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 2,
-                                        display:
-                                            "flex",
-                                        alignItems:
-                                            "center",
-                                        justifyContent:
-                                            "center",
-                                        bgcolor:
-                                            "success.light",
-                                        color:
-                                            "success.main",
-                                    }}
-                                >
-                                    <EventSeat />
-                                </Box>
-
-                                <Box>
-                                    <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                    >
-                                        Available
-                                    </Typography>
-
-                                    <Typography
-                                        variant="h5"
-                                        fontWeight={700}
-                                    >
-                                        {availableSeats}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                <Grid
-                    size={{
-                        xs: 12,
-                        sm: 4,
-                    }}
-                >
-                    <Card>
-                        <CardContent>
-                            <Stack
-                                direction="row"
-                                spacing={2}
-                                alignItems="center"
-                            >
-                                <Box
-                                    sx={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 2,
-                                        display:
-                                            "flex",
-                                        alignItems:
-                                            "center",
-                                        justifyContent:
-                                            "center",
-                                        bgcolor:
-                                            "error.light",
-                                        color:
-                                            "error.main",
-                                    }}
-                                >
-                                    <EventSeat />
-                                </Box>
-
-                                <Box>
-                                    <Typography
-                                        variant="body2"
-                                        color="text.secondary"
-                                    >
-                                        Disabled
-                                    </Typography>
-
-                                    <Typography
-                                        variant="h5"
-                                        fontWeight={700}
-                                    >
-                                        {disabledSeats}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
-            </Grid>
-
             {/* Library Layout */}
-            <Card>
-                <CardContent sx={{ p: 3 }}>
+            <Card
+                sx={{
+                    borderRadius: 3,
+                    overflow: "hidden",
+                }}
+            >
+                <CardContent
+                    sx={{
+                        p: {
+                            xs: 2,
+                            md: 3,
+                        },
+                    }}
+                >
                     <Stack
                         direction="row"
                         justifyContent="space-between"
@@ -504,8 +546,8 @@ function SeatMapping() {
                                 color="text.secondary"
                                 mt={0.5}
                             >
-                                Click a seat to enable or
-                                disable it.
+                                Select a seat to edit its
+                                configuration.
                             </Typography>
                         </Box>
 
@@ -526,208 +568,281 @@ function SeatMapping() {
                     >
                         <Box
                             sx={{
-                                px: 8,
-                                py: 1.5,
+                                width: {
+                                    xs: "70%",
+                                    md: 400,
+                                },
+                                px: 4,
+                                py: 2,
                                 borderRadius:
-                                    "0 0 12px 12px",
-                                backgroundColor:
-                                    "grey.100",
-                                border:
-                                    "1px solid",
+                                    "0 0 14px 14px",
+                                bgcolor: "grey.100",
+                                border: "1px solid",
                                 borderColor:
                                     "divider",
-                                minWidth: 280,
                                 textAlign: "center",
                             }}
                         >
                             <Typography
-                                variant="body2"
                                 fontWeight={700}
                                 color="text.secondary"
                             >
-                                ENTRANCE
+                                🚪 ENTRANCE
                             </Typography>
                         </Box>
                     </Box>
 
-                    {/* Seat Rows */}
-                    <Stack
-                        spacing={3}
+                    {/* Layout */}
+                    <Box
                         sx={{
+                            border: "1px solid",
+                            borderColor:
+                                "divider",
+                            borderRadius: 3,
+                            p: {
+                                xs: 2,
+                                md: 3,
+                            },
                             overflowX: "auto",
-                            pb: 2,
                         }}
                     >
-                        {rows.map(
-                            (row, rowIndex) => (
-                                <Box
-                                    key={row.id}
-                                    sx={{
-                                        minWidth:
-                                            "max-content",
-                                    }}
-                                >
-                                    <Stack
-                                        direction="row"
-                                        alignItems="center"
-                                        spacing={2}
+                        <Stack spacing={3}>
+                            {rows.map(
+                                (row, rowIndex) => (
+                                    <Box
+                                        key={row.id}
+                                        sx={{
+                                            minWidth:
+                                                "max-content",
+                                        }}
                                     >
-                                        {/* Row Label */}
-                                        <Box
-                                            sx={{
-                                                width: 70,
-                                                flexShrink: 0,
-                                            }}
+                                        <Stack
+                                            direction="row"
+                                            alignItems="center"
+                                            spacing={2}
                                         >
-                                            <Stack
-                                                direction="row"
-                                                spacing={1}
-                                                alignItems="center"
+                                            {/* Row label */}
+                                            <Box
+                                                sx={{
+                                                    width: 65,
+                                                    height: 58,
+                                                    flexShrink: 0,
+                                                    display:
+                                                        "flex",
+                                                    alignItems:
+                                                        "center",
+                                                    justifyContent:
+                                                        "center",
+                                                    borderRadius: 2,
+                                                    bgcolor:
+                                                        "primary.50",
+                                                    border: "1px solid",
+                                                    borderColor:
+                                                        "primary.100",
+                                                }}
                                             >
                                                 <Typography
-                                                    variant="subtitle2"
+                                                    variant="h6"
                                                     fontWeight={
                                                         700
                                                     }
+                                                    color="primary.main"
                                                 >
-                                                    Row{" "}
-                                                    {
-                                                        row.name
-                                                    }
+                                                    {row.name}
                                                 </Typography>
+                                            </Box>
+
+                                            {/* Seats */}
+                                            <Stack
+                                                direction="row"
+                                                spacing={1.5}
+                                                alignItems="center"
+                                            >
+                                                {row.seats.map(
+                                                    (
+                                                        seat
+                                                    ) => {
+                                                        const selected =
+                                                            selectedSeatId ===
+                                                            seat.id;
+
+                                                        const available =
+                                                            seat.status ===
+                                                            "AVAILABLE";
+
+                                                        return (
+                                                            <Box
+                                                                key={
+                                                                    seat.id
+                                                                }
+                                                                onClick={() =>
+                                                                    handleSeatClick(
+                                                                        row,
+                                                                        seat
+                                                                    )
+                                                                }
+                                                                onContextMenu={(
+                                                                    event
+                                                                ) => {
+                                                                    event.preventDefault();
+
+                                                                    handleOpenSeatDetails(
+                                                                        row,
+                                                                        seat
+                                                                    );
+                                                                }}
+                                                                sx={{
+                                                                    width: 74,
+                                                                    cursor: "pointer",
+                                                                    userSelect:
+                                                                        "none",
+                                                                    textAlign:
+                                                                        "center",
+                                                                    transition:
+                                                                        "all 0.2s ease",
+                                                                    "&:hover":
+                                                                        {
+                                                                            transform:
+                                                                                "translateY(-2px)",
+                                                                        },
+                                                                }}
+                                                            >
+                                                                <Box
+                                                                    sx={{
+                                                                        height: 30,
+                                                                        border:
+                                                                            "1px solid",
+                                                                        borderColor:
+                                                                            selected
+                                                                                ? "primary.main"
+                                                                                : "divider",
+                                                                        borderBottom:
+                                                                            "none",
+                                                                        borderRadius:
+                                                                            "8px 8px 0 0",
+                                                                        display:
+                                                                            "flex",
+                                                                        alignItems:
+                                                                            "center",
+                                                                        justifyContent:
+                                                                            "center",
+                                                                        bgcolor:
+                                                                            selected
+                                                                                ? "primary.50"
+                                                                                : "background.paper",
+                                                                    }}
+                                                                >
+                                                                    <Typography
+                                                                        variant="caption"
+                                                                        fontWeight={
+                                                                            700
+                                                                        }
+                                                                    >
+                                                                        {
+                                                                            seat.label
+                                                                        }
+                                                                    </Typography>
+                                                                </Box>
+
+                                                                {/* Chair */}
+                                                                <Box
+                                                                    sx={{
+                                                                        height: 52,
+                                                                        borderRadius: 2,
+                                                                        border:
+                                                                            "3px solid",
+                                                                        borderColor:
+                                                                            selected
+                                                                                ? "primary.main"
+                                                                                : available
+                                                                                ? "success.main"
+                                                                                : "error.main",
+                                                                        bgcolor:
+                                                                            selected
+                                                                                ? "primary.main"
+                                                                                : available
+                                                                                ? "success.light"
+                                                                                : "error.light",
+                                                                        display:
+                                                                            "flex",
+                                                                        alignItems:
+                                                                            "center",
+                                                                        justifyContent:
+                                                                            "center",
+                                                                        boxShadow:
+                                                                            selected
+                                                                                ? 3
+                                                                                : "none",
+                                                                    }}
+                                                                >
+                                                                    <EventSeat
+                                                                        sx={{
+                                                                            color:
+                                                                                selected
+                                                                                    ? "white"
+                                                                                    : available
+                                                                                    ? "success.dark"
+                                                                                    : "error.dark",
+                                                                            fontSize: 30,
+                                                                        }}
+                                                                    />
+                                                                </Box>
+                                                            </Box>
+                                                        );
+                                                    }
+                                                )}
 
                                                 <IconButton
                                                     size="small"
-                                                    color="error"
                                                     onClick={() =>
-                                                        handleDeleteRow(
+                                                        handleAddSeat(
                                                             row.id
                                                         )
                                                     }
+                                                    sx={{
+                                                        width: 42,
+                                                        height: 42,
+                                                        border: "1px dashed",
+                                                        borderColor:
+                                                            "divider",
+                                                    }}
                                                 >
-                                                    <DeleteOutline
-                                                        fontSize="small"
-                                                    />
+                                                    <Add fontSize="small" />
                                                 </IconButton>
                                             </Stack>
-                                        </Box>
 
-                                        {/* Seats */}
-                                        <Stack
-                                            direction="row"
-                                            spacing={1.5}
-                                            alignItems="center"
-                                        >
-                                            {row.seats.map(
-                                                (
-                                                    seat
-                                                ) => {
-                                                    const isAvailable =
-                                                        seat.status ===
-                                                        "AVAILABLE";
-
-                                                    return (
-                                                        <Box
-                                                            key={
-                                                                seat.id
-                                                            }
-                                                            onClick={() =>
-                                                                handleSeatClick(
-                                                                    row.id,
-                                                                    seat.id
-                                                                )
-                                                            }
-                                                            onContextMenu={(
-                                                                event
-                                                            ) => {
-                                                                event.preventDefault();
-
-                                                                handleOpenSeatDetails(
-                                                                    row,
-                                                                    seat
-                                                                );
-                                                            }}
-                                                            sx={{
-                                                                width: 58,
-                                                                height: 58,
-                                                                borderRadius: 2,
-                                                                display:
-                                                                    "flex",
-                                                                alignItems:
-                                                                    "center",
-                                                                justifyContent:
-                                                                    "center",
-                                                                cursor: "pointer",
-                                                                userSelect:
-                                                                    "none",
-                                                                border:
-                                                                    "2px solid",
-                                                                borderColor:
-                                                                    isAvailable
-                                                                        ? "success.main"
-                                                                        : "error.main",
-                                                                bgcolor:
-                                                                    isAvailable
-                                                                        ? "success.light"
-                                                                        : "error.light",
-                                                                color:
-                                                                    isAvailable
-                                                                        ? "success.dark"
-                                                                        : "error.dark",
-                                                                fontWeight:
-                                                                    700,
-                                                                transition:
-                                                                    "all 0.2s ease",
-                                                                "&:hover":
-                                                                    {
-                                                                        transform:
-                                                                            "translateY(-2px)",
-                                                                        boxShadow:
-                                                                            2,
-                                                                    },
-                                                            }}
-                                                        >
-                                                            {
-                                                                seat.label
-                                                            }
-                                                        </Box>
-                                                    );
-                                                }
-                                            )}
-
+                                            {/* Delete row */}
                                             <IconButton
                                                 size="small"
+                                                color="error"
                                                 onClick={() =>
-                                                    handleAddSeat(
+                                                    handleDeleteRow(
                                                         row.id
                                                     )
                                                 }
-                                                sx={{
-                                                    width: 42,
-                                                    height: 42,
-                                                    border: "1px dashed",
-                                                    borderColor:
-                                                        "divider",
-                                                }}
+                                                disabled={
+                                                    rows.length <=
+                                                    1
+                                                }
                                             >
-                                                <Add fontSize="small" />
+                                                <DeleteOutline fontSize="small" />
                                             </IconButton>
                                         </Stack>
-                                    </Stack>
 
-                                    {rowIndex <
-                                        rows.length -
-                                            1 && (
-                                        <Divider
-                                            sx={{
-                                                mt: 3,
-                                            }}
-                                        />
-                                    )}
-                                </Box>
-                            )
-                        )}
-                    </Stack>
+                                        {rowIndex <
+                                            rows.length -
+                                                1 && (
+                                            <Divider
+                                                sx={{
+                                                    mt: 3,
+                                                }}
+                                            />
+                                        )}
+                                    </Box>
+                                )
+                            )}
+                        </Stack>
+                    </Box>
 
                     {/* Reception */}
                     <Box
@@ -740,34 +855,41 @@ function SeatMapping() {
                     >
                         <Box
                             sx={{
-                                px: 7,
-                                py: 1.5,
+                                width: {
+                                    xs: "70%",
+                                    md: 430,
+                                },
+                                px: 4,
+                                py: 2,
                                 borderRadius: 2,
-                                backgroundColor:
-                                    "grey.100",
-                                border:
-                                    "1px solid",
+                                bgcolor: "grey.100",
+                                border: "1px solid",
                                 borderColor:
                                     "divider",
+                                textAlign: "center",
                             }}
                         >
                             <Typography
-                                variant="body2"
                                 fontWeight={700}
                                 color="text.secondary"
                             >
-                                RECEPTION
+                                👤 RECEPTION
                             </Typography>
                         </Box>
                     </Box>
 
-                    {/* Legend */}
+                    {/* Legend + Stats */}
                     <Stack
                         direction={{
                             xs: "column",
-                            sm: "row",
+                            lg: "row",
                         }}
-                        spacing={2}
+                        justifyContent="space-between"
+                        alignItems={{
+                            xs: "flex-start",
+                            lg: "center",
+                        }}
+                        spacing={3}
                         mt={4}
                         pt={3}
                         borderTop="1px solid"
@@ -775,65 +897,184 @@ function SeatMapping() {
                     >
                         <Stack
                             direction="row"
-                            spacing={1}
-                            alignItems="center"
+                            spacing={3}
+                            flexWrap="wrap"
+                            useFlexGap
                         >
-                            <Box
-                                sx={{
-                                    width: 18,
-                                    height: 18,
-                                    borderRadius: 1,
-                                    bgcolor:
-                                        "success.light",
-                                    border:
-                                        "2px solid",
-                                    borderColor:
-                                        "success.main",
-                                }}
+                            <Legend
+                                color="success"
+                                label="Available"
                             />
 
-                            <Typography variant="body2">
-                                Available
-                            </Typography>
+                            <Legend
+                                color="error"
+                                label="Disabled"
+                            />
+
+                            <Legend
+                                color="primary"
+                                label="Selected"
+                            />
                         </Stack>
 
                         <Stack
                             direction="row"
-                            spacing={1}
-                            alignItems="center"
+                            spacing={{
+                                xs: 2,
+                                md: 4,
+                            }}
+                            flexWrap="wrap"
+                            useFlexGap
                         >
-                            <Box
-                                sx={{
-                                    width: 18,
-                                    height: 18,
-                                    borderRadius: 1,
-                                    bgcolor:
-                                        "error.light",
-                                    border:
-                                        "2px solid",
-                                    borderColor:
-                                        "error.main",
-                                }}
+                            <Statistic
+                                label="Rows"
+                                value={rows.length}
                             />
 
-                            <Typography variant="body2">
-                                Disabled
-                            </Typography>
-                        </Stack>
+                            <Statistic
+                                label="Seats"
+                                value={totalSeats}
+                            />
 
-                        <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ ml: "auto" }}
-                        >
-                            Right-click a seat for
-                            seat actions.
-                        </Typography>
+                            <Statistic
+                                label="Available"
+                                value={availableSeats}
+                            />
+
+                            <Statistic
+                                label="Disabled"
+                                value={disabledSeats}
+                            />
+                        </Stack>
                     </Stack>
                 </CardContent>
             </Card>
 
-            {/* Add Row Dialog */}
+            {/* Save */}
+            <Stack
+                direction="row"
+                justifyContent="flex-end"
+                mt={2}
+            >
+                <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<Save />}
+                    onClick={handleSaveLayout}
+                    sx={{
+                        minWidth: 220,
+                        py: 1.4,
+                        borderRadius: 2,
+                        textTransform: "none",
+                    }}
+                >
+                    Save Seat Layout
+                </Button>
+            </Stack>
+
+            {/* Configure Layout */}
+            <Dialog
+                open={configureOpen}
+                onClose={() =>
+                    setConfigureOpen(false)
+                }
+                fullWidth
+                maxWidth="xs"
+            >
+                <DialogTitle>
+                    Configure Layout
+                </DialogTitle>
+
+                <DialogContent>
+                    <Stack spacing={2.5} mt={1}>
+                        <TextField
+                            fullWidth
+                            type="number"
+                            label="Number of Rows"
+                            value={
+                                layoutConfig.rowCount
+                            }
+                            onChange={(event) =>
+                                setLayoutConfig(
+                                    (previous) => ({
+                                        ...previous,
+                                        rowCount:
+                                            Math.max(
+                                                1,
+                                                Number(
+                                                    event
+                                                        .target
+                                                        .value
+                                                )
+                                            ),
+                                    })
+                                )
+                            }
+                            inputProps={{
+                                min: 1,
+                                max: 26,
+                            }}
+                        />
+
+                        <TextField
+                            fullWidth
+                            type="number"
+                            label="Seats Per Row"
+                            value={
+                                layoutConfig.seatsPerRow
+                            }
+                            onChange={(event) =>
+                                setLayoutConfig(
+                                    (previous) => ({
+                                        ...previous,
+                                        seatsPerRow:
+                                            Math.max(
+                                                1,
+                                                Number(
+                                                    event
+                                                        .target
+                                                        .value
+                                                )
+                                            ),
+                                    })
+                                )
+                            }
+                            inputProps={{
+                                min: 1,
+                                max: 50,
+                            }}
+                        />
+
+                        <Alert severity="info">
+                            Existing seat configuration
+                            is preserved where the
+                            same row and seat already
+                            exist.
+                        </Alert>
+                    </Stack>
+                </DialogContent>
+
+                <DialogActions>
+                    <Button
+                        onClick={() =>
+                            setConfigureOpen(false)
+                        }
+                    >
+                        Cancel
+                    </Button>
+
+                    <Button
+                        variant="contained"
+                        onClick={
+                            handleApplyLayout
+                        }
+                    >
+                        Apply Layout
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Add Row */}
             <Dialog
                 open={rowDialogOpen}
                 onClose={() =>
@@ -867,7 +1108,7 @@ function SeatMapping() {
                         display="block"
                         mt={1}
                     >
-                        A new row will start with 5
+                        A new row starts with 5
                         seats.
                     </Typography>
                 </DialogContent>
@@ -893,7 +1134,107 @@ function SeatMapping() {
                 </DialogActions>
             </Dialog>
 
-            {/* Seat Details Dialog */}
+            {/* Add Seats */}
+            <Dialog
+                open={addSeatsOpen}
+                onClose={() =>
+                    setAddSeatsOpen(false)
+                }
+                fullWidth
+                maxWidth="xs"
+            >
+                <DialogTitle>
+                    Add Seats
+                </DialogTitle>
+
+                <DialogContent>
+                    <Stack spacing={2.5} mt={1}>
+                        <FormControl fullWidth>
+                            <InputLabel>
+                                Row
+                            </InputLabel>
+
+                            <Select
+                                value={
+                                    addSeatsForm.rowId
+                                }
+                                label="Row"
+                                onChange={(event) =>
+                                    setAddSeatsForm(
+                                        (previous) => ({
+                                            ...previous,
+                                            rowId:
+                                                event
+                                                    .target
+                                                    .value,
+                                        })
+                                    )
+                                }
+                            >
+                                {rows.map((row) => (
+                                    <MenuItem
+                                        key={row.id}
+                                        value={row.id}
+                                    >
+                                        Row {row.name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        <TextField
+                            fullWidth
+                            type="number"
+                            label="Number of Seats"
+                            value={
+                                addSeatsForm.count
+                            }
+                            onChange={(event) =>
+                                setAddSeatsForm(
+                                    (previous) => ({
+                                        ...previous,
+                                        count: Math.max(
+                                            1,
+                                            Number(
+                                                event
+                                                    .target
+                                                    .value
+                                            )
+                                        ),
+                                    })
+                                )
+                            }
+                            inputProps={{
+                                min: 1,
+                                max: 50,
+                            }}
+                        />
+                    </Stack>
+                </DialogContent>
+
+                <DialogActions>
+                    <Button
+                        onClick={() =>
+                            setAddSeatsOpen(false)
+                        }
+                    >
+                        Cancel
+                    </Button>
+
+                    <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        onClick={handleAddSeats}
+                        disabled={
+                            !addSeatsForm.rowId
+                        }
+                    >
+                        Add Seats
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Seat Details */}
             <Dialog
                 open={seatDialogOpen}
                 onClose={() =>
@@ -907,65 +1248,211 @@ function SeatMapping() {
                 </DialogTitle>
 
                 <DialogContent>
-                    <Stack spacing={2} mt={1}>
-                        <Box
-                            sx={{
-                                p: 3,
-                                textAlign: "center",
-                                borderRadius: 2,
-                                bgcolor:
-                                    selectedSeat?.seat
-                                        ?.status ===
-                                    "AVAILABLE"
-                                        ? "success.light"
-                                        : "error.light",
-                            }}
-                        >
-                            <EventSeat
+                    {selectedSeat && (
+                        <Stack spacing={2.5} mt={1}>
+                            <Box
                                 sx={{
-                                    fontSize: 42,
+                                    p: 2.5,
+                                    textAlign:
+                                        "center",
+                                    borderRadius: 2,
+                                    bgcolor:
+                                        selectedSeat
+                                            .seat
+                                            .status ===
+                                        "AVAILABLE"
+                                            ? "success.light"
+                                            : "error.light",
                                 }}
-                            />
-
-                            <Typography
-                                variant="h5"
-                                fontWeight={700}
-                                mt={1}
                             >
-                                {
-                                    selectedSeat?.seat
-                                        ?.label
-                                }
-                            </Typography>
+                                <EventSeat
+                                    sx={{
+                                        fontSize: 42,
+                                        color:
+                                            selectedSeat
+                                                .seat
+                                                .status ===
+                                            "AVAILABLE"
+                                                ? "success.dark"
+                                                : "error.dark",
+                                    }}
+                                />
 
-                            <Chip
-                                sx={{ mt: 1 }}
-                                label={
-                                    selectedSeat?.seat
-                                        ?.status ===
-                                    "AVAILABLE"
-                                        ? "Available"
-                                        : "Disabled"
-                                }
-                                color={
-                                    selectedSeat?.seat
-                                        ?.status ===
-                                    "AVAILABLE"
-                                        ? "success"
-                                        : "error"
-                                }
-                                size="small"
-                            />
-                        </Box>
-                    </Stack>
+                                <Typography
+                                    variant="h5"
+                                    fontWeight={700}
+                                >
+                                    {
+                                        selectedSeat
+                                            .seat
+                                            .label
+                                    }
+                                </Typography>
+
+                                <Chip
+                                    label={
+                                        selectedSeat
+                                            .seat
+                                            .status ===
+                                        "AVAILABLE"
+                                            ? "Available"
+                                            : "Disabled"
+                                    }
+                                    color={
+                                        selectedSeat
+                                            .seat
+                                            .status ===
+                                        "AVAILABLE"
+                                            ? "success"
+                                            : "error"
+                                    }
+                                    size="small"
+                                    sx={{ mt: 1 }}
+                                />
+                            </Box>
+
+                            <FormControl fullWidth>
+                                <InputLabel>
+                                    Status
+                                </InputLabel>
+
+                                <Select
+                                    value={
+                                        selectedSeat
+                                            .seat
+                                            .status
+                                    }
+                                    label="Status"
+                                    onChange={(
+                                        event
+                                    ) =>
+                                        updateSelectedSeat(
+                                            "status",
+                                            event.target
+                                                .value
+                                        )
+                                    }
+                                >
+                                    <MenuItem value="AVAILABLE">
+                                        Available
+                                    </MenuItem>
+
+                                    <MenuItem value="DISABLED">
+                                        Disabled
+                                    </MenuItem>
+                                </Select>
+                            </FormControl>
+
+                            <FormControl fullWidth>
+                                <InputLabel>
+                                    Seat Type
+                                </InputLabel>
+
+                                <Select
+                                    value={
+                                        selectedSeat
+                                            .seat
+                                            .type ||
+                                        "STANDARD"
+                                    }
+                                    label="Seat Type"
+                                    onChange={(
+                                        event
+                                    ) =>
+                                        updateSelectedSeat(
+                                            "type",
+                                            event.target
+                                                .value
+                                        )
+                                    }
+                                >
+                                    <MenuItem value="STANDARD">
+                                        Standard
+                                    </MenuItem>
+
+                                    <MenuItem value="PREMIUM">
+                                        Premium
+                                    </MenuItem>
+
+                                    <MenuItem value="WINDOW">
+                                        Window
+                                    </MenuItem>
+
+                                    <MenuItem value="QUIET">
+                                        Quiet Zone
+                                    </MenuItem>
+                                </Select>
+                            </FormControl>
+
+                            <Box>
+                                <Typography
+                                    variant="subtitle2"
+                                    fontWeight={700}
+                                    mb={1}
+                                >
+                                    Features
+                                </Typography>
+
+                                <Stack
+                                    direction="row"
+                                    spacing={1}
+                                    flexWrap="wrap"
+                                    useFlexGap
+                                >
+                                    {[
+                                        "Power Socket",
+                                        "Window Seat",
+                                        "Quiet Zone",
+                                    ].map(
+                                        (feature) => {
+                                            const active =
+                                                (
+                                                    selectedSeat
+                                                        .seat
+                                                        .features ||
+                                                    []
+                                                ).includes(
+                                                    feature
+                                                );
+
+                                            return (
+                                                <Chip
+                                                    key={
+                                                        feature
+                                                    }
+                                                    label={
+                                                        feature
+                                                    }
+                                                    clickable
+                                                    color={
+                                                        active
+                                                            ? "primary"
+                                                            : "default"
+                                                    }
+                                                    variant={
+                                                        active
+                                                            ? "filled"
+                                                            : "outlined"
+                                                    }
+                                                    onClick={() =>
+                                                        toggleFeature(
+                                                            feature
+                                                        )
+                                                    }
+                                                />
+                                            );
+                                        }
+                                    )}
+                                </Stack>
+                            </Box>
+                        </Stack>
+                    )}
                 </DialogContent>
 
                 <DialogActions>
                     <Button
                         onClick={() =>
-                            setSeatDialogOpen(
-                                false
-                            )
+                            setSeatDialogOpen(false)
                         }
                     >
                         Cancel
@@ -978,22 +1465,71 @@ function SeatMapping() {
                             <DeleteOutline />
                         }
                         onClick={() => {
-                            if (
-                                selectedSeat
-                            ) {
+                            if (selectedSeat) {
                                 handleRemoveSeat(
                                     selectedSeat.rowId,
-                                    selectedSeat.seat.id
+                                    selectedSeat.seat
+                                        .id
                                 );
                             }
                         }}
                     >
                         Remove Seat
                     </Button>
+
+                    <Button
+                        variant="contained"
+                        onClick={handleSaveSeat}
+                    >
+                        Save Seat
+                    </Button>
                 </DialogActions>
             </Dialog>
         </Box>
     );
 }
+
+const Legend = ({ color, label }) => (
+    <Stack
+        direction="row"
+        spacing={1}
+        alignItems="center"
+    >
+        <Box
+            sx={{
+                width: 16,
+                height: 16,
+                borderRadius: "50%",
+                bgcolor: `${color}.main`,
+            }}
+        />
+
+        <Typography variant="body2">
+            {label}
+        </Typography>
+    </Stack>
+);
+
+const Statistic = ({ label, value }) => (
+    <Stack
+        direction="row"
+        spacing={0.7}
+        alignItems="center"
+    >
+        <Typography
+            variant="body2"
+            color="text.secondary"
+        >
+            {label}:
+        </Typography>
+
+        <Typography
+            variant="body2"
+            fontWeight={700}
+        >
+            {value}
+        </Typography>
+    </Stack>
+);
 
 export default SeatMapping;

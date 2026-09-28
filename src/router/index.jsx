@@ -55,6 +55,7 @@ import Dashboard from "../views/Dashboard/Dashboard";
 import AutomationCenter from "../views/LibraryOwner/AutomationCenter";
 import Notifications from "../views/LibraryOwner/Notifications";
 import Settings from "../views/LibraryOwner/Settings";
+import Coupons from "../views/LibraryOwner/Coupons";
 
 // ============================================================
 // APP ROUTER
@@ -162,6 +163,12 @@ function AppRouter() {
                 path="/owner/seat-change-requests"
                 element={<SeatChangeRequests />}
               />
+
+              {/* ---------------------------------------------
+                                COUPONS
+                            ---------------------------------------------- */}
+
+              <Route path="/owner/coupons" element={<Coupons />} />
 
               {/* ---------------------------------------------
                                 SUBSCRIPTION & BILLING
