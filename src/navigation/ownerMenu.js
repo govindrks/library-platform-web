@@ -78,6 +78,11 @@ const ownerMenu = [
         icon: Receipt,
       },
       {
+        label: "My Bookings",
+        path: "/my-bookings",
+        icon: EventSeat,
+      },
+      {
         label: "Members",
         path: "/owner/members",
         icon: Groups,
@@ -97,6 +102,11 @@ const ownerMenu = [
         label: "Payments",
         path: "/owner/payments",
         icon: Payments,
+      },
+      {
+        label: "Subscription & Billing",
+        path: "/owner/subscription",
+        icon: WorkspacePremium,
       },
       {
         label: "Refunds",
@@ -160,6 +170,11 @@ const ownerMenu = [
         label: "Automation Center",
         path: "/owner/automation",
         icon: Autorenew,
+      },
+      {
+        label: "Notifications",
+        path: "/owner/notifications",
+        icon: Notifications,
       },
     ],
   },
