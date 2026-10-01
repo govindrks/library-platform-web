@@ -41,6 +41,12 @@ import SeatChangeRequests from "../views/LibraryOwner/SeatChangeRequests";
 import SubscriptionBilling from "../views/LibraryOwner/SubscriptionBilling";
 
 // ============================================================
+// MEMBER
+// ============================================================
+
+
+
+// ============================================================
 // ROUTES
 // ============================================================
 
@@ -56,6 +62,7 @@ import AutomationCenter from "../views/LibraryOwner/AutomationCenter";
 import Notifications from "../views/LibraryOwner/Notifications";
 import Settings from "../views/LibraryOwner/Settings";
 import Coupons from "../views/LibraryOwner/Coupons";
+import MembershipPaymentSuccess from "../views/Student/Membership/MembershipPaymentSuccess";
 
 // ============================================================
 // APP ROUTER
@@ -65,52 +72,80 @@ function AppRouter() {
   return (
     <BrowserRouter>
       <Routes>
+
         {/* =====================================================
-                    PUBLIC
-                ====================================================== */}
+                            PUBLIC
+        ====================================================== */}
 
         <Route element={<PublicLayout />}>
+
           <Route path="/" element={<Home />} />
 
-          <Route path="/libraries" element={<LibraryList />} />
+          <Route
+            path="/libraries"
+            element={<LibraryList />}
+          />
 
-          <Route path="/libraries/:libraryId" element={<LibraryDetails />} />
+          <Route
+            path="/libraries/:libraryId"
+            element={<LibraryDetails />}
+          />
 
           <Route
             path="/libraries/:libraryId/seats"
             element={<SeatAvailability />}
           />
 
-          <Route path="/platform-plans" element={<PlatformPlans />} />
+          <Route
+            path="/platform-plans"
+            element={<PlatformPlans />}
+          />
 
-          <Route path="/register-library" element={<RegisterLibrary />} />
+          <Route
+            path="/register-library"
+            element={<RegisterLibrary />}
+          />
+
         </Route>
 
         {/* =====================================================
-                    AUTH
-                ====================================================== */}
+                            AUTH
+        ====================================================== */}
 
         <Route element={<PublicRoute />}>
-          <Route path="/login" element={<Login />} />
 
-          <Route path="/register" element={<Register />} />
+          <Route
+            path="/login"
+            element={<Login />}
+          />
+
+          <Route
+            path="/register"
+            element={<Register />}
+          />
+
         </Route>
 
         {/* =====================================================
                     PROTECTED APPLICATION
-                ====================================================== */}
+        ====================================================== */}
 
         <Route element={<ProtectedRoute />}>
+
           <Route element={<VerticalLayout />}>
-            {/* =================================================
-                            COMMON AUTHENTICATED ROUTES
-                        ================================================== */}
-
-            <Route path="/dashboard" element={<Dashboard />} />
 
             {/* =================================================
-                            BOOKING / MEMBER ROUTES
-                        ================================================== */}
+                        COMMON AUTHENTICATED ROUTES
+            ================================================== */}
+
+            <Route
+              path="/dashboard"
+              element={<Dashboard />}
+            />
+
+            {/* =================================================
+                        BOOKING / MEMBER ROUTES
+            ================================================== */}
 
             {bookingRoutes.map((route) => (
               <Route
@@ -121,13 +156,27 @@ function AppRouter() {
             ))}
 
             {/* =================================================
-                            LIBRARY OWNER ROUTES
-                        ================================================== */}
+                        MEMBER PAYMENT
+            ================================================== */}
 
-            <Route element={<RoleRoute allowedRoles={["LIBRARY_OWNER"]} />}>
+            <Route
+              path="/member/membership/payment-success"
+              element={<MembershipPaymentSuccess />}
+            />
+
+            {/* =================================================
+                        LIBRARY OWNER ROUTES
+            ================================================== */}
+
+            <Route
+              element={
+                <RoleRoute allowedRoles={["LIBRARY_OWNER"]} />
+              }
+            >
+
               {/* ---------------------------------------------
                                 REPORTS
-                            ---------------------------------------------- */}
+              ---------------------------------------------- */}
 
               {reportRoutes.map((route) => (
                 <Route
@@ -138,26 +187,35 @@ function AppRouter() {
               ))}
 
               {/* ---------------------------------------------
-                                AUTOMATION CENTER                   
-                ---------------------------------------------- */}
+                            AUTOMATION CENTER
+              ---------------------------------------------- */}
 
-              <Route path="/owner/automation" element={<AutomationCenter />} />
-
-              {/* ---------------------------------------------
-                                NOTIFICATION CENTER                   
-                ---------------------------------------------- */}
-
-              <Route path="/owner/notifications" element={<Notifications />} />
+              <Route
+                path="/owner/automation"
+                element={<AutomationCenter />}
+              />
 
               {/* ---------------------------------------------
-                                SETTINGS                   
-                ---------------------------------------------- */}
+                          NOTIFICATION CENTER
+              ---------------------------------------------- */}
 
-              <Route path="/owner/settings" element={<Settings />} />
+              <Route
+                path="/owner/notifications"
+                element={<Notifications />}
+              />
 
               {/* ---------------------------------------------
-                                SEAT CHANGE REQUESTS
-                            ---------------------------------------------- */}
+                              SETTINGS
+              ---------------------------------------------- */}
+
+              <Route
+                path="/owner/settings"
+                element={<Settings />}
+              />
+
+              {/* ---------------------------------------------
+                        SEAT CHANGE REQUESTS
+              ---------------------------------------------- */}
 
               <Route
                 path="/owner/seat-change-requests"
@@ -165,28 +223,38 @@ function AppRouter() {
               />
 
               {/* ---------------------------------------------
-                                COUPONS
-                            ---------------------------------------------- */}
+                              COUPONS
+              ---------------------------------------------- */}
 
-              <Route path="/owner/coupons" element={<Coupons />} />
+              <Route
+                path="/owner/coupons"
+                element={<Coupons />}
+              />
 
               {/* ---------------------------------------------
-                                SUBSCRIPTION & BILLING
-                            ---------------------------------------------- */}
+                        SUBSCRIPTION & BILLING
+              ---------------------------------------------- */}
 
               <Route
                 path="/owner/subscription"
                 element={<SubscriptionBilling />}
               />
+
             </Route>
+
           </Route>
+
         </Route>
 
         {/* =====================================================
-                    FALLBACK
-                ====================================================== */}
+                            FALLBACK
+        ====================================================== */}
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route
+          path="*"
+          element={<Navigate to="/" replace />}
+        />
+
       </Routes>
     </BrowserRouter>
   );

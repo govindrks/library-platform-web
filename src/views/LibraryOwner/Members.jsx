@@ -2,6 +2,7 @@ import {
     CardMembership,
     EmailOutlined,
     EventSeat,
+    LocalOffer,
     MoreVert,
     Person,
     PhoneOutlined,
@@ -37,10 +38,15 @@ import {
     TableHead,
     TablePagination,
     TableRow,
+    TextField,
     Typography,
 } from "@mui/material";
 
 import { useMemo, useState } from "react";
+
+import CustomPricingDialog from "./components/CustomPricingDialog";
+
+import memberPricingApi from "../../api/memberPricingApi";
 
 const initialMembers = [
     {
@@ -56,6 +62,12 @@ const initialMembers = [
         totalBookings: 18,
         completedBookings: 16,
         amountPaid: 1800,
+        standardPrice: 1800,
+        customPrice: null,
+        customPriceFrom: null,
+        customPriceUntil: null,
+        customPriceReason: null,
+        pricingType: null,
     },
     {
         id: "MEM-1002",
@@ -70,6 +82,12 @@ const initialMembers = [
         totalBookings: 31,
         completedBookings: 28,
         amountPaid: 4800,
+        standardPrice: 4800,
+        customPrice: null,
+        customPriceFrom: null,
+        customPriceUntil: null,
+        customPriceReason: null,
+        pricingType: null,
     },
     {
         id: "MEM-1003",
@@ -84,6 +102,12 @@ const initialMembers = [
         totalBookings: 1,
         completedBookings: 1,
         amountPaid: 80,
+        standardPrice: 80,
+        customPrice: null,
+        customPriceFrom: null,
+        customPriceUntil: null,
+        customPriceReason: null,
+        pricingType: null,
     },
     {
         id: "MEM-1004",
@@ -98,6 +122,12 @@ const initialMembers = [
         totalBookings: 9,
         completedBookings: 7,
         amountPaid: 1800,
+        standardPrice: 1800,
+        customPrice: null,
+        customPriceFrom: null,
+        customPriceUntil: null,
+        customPriceReason: null,
+        pricingType: null,
     },
     {
         id: "MEM-1005",
@@ -112,6 +142,12 @@ const initialMembers = [
         totalBookings: 12,
         completedBookings: 11,
         amountPaid: 1800,
+        standardPrice: 1800,
+        customPrice: null,
+        customPriceFrom: null,
+        customPriceUntil: null,
+        customPriceReason: null,
+        pricingType: null,
     },
     {
         id: "MEM-1006",
@@ -126,6 +162,12 @@ const initialMembers = [
         totalBookings: 7,
         completedBookings: 6,
         amountPaid: 4800,
+        standardPrice: 4800,
+        customPrice: null,
+        customPriceFrom: null,
+        customPriceUntil: null,
+        customPriceReason: null,
+        pricingType: null,
     },
 ];
 
@@ -459,6 +501,12 @@ function Members() {
     const [menuMember, setMenuMember] =
         useState(null);
 
+    const [customPricingOpen, setCustomPricingOpen] =
+        useState(false);
+
+    const [customPricingMember, setCustomPricingMember] =
+        useState(null);
+
     const [saved, setSaved] = useState(false);
 
     const filteredMembers = useMemo(() => {
@@ -543,6 +591,106 @@ function Members() {
         setMenuMember(null);
     };
 
+    const handleOpenCustomPricing = (member) => {
+        setCustomPricingMember(member);
+        setCustomPricingOpen(true);
+    };
+
+    const handleCloseCustomPricing = () => {
+        setCustomPricingOpen(false);
+        setCustomPricingMember(null);
+    };
+
+   const handleSaveCustomPricing = async (
+    member,
+    pricing
+) => {
+
+    try {
+
+        const payload = {
+            memberId: Number(member.id),
+            membershipPlanId:
+                Number(member.membershipPlanId),
+
+            pricingType:
+                pricing.pricingType,
+
+            customPrice:
+                Number(
+                    pricing.customPrice
+                ),
+
+            effectiveFrom:
+                pricing.effectiveFrom,
+
+            effectiveUntil:
+                pricing.effectiveUntil,
+
+            reason:
+                pricing.reason || null,
+        };
+
+
+        const response =
+            await memberPricingApi.createPricing(
+                payload
+            );
+
+
+        setMembers((previous) =>
+            previous.map(
+                (currentMember) => {
+
+                    if (
+                        currentMember.id !==
+                        member.id
+                    ) {
+                        return currentMember;
+                    }
+
+
+                    return {
+                        ...currentMember,
+
+                        customPrice:
+                            response.customPrice,
+
+                        customPriceFrom:
+                            response.effectiveFrom,
+
+                        customPriceUntil:
+                            response.effectiveUntil,
+
+                        customPriceReason:
+                            response.reason,
+
+                        pricingType:
+                            response.pricingType,
+
+                        effectivePrice:
+                            response.effectivePrice,
+                    };
+                }
+            )
+        );
+
+
+        setSaved(true);
+
+    } catch (error) {
+
+        console.error(
+            "Failed to save custom pricing:",
+            error
+        );
+
+        setSaved(false);
+
+        throw error;
+    }
+};
+
     const handleToggleStatus = () => {
         if (!menuMember) return;
 
@@ -622,7 +770,7 @@ function Members() {
                         setSaved(false)
                     }
                 >
-                    Member status updated
+                    Member pricing/status updated
                     successfully.
                 </Alert>
             )}
@@ -960,6 +1108,10 @@ function Members() {
                                     </TableCell>
 
                                     <TableCell>
+                                        Payable
+                                    </TableCell>
+
+                                    <TableCell>
                                         Paid
                                     </TableCell>
 
@@ -1111,11 +1263,46 @@ function Members() {
                                                 </TableCell>
 
                                                 <TableCell>
+                                                    <Stack spacing={0.25}>
+                                                        <Typography
+                                                            variant="body2"
+                                                            fontWeight={700}
+                                                        >
+                                                            ₹
+                                                            {Number(
+                                                                member.customPrice ??
+                                                                    member.standardPrice ??
+                                                                    member.amountPaid ??
+                                                                    0
+                                                            ).toLocaleString(
+                                                                "en-IN"
+                                                            )}
+                                                        </Typography>
+
+                                                        {member.customPrice !==
+                                                            null &&
+                                                            member.customPrice !==
+                                                                undefined && (
+                                                                <Chip
+                                                                    label="Custom"
+                                                                    size="small"
+                                                                    color="primary"
+                                                                    variant="outlined"
+                                                                    sx={{
+                                                                        width: "fit-content",
+                                                                        height: 20,
+                                                                        fontSize:
+                                                                            "0.65rem",
+                                                                    }}
+                                                                />
+                                                            )}
+                                                    </Stack>
+                                                </TableCell>
+
+                                                <TableCell>
                                                     <Typography
                                                         variant="body2"
-                                                        fontWeight={
-                                                            700
-                                                        }
+                                                        fontWeight={700}
                                                     >
                                                         ₹
                                                         {member.amountPaid.toLocaleString(
@@ -1171,7 +1358,7 @@ function Members() {
                                     0 && (
                                     <TableRow>
                                         <TableCell
-                                            colSpan={7}
+                                            colSpan={8}
                                             align="center"
                                         >
                                             <Box
@@ -1273,6 +1460,25 @@ function Members() {
                 </MenuItem>
 
                 <MenuItem
+                    onClick={() => {
+                        if (menuMember) {
+                            handleOpenCustomPricing(
+                                menuMember
+                            );
+                        }
+
+                        handleCloseMenu();
+                    }}
+                >
+                    <LocalOffer
+                        fontSize="small"
+                        sx={{ mr: 1.5 }}
+                    />
+
+                    Set Custom Price
+                </MenuItem>
+
+                <MenuItem
                     onClick={handleToggleStatus}
                 >
                     {menuMember?.status ===
@@ -1287,6 +1493,17 @@ function Members() {
                 member={selectedMember}
                 open={detailsOpen}
                 onClose={handleCloseDetails}
+            />
+
+            <CustomPricingDialog
+                member={customPricingMember}
+                open={customPricingOpen}
+                onClose={
+                    handleCloseCustomPricing
+                }
+                onSave={
+                    handleSaveCustomPricing
+                }
             />
         </Box>
     );
