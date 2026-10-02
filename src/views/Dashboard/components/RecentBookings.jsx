@@ -1,10 +1,5 @@
 import {
-    ArrowForward,
-} from "@mui/icons-material";
-
-import {
     Box,
-    Button,
     Card,
     CardContent,
     Chip,
@@ -12,87 +7,103 @@ import {
     Table,
     TableBody,
     TableCell,
+    TableContainer,
     TableHead,
     TableRow,
     Typography,
 } from "@mui/material";
 
-const bookings = [
-    {
-        id: "#BK-10245",
-        member: "Rahul Kumar",
-        seat: "A-024",
-        date: "26 Sep 2026",
-        time: "09:00 AM",
-        status: "Confirmed",
-    },
-    {
-        id: "#BK-10244",
-        member: "Priya Singh",
-        seat: "B-018",
-        date: "26 Sep 2026",
-        time: "10:30 AM",
-        status: "Confirmed",
-    },
-    {
-        id: "#BK-10243",
-        member: "Amit Kumar",
-        seat: "C-032",
-        date: "26 Sep 2026",
-        time: "11:00 AM",
-        status: "Pending",
-    },
-    {
-        id: "#BK-10242",
-        member: "Neha Sharma",
-        seat: "A-011",
-        date: "26 Sep 2026",
-        time: "12:00 PM",
-        status: "Confirmed",
-    },
-];
+function RecentBookings({ bookings = [] }) {
 
-function RecentBookings() {
+    const formatDate = (date) => {
+        if (!date) {
+            return "-";
+        }
+
+        const parsedDate = new Date(date);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            return "-";
+        }
+
+        return parsedDate.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        });
+    };
+
+    const formatAmount = (amount) => {
+        return `₹${Number(amount ?? 0).toLocaleString("en-IN")}`;
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case "ACTIVE":
+                return "success";
+
+            case "PENDING_PAYMENT":
+                return "warning";
+
+            case "CANCELLED":
+                return "error";
+
+            case "EXPIRED":
+                return "default";
+
+            default:
+                return "default";
+        }
+    };
+
+    const getStatusLabel = (status) => {
+        switch (status) {
+            case "ACTIVE":
+                return "Confirmed";
+
+            case "PENDING_PAYMENT":
+                return "Pending";
+
+            case "CANCELLED":
+                return "Cancelled";
+
+            case "EXPIRED":
+                return "Expired";
+
+            default:
+                return status || "-";
+        }
+    };
+
     return (
-        <Card>
-            <CardContent>
+        <Card
+            sx={{
+                borderRadius: 3,
+            }}
+        >
+            <CardContent sx={{ p: 0 }}>
                 <Stack
                     direction="row"
-                    justifyContent="space-between"
                     alignItems="center"
-                    sx={{ mb: 2 }}
+                    justifyContent="space-between"
+                    sx={{
+                        px: 3,
+                        py: 2.5,
+                    }}
                 >
-                    <Box>
-                        <Typography variant="h6">
-                            Recent Bookings
-                        </Typography>
-
-                        <Typography
-                            variant="body2"
-                            color="text.secondary"
-                        >
-                            Latest seat bookings
-                        </Typography>
-                    </Box>
-
-                    <Button
-                        size="small"
-                        endIcon={<ArrowForward />}
-                    >
-                        View All
-                    </Button>
+                    <BoxTitle />
                 </Stack>
 
-                <Box sx={{ overflowX: "auto" }}>
+                <TableContainer>
                     <Table>
                         <TableHead>
                             <TableRow>
                                 <TableCell>
-                                    Booking ID
+                                    Booking
                                 </TableCell>
 
                                 <TableCell>
-                                    Member
+                                    Student
                                 </TableCell>
 
                                 <TableCell>
@@ -104,62 +115,120 @@ function RecentBookings() {
                                 </TableCell>
 
                                 <TableCell>
-                                    Time
+                                    Status
                                 </TableCell>
 
-                                <TableCell>
-                                    Status
+                                <TableCell align="right">
+                                    Amount
                                 </TableCell>
                             </TableRow>
                         </TableHead>
 
                         <TableBody>
-                            {bookings.map((booking) => (
-                                <TableRow key={booking.id}>
-                                    <TableCell>
+                            {bookings.length === 0 ? (
+                                <TableRow>
+                                    <TableCell
+                                        colSpan={6}
+                                        align="center"
+                                    >
                                         <Typography
                                             variant="body2"
-                                            fontWeight={600}
+                                            color="text.secondary"
+                                            sx={{ py: 3 }}
                                         >
-                                            {booking.id}
+                                            No recent bookings
                                         </Typography>
                                     </TableCell>
-
-                                    <TableCell>
-                                        {booking.member}
-                                    </TableCell>
-
-                                    <TableCell>
-                                        {booking.seat}
-                                    </TableCell>
-
-                                    <TableCell>
-                                        {booking.date}
-                                    </TableCell>
-
-                                    <TableCell>
-                                        {booking.time}
-                                    </TableCell>
-
-                                    <TableCell>
-                                        <Chip
-                                            label={booking.status}
-                                            size="small"
-                                            color={
-                                                booking.status ===
-                                                "Confirmed"
-                                                    ? "success"
-                                                    : "warning"
-                                            }
-                                        />
-                                    </TableCell>
                                 </TableRow>
-                            ))}
+                            ) : (
+                                bookings.map((booking) => (
+                                    <TableRow
+                                        key={booking.bookingId}
+                                        hover
+                                    >
+                                        <TableCell>
+                                            <Typography
+                                                variant="body2"
+                                                fontWeight={600}
+                                            >
+                                                #
+                                                {booking.bookingId}
+                                            </Typography>
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Typography
+                                                variant="body2"
+                                            >
+                                                {booking.studentName ||
+                                                    "Unknown"}
+                                            </Typography>
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Typography
+                                                variant="body2"
+                                                fontWeight={500}
+                                            >
+                                                {booking.seatNumber ||
+                                                    "-"}
+                                            </Typography>
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Typography
+                                                variant="body2"
+                                                color="text.secondary"
+                                            >
+                                                {formatDate(
+                                                    booking.bookingDate ||
+                                                        booking.startDate
+                                                )}
+                                            </Typography>
+                                        </TableCell>
+
+                                        <TableCell>
+                                            <Chip
+                                                label={getStatusLabel(
+                                                    booking.status
+                                                )}
+                                                color={getStatusColor(
+                                                    booking.status
+                                                )}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                        </TableCell>
+
+                                        <TableCell align="right">
+                                            <Typography
+                                                variant="body2"
+                                                fontWeight={600}
+                                            >
+                                                {formatAmount(
+                                                    booking.amount
+                                                )}
+                                            </Typography>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
                     </Table>
-                </Box>
+                </TableContainer>
             </CardContent>
         </Card>
+    );
+}
+
+function BoxTitle() {
+    return (
+        <Typography
+            variant="h6"
+            fontWeight={600}
+        >
+            Recent Bookings
+        </Typography>
     );
 }
 

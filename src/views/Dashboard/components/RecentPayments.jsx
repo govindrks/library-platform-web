@@ -1,138 +1,230 @@
 import {
-    ArrowForward,
-    CheckCircle,
-} from "@mui/icons-material";
-
-import {
-    Avatar,
     Box,
-    Button,
     Card,
     CardContent,
+    Chip,
     Divider,
     Stack,
     Typography,
 } from "@mui/material";
 
-const payments = [
-    {
-        name: "Rahul Kumar",
-        plan: "Monthly Plan",
-        amount: "₹1,500",
-        time: "10 minutes ago",
-    },
-    {
-        name: "Priya Singh",
-        plan: "Quarterly Plan",
-        amount: "₹4,000",
-        time: "35 minutes ago",
-    },
-    {
-        name: "Amit Kumar",
-        plan: "Monthly Plan",
-        amount: "₹1,500",
-        time: "1 hour ago",
-    },
-    {
-        name: "Neha Sharma",
-        plan: "Annual Plan",
-        amount: "₹12,000",
-        time: "2 hours ago",
-    },
-];
+function RecentPayments({ payments = [] }) {
 
-function RecentPayments() {
+    const formatAmount = (amount) => {
+        return `₹${Number(amount ?? 0).toLocaleString("en-IN")}`;
+    };
+
+    const formatDate = (date) => {
+        if (!date) {
+            return "-";
+        }
+
+        const parsedDate = new Date(date);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            return "-";
+        }
+
+        return parsedDate.toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        });
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case "SUCCESS":
+            case "COMPLETED":
+            case "PAID":
+                return "success";
+
+            case "PENDING":
+                return "warning";
+
+            case "FAILED":
+                return "error";
+
+            case "REFUNDED":
+            case "PARTIALLY_REFUNDED":
+                return "info";
+
+            default:
+                return "default";
+        }
+    };
+
+    const getStatusLabel = (status) => {
+        if (!status) {
+            return "-";
+        }
+
+        switch (status) {
+            case "PARTIALLY_REFUNDED":
+                return "Partially Refunded";
+
+            case "SUCCESS":
+                return "Successful";
+
+            case "COMPLETED":
+                return "Completed";
+
+            default:
+                return status
+                    .replaceAll("_", " ")
+                    .toLowerCase()
+                    .replace(/\b\w/g, (char) =>
+                        char.toUpperCase()
+                    );
+        }
+    };
+
     return (
-        <Card sx={{ height: "100%" }}>
+        <Card
+            sx={{
+                height: "100%",
+                borderRadius: 3,
+            }}
+        >
             <CardContent>
                 <Stack
                     direction="row"
-                    justifyContent="space-between"
                     alignItems="center"
+                    justifyContent="space-between"
                     sx={{ mb: 2 }}
                 >
-                    <Box>
-                        <Typography variant="h6">
-                            Recent Payments
-                        </Typography>
+                    <Typography
+                        variant="h6"
+                        fontWeight={600}
+                    >
+                        Recent Payments
+                    </Typography>
+                </Stack>
 
+                {payments.length === 0 ? (
+                    <Box
+                        sx={{
+                            py: 5,
+                            textAlign: "center",
+                        }}
+                    >
                         <Typography
                             variant="body2"
                             color="text.secondary"
                         >
-                            Latest successful payments
+                            No recent payments
                         </Typography>
                     </Box>
-
-                    <Button
-                        size="small"
-                        endIcon={<ArrowForward />}
-                    >
-                        View All
-                    </Button>
-                </Stack>
-
-                <Stack divider={<Divider />} spacing={0}>
-                    {payments.map((payment) => (
-                        <Stack
-                            key={`${payment.name}-${payment.time}`}
-                            direction="row"
-                            alignItems="center"
-                            spacing={1.5}
-                            sx={{ py: 1.5 }}
-                        >
-                            <Avatar
+                ) : (
+                    <Stack divider={<Divider />}>
+                        {payments.map((payment, index) => (
+                            <Stack
+                                key={
+                                    payment.id ??
+                                    `${payment.studentName}-${index}`
+                                }
+                                direction="row"
+                                alignItems="center"
+                                justifyContent="space-between"
+                                spacing={2}
                                 sx={{
-                                    width: 38,
-                                    height: 38,
-                                    backgroundColor:
-                                        "primary.light",
-                                    color: "primary.main",
-                                    fontSize: 14,
-                                    fontWeight: 600,
+                                    py: 1.75,
                                 }}
                             >
-                                {payment.name
-                                    .split(" ")
-                                    .map((name) => name[0])
-                                    .join("")}
-                            </Avatar>
-
-                            <Box sx={{ flex: 1 }}>
-                                <Typography
-                                    variant="body2"
-                                    fontWeight={600}
-                                >
-                                    {payment.name}
-                                </Typography>
-
-                                <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                >
-                                    {payment.plan} •{" "}
-                                    {payment.time}
-                                </Typography>
-                            </Box>
-
-                            <Box sx={{ textAlign: "right" }}>
-                                <Typography
-                                    variant="body2"
-                                    fontWeight={600}
-                                >
-                                    {payment.amount}
-                                </Typography>
-
-                                <CheckCircle
+                                {/* Student + Payment Info */}
+                                <Stack
+                                    direction="row"
+                                    spacing={1.5}
+                                    alignItems="center"
                                     sx={{
-                                        fontSize: 15,
-                                        color: "success.main",
+                                        minWidth: 0,
+                                        flex: 1,
                                     }}
-                                />
-                            </Box>
-                        </Stack>
-                    ))}
-                </Stack>
+                                >
+                                    <Box
+                                        sx={{
+                                            width: 40,
+                                            height: 40,
+                                            borderRadius: "50%",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            bgcolor:
+                                                "primary.50",
+                                            color:
+                                                "primary.main",
+                                            fontWeight: 700,
+                                            flexShrink: 0,
+                                        }}
+                                    >
+                                        {(
+                                            payment.studentName ||
+                                            "U"
+                                        )
+                                            .charAt(0)
+                                            .toUpperCase()}
+                                    </Box>
+
+                                    <Box
+                                        sx={{
+                                            minWidth: 0,
+                                        }}
+                                    >
+                                        <Typography
+                                            variant="body2"
+                                            fontWeight={600}
+                                            noWrap
+                                        >
+                                            {payment.studentName ||
+                                                "Unknown"}
+                                        </Typography>
+
+                                        <Typography
+                                            variant="caption"
+                                            color="text.secondary"
+                                            noWrap
+                                        >
+                                            {payment.paymentFor ||
+                                                "Payment"}
+                                            {payment.paymentMethod
+                                                ? ` • ${payment.paymentMethod}`
+                                                : ""}
+                                        </Typography>
+                                    </Box>
+                                </Stack>
+
+                                {/* Amount + Status */}
+                                <Stack
+                                    alignItems="flex-end"
+                                    spacing={0.5}
+                                    sx={{
+                                        flexShrink: 0,
+                                    }}
+                                >
+                                    <Typography
+                                        variant="body2"
+                                        fontWeight={700}
+                                    >
+                                        {formatAmount(
+                                            payment.amount
+                                        )}
+                                    </Typography>
+
+                                    <Chip
+                                        label={getStatusLabel(
+                                            payment.paymentStatus
+                                        )}
+                                        color={getStatusColor(
+                                            payment.paymentStatus
+                                        )}
+                                        size="small"
+                                        variant="outlined"
+                                    />
+                                </Stack>
+                            </Stack>
+                        ))}
+                    </Stack>
+                )}
             </CardContent>
         </Card>
     );

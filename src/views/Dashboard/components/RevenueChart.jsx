@@ -1,14 +1,4 @@
 import {
-    CartesianGrid,
-    Line,
-    LineChart,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
-} from "recharts";
-
-import {
     Box,
     Card,
     CardContent,
@@ -16,46 +6,50 @@ import {
     Typography,
 } from "@mui/material";
 
-const data = [
-    {
-        month: "Apr",
-        revenue: 18000,
-    },
-    {
-        month: "May",
-        revenue: 21000,
-    },
-    {
-        month: "Jun",
-        revenue: 19500,
-    },
-    {
-        month: "Jul",
-        revenue: 23000,
-    },
-    {
-        month: "Aug",
-        revenue: 21800,
-    },
-    {
-        month: "Sep",
-        revenue: 24850,
-    },
-];
+import {
+    ResponsiveContainer,
+    AreaChart,
+    Area,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+} from "recharts";
 
-function RevenueChart() {
+function RevenueChart({ analytics }) {
+
+    const revenueTrend =
+        analytics?.monthlyRevenueTrend ?? [];
+
+    const chartData = revenueTrend.map((item) => ({
+        month: formatMonth(item.label),
+        revenue: Number(item.revenue ?? 0),
+    }));
+
+    const totalRevenue = Number(
+        analytics?.monthlyRevenue ?? 0
+    );
+
     return (
-        <Card sx={{ height: "100%" }}>
+        <Card
+            sx={{
+                height: "100%",
+                borderRadius: 3,
+            }}
+        >
             <CardContent>
                 <Stack
                     direction="row"
+                    alignItems="center"
                     justifyContent="space-between"
-                    alignItems="flex-start"
                     sx={{ mb: 3 }}
                 >
                     <Box>
-                        <Typography variant="h6">
-                            Revenue Overview
+                        <Typography
+                            variant="h6"
+                            fontWeight={600}
+                        >
+                            Revenue Trend
                         </Typography>
 
                         <Typography
@@ -68,68 +62,122 @@ function RevenueChart() {
 
                     <Typography
                         variant="h6"
-                        color="primary.main"
+                        fontWeight={700}
                     >
-                        ₹24,850
+                        ₹
+                        {totalRevenue.toLocaleString(
+                            "en-IN"
+                        )}
                     </Typography>
                 </Stack>
 
-                <Box
-                    sx={{
-                        width: "100%",
-                        height: 300,
-                    }}
-                >
-                    <ResponsiveContainer
-                        width="100%"
-                        height="100%"
+                {chartData.length === 0 ? (
+                    <Box
+                        sx={{
+                            height: 300,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                        }}
                     >
-                        <LineChart data={data}>
-                            <CartesianGrid
-                                strokeDasharray="3 3"
-                                vertical={false}
-                            />
-
-                            <XAxis
-                                dataKey="month"
-                                tickLine={false}
-                                axisLine={false}
-                            />
-
-                            <YAxis
-                                tickLine={false}
-                                axisLine={false}
-                                tickFormatter={(value) =>
-                                    `₹${value / 1000}k`
-                                }
-                            />
-
-                            <Tooltip
-                                formatter={(value) =>
-                                    `₹${Number(value).toLocaleString(
-                                        "en-IN"
-                                    )}`
-                                }
-                            />
-
-                            <Line
-                                type="monotone"
-                                dataKey="revenue"
-                                stroke="#4F46E5"
-                                strokeWidth={3}
-                                dot={{
-                                    r: 4,
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            No revenue data available
+                        </Typography>
+                    </Box>
+                ) : (
+                    <Box
+                        sx={{
+                            width: "100%",
+                            height: 300,
+                        }}
+                    >
+                        <ResponsiveContainer
+                            width="100%"
+                            height="100%"
+                        >
+                            <AreaChart
+                                data={chartData}
+                                margin={{
+                                    top: 10,
+                                    right: 10,
+                                    left: 0,
+                                    bottom: 0,
                                 }}
-                                activeDot={{
-                                    r: 6,
-                                }}
-                            />
-                        </LineChart>
-                    </ResponsiveContainer>
-                </Box>
+                            >
+                                <CartesianGrid
+                                    strokeDasharray="3 3"
+                                    vertical={false}
+                                />
+
+                                <XAxis
+                                    dataKey="month"
+                                    axisLine={false}
+                                    tickLine={false}
+                                />
+
+                                <YAxis
+                                    axisLine={false}
+                                    tickLine={false}
+                                    tickFormatter={formatYAxis}
+                                />
+
+                                <Tooltip
+                                    formatter={(value) =>
+                                        `₹${Number(
+                                            value
+                                        ).toLocaleString(
+                                            "en-IN"
+                                        )}`
+                                    }
+                                    labelFormatter={(label) =>
+                                        `Month: ${label}`
+                                    }
+                                />
+
+                                <Area
+                                    type="monotone"
+                                    dataKey="revenue"
+                                    strokeWidth={2}
+                                    fillOpacity={0.15}
+                                />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </Box>
+                )}
             </CardContent>
         </Card>
     );
+}
+
+function formatMonth(value) {
+    if (!value) {
+        return "-";
+    }
+
+    const month = String(value)
+        .toLowerCase();
+
+    return (
+        month.charAt(0).toUpperCase() +
+        month.slice(1, 3)
+    );
+}
+
+function formatYAxis(value) {
+    const number = Number(value);
+
+    if (number >= 100000) {
+        return `₹${(number / 100000).toFixed(1)}L`;
+    }
+
+    if (number >= 1000) {
+        return `₹${(number / 1000).toFixed(0)}K`;
+    }
+
+    return `₹${number}`;
 }
 
 export default RevenueChart;

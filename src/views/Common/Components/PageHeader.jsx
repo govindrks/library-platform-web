@@ -19,11 +19,27 @@ function PageHeader({
                     sm: "row",
                 },
                 gap: 2,
-                mb: 3,
+                mb: 2,
+                width: "100%",
+                minWidth: 0,
             }}
         >
-            <Box>
-                <Typography variant="h4">
+            <Box
+                sx={{
+                    minWidth: 0,
+                }}
+            >
+                <Typography
+                    sx={{
+                        fontSize: {
+                            xs: 24,
+                            md: 28,
+                        },
+                        lineHeight: 1.2,
+                        fontWeight: 800,
+                        color: "#111B63",
+                    }}
+                >
                     {title}
                 </Typography>
 
@@ -31,7 +47,9 @@ function PageHeader({
                     <Typography
                         variant="body2"
                         color="text.secondary"
-                        sx={{ mt: 0.5 }}
+                        sx={{
+                            mt: 0.5,
+                        }}
                     >
                         {subtitle}
                     </Typography>
@@ -43,6 +61,7 @@ function PageHeader({
                     sx={{
                         display: "flex",
                         gap: 1,
+                        flexShrink: 0,
                     }}
                 >
                     {actions}

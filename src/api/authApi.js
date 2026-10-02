@@ -1,6 +1,7 @@
 import api from "../utility/axiosInterceptor";
 
 const authApi = {
+
     login: async (payload) => {
         const response = await api.post(
             "/api/auth/login",
@@ -13,6 +14,15 @@ const authApi = {
     register: async (payload) => {
         const response = await api.post(
             "/api/auth/register",
+            payload
+        );
+
+        return response.data;
+    },
+
+    registerLibraryOwner: async (payload) => {
+        const response = await api.post(
+            "/api/auth/register/library-owner",
             payload
         );
 

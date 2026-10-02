@@ -5,7 +5,9 @@ import storage from "../../utility/browserStorage";
 const initialState = {
     token: storage.getToken(),
     user: storage.getUser(),
-    isAuthenticated: Boolean(storage.getToken()),
+    isAuthenticated: Boolean(
+        storage.getToken() && storage.getUser()
+    ),
 };
 
 const authSlice = createSlice({

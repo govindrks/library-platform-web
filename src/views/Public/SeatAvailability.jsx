@@ -3,22 +3,29 @@ import {
     CalendarMonth,
     Chair,
     Login,
+    Refresh,
 } from "@mui/icons-material";
 
 import {
+    Alert,
     Box,
     Button,
+    CircularProgress,
     Container,
     Divider,
     Grid,
-    MenuItem,
     Paper,
-    Select,
     Stack,
     Typography,
 } from "@mui/material";
 
-import { useMemo, useState } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+
 import {
     useNavigate,
     useParams,
@@ -26,539 +33,1863 @@ import {
 
 import { useSelector } from "react-redux";
 
-import SeatMap from "./components/SeatMap";
-import libraries from "./data/libraryData";
+import libraryApi from "../../api/libraryApi.js";
+
+
+
+import seatApi from "../../api/seatApi.js";
+
+
+
+import bookingApi from "../../api/bookingApi.js";
+
+
+
+import SeatMap from "./components/SeatMap.jsx";
+
+// ============================================================
+// SEAT STATUS COLORS
+// ============================================================
+
+const SEAT_STATUS_COLORS = {
+    AVAILABLE: "#2E7D32",          // 🟢
+    BOOKED: "#D32F2F",             // 🔴
+    RESERVED: "#1976D2",           // 🔵
+    RESERVED_FOR_GIRLS: "#E91E63", // 🩷
+    MAINTENANCE: "#212121",        // ⚫
+};
+
+
+// ============================================================
+// SEAT STATUS LABELS
+// ============================================================
+
+const SEAT_STATUS_LABELS = {
+    AVAILABLE: "Available",
+    BOOKED: "Booked",
+    RESERVED: "Reserved",
+    RESERVED_FOR_GIRLS: "Reserved for Girls",
+    MAINTENANCE: "Maintenance",
+};
+
+
+// ============================================================
+// DEFAULT DATE
+// ============================================================
+
+const getToday = () => {
+
+    const today = new Date();
+
+    const year =
+        today.getFullYear();
+
+    const month =
+        String(
+            today.getMonth() + 1
+        ).padStart(2, "0");
+
+    const day =
+        String(
+            today.getDate()
+        ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+};
+
+
+// ============================================================
+// FORMAT DATE FOR DISPLAY
+// ============================================================
+
+const formatDisplayDate = (
+    dateString
+) => {
+
+    if (!dateString) {
+        return "";
+    }
+
+    const [
+        year,
+        month,
+        day,
+    ] = dateString.split("-");
+
+    if (
+        !year ||
+        !month ||
+        !day
+    ) {
+        return dateString;
+    }
+
+    return `${day}-${month}-${year}`;
+};
+
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 function SeatAvailability() {
-    const { libraryId } = useParams();
+
     const navigate = useNavigate();
 
-    const isAuthenticated = useSelector(
-        (state) => state.auth.isAuthenticated
+    const {
+        libraryId,
+    } = useParams();
+
+
+    // ========================================================
+    // AUTHENTICATION
+    // ========================================================
+
+    const auth =
+        useSelector(
+            (state) =>
+                state.auth
+        );
+
+    const isAuthenticated =
+        Boolean(
+            auth?.isAuthenticated
+        );
+
+    const currentUser =
+        auth?.user || null;
+
+
+    // ========================================================
+    // STATE
+    // ========================================================
+
+    const [
+        library,
+        setLibrary,
+    ] = useState(null);
+
+    const [
+        seats,
+        setSeats,
+    ] = useState([]);
+
+    const [
+        selectedSeat,
+        setSelectedSeat,
+    ] = useState(null);
+
+    const [
+        selectedDate,
+        setSelectedDate,
+    ] = useState(
+        getToday()
     );
 
-    const library = libraries.find(
-        (item) => item.id === Number(libraryId)
-    );
+    const [
+        loading,
+        setLoading,
+    ] = useState(true);
 
-    const [date, setDate] = useState("Today");
-    const [selectedSeat, setSelectedSeat] =
-        useState(null);
+    const [
+        refreshing,
+        setRefreshing,
+    ] = useState(false);
 
-    const seats = useMemo(() => {
-        if (!library) {
-            return [];
+    const [
+        bookingLoading,
+        setBookingLoading,
+    ] = useState(false);
+
+    const [
+        error,
+        setError,
+    ] = useState("");
+
+    const [
+        success,
+        setSuccess,
+    ] = useState("");
+
+
+    // ========================================================
+    // LOAD LIBRARY DETAILS
+    // ========================================================
+
+    const loadLibrary =
+        useCallback(
+            async () => {
+
+                if (!libraryId) {
+
+                    throw new Error(
+                        "Library ID is missing."
+                    );
+                }
+
+                const response =
+                    await libraryApi
+                        .getLibraryDetails(
+                            libraryId
+                        );
+
+                setLibrary(
+                    response
+                );
+
+                return response;
+            },
+            [
+                libraryId,
+            ]
+        );
+
+
+    // ========================================================
+    // LOAD DATE-SPECIFIC SEAT AVAILABILITY
+    // ========================================================
+
+    const loadSeatAvailability =
+        useCallback(
+            async (
+                showLoader = true
+            ) => {
+
+                if (!libraryId) {
+                    return;
+                }
+
+                if (!selectedDate) {
+                    return;
+                }
+
+
+                try {
+
+                    if (showLoader) {
+
+                        setLoading(
+                            true
+                        );
+
+                    } else {
+
+                        setRefreshing(
+                            true
+                        );
+                    }
+
+                    setError("");
+
+
+                    // ------------------------------------------------
+                    // DATE-SPECIFIC AVAILABILITY
+                    //
+                    // GET
+                    // /api/libraries/{libraryId}/seat-availability
+                    // ?date=YYYY-MM-DD
+                    // ------------------------------------------------
+
+                    const response =
+                        await seatApi
+                            .getSeatAvailability(
+                                libraryId,
+                                selectedDate
+                            );
+
+
+                    setSeats(
+                        Array.isArray(
+                            response
+                        )
+                            ? response
+                            : []
+                    );
+
+
+                    // Selected seat may have become unavailable
+                    // after changing date or refreshing.
+                    setSelectedSeat(
+                        (currentSeat) => {
+
+                            if (!currentSeat) {
+                                return null;
+                            }
+
+                            const updatedSeat =
+                                (
+                                    Array.isArray(
+                                        response
+                                    )
+                                        ? response
+                                        : []
+                                ).find(
+                                    (seat) =>
+                                        seat.id ===
+                                        currentSeat.id
+                                );
+
+
+                            if (
+                                !updatedSeat ||
+                                String(
+                                    updatedSeat.status ||
+                                    ""
+                                ).toUpperCase() !==
+                                    "AVAILABLE"
+                            ) {
+                                return null;
+                            }
+
+                            return updatedSeat;
+                        }
+                    );
+
+                } catch (err) {
+
+                    console.error(
+                        "Failed to load seat availability:",
+                        err
+                    );
+
+                    setSeats([]);
+
+                    setSelectedSeat(
+                        null
+                    );
+
+                    setError(
+                        err?.response?.data?.message ||
+                        err?.response?.data ||
+                        "Failed to load seat availability."
+                    );
+
+                } finally {
+
+                    if (showLoader) {
+
+                        setLoading(
+                            false
+                        );
+
+                    } else {
+
+                        setRefreshing(
+                            false
+                        );
+                    }
+                }
+
+            },
+            [
+                libraryId,
+                selectedDate,
+            ]
+        );
+
+
+    // ========================================================
+    // INITIAL PAGE LOAD
+    // ========================================================
+
+    useEffect(() => {
+
+        let mounted = true;
+
+
+        const loadPage =
+            async () => {
+
+                try {
+
+                    setLoading(
+                        true
+                    );
+
+                    setError("");
+
+
+                    await loadLibrary();
+
+
+                    if (!mounted) {
+                        return;
+                    }
+
+
+                    await loadSeatAvailability(
+                        true
+                    );
+
+                } catch (err) {
+
+                    if (!mounted) {
+                        return;
+                    }
+
+                    console.error(
+                        "Failed to load seat availability page:",
+                        err
+                    );
+
+                    setError(
+                        err?.response?.data?.message ||
+                        err?.response?.data ||
+                        "Failed to load library information."
+                    );
+
+                } finally {
+
+                    if (
+                        mounted
+                    ) {
+
+                        setLoading(
+                            false
+                        );
+                    }
+                }
+            };
+
+
+        loadPage();
+
+
+        return () => {
+
+            mounted = false;
+        };
+
+    }, [
+        libraryId,
+        loadLibrary,
+    ]);
+
+
+    // ========================================================
+    // LOAD SEATS WHEN DATE CHANGES
+    // ========================================================
+
+    useEffect(() => {
+
+        if (!libraryId) {
+            return;
         }
 
-        return Array.from(
-            {
-                length: Math.min(
-                    library.totalSeats,
-                    40
-                ),
-            },
-            (_, index) => ({
-                id: index + 1,
-                number: `A${index + 1}`,
-                status:
-                    index % 6 === 0
-                        ? "OCCUPIED"
-                        : "AVAILABLE",
-            })
+        loadSeatAvailability(
+            false
         );
-    }, [library]);
 
-    if (!library) {
+    }, [
+        libraryId,
+        selectedDate,
+        loadSeatAvailability,
+    ]);
+
+
+    // ========================================================
+    // DATE CHANGE
+    // ========================================================
+
+    const handleDateChange =
+        (
+            event
+        ) => {
+
+            const newDate =
+                event.target.value;
+
+            setSelectedDate(
+                newDate
+            );
+
+            setSelectedSeat(
+                null
+            );
+
+            setSuccess("");
+
+            setError("");
+        };
+
+
+    // ========================================================
+    // REFRESH
+    // ========================================================
+
+    const handleRefresh =
+        async () => {
+
+            try {
+
+                setSuccess("");
+
+                setError("");
+
+                await Promise.all([
+                    loadLibrary(),
+                    loadSeatAvailability(
+                        false
+                    ),
+                ]);
+
+            } catch (err) {
+
+                console.error(
+                    "Refresh failed:",
+                    err
+                );
+
+                setError(
+                    err?.response?.data?.message ||
+                    err?.response?.data ||
+                    "Failed to refresh seat availability."
+                );
+            }
+        };
+
+
+    // ========================================================
+    // SELECT SEAT
+    // ========================================================
+
+    const handleSeatSelect =
+        (
+            seat
+        ) => {
+
+            if (!seat) {
+                return;
+            }
+
+
+            const status =
+                String(
+                    seat.status || ""
+                ).toUpperCase();
+
+
+            // Only AVAILABLE seats
+            // can be selected.
+
+            if (
+                status !==
+                "AVAILABLE"
+            ) {
+
+                setSelectedSeat(
+                    null
+                );
+
+                return;
+            }
+
+
+            setSelectedSeat(
+                seat
+            );
+
+            setSuccess("");
+
+            setError("");
+        };
+
+
+    // ========================================================
+    // BOOK SELECTED SEAT
+    // ========================================================
+
+    const handleBookSeat =
+        async () => {
+
+            if (!selectedSeat) {
+
+                setError(
+                    "Please select an available seat."
+                );
+
+                return;
+            }
+
+
+            const seatStatus =
+                String(
+                    selectedSeat.status ||
+                    ""
+                ).toUpperCase();
+
+
+            if (
+                seatStatus !==
+                "AVAILABLE"
+            ) {
+
+                setError(
+                    "This seat is no longer available."
+                );
+
+                setSelectedSeat(
+                    null
+                );
+
+                await loadSeatAvailability(
+                    false
+                );
+
+                return;
+            }
+
+
+            // ------------------------------------------------
+            // USER MUST BE LOGGED IN
+            // ------------------------------------------------
+
+            if (!isAuthenticated) {
+
+                navigate(
+                    "/login",
+                    {
+                        state: {
+                            from:
+                                `/libraries/${libraryId}/seats`,
+
+                            action:
+                                "BOOK_SEAT",
+
+                            seatId:
+                                selectedSeat.id,
+
+                            libraryId:
+                                libraryId,
+
+                            date:
+                                selectedDate,
+                        },
+                    }
+                );
+
+                return;
+            }
+
+
+            try {
+
+                setBookingLoading(
+                    true
+                );
+
+                setError("");
+
+                setSuccess("");
+
+
+                // ------------------------------------------------
+                // BOOKING AMOUNT
+                //
+                // If your backend later supplies a seat price,
+                // it can be used here.
+                // ------------------------------------------------
+
+                const amount =
+                    Number(
+                        selectedSeat.amount ??
+                        selectedSeat.price ??
+                        0
+                    );
+
+
+                const payload = {
+
+                    seatId:
+                        selectedSeat.id,
+
+                    startDate:
+                        selectedDate,
+
+                    endDate:
+                        selectedDate,
+
+                    amount:
+                        Number.isFinite(
+                            amount
+                        )
+                            ? amount
+                            : 0,
+                };
+
+
+                // ------------------------------------------------
+                // CREATE BOOKING
+                // ------------------------------------------------
+
+                const response =
+                    await bookingApi
+                        .createBooking(
+                            payload
+                        );
+
+
+                const bookingStatus =
+                    String(
+                        response?.status ||
+                        response?.bookingStatus ||
+                        "PENDING_PAYMENT"
+                    ).toUpperCase();
+
+
+                // ------------------------------------------------
+                // BOOKING MESSAGE
+                // ------------------------------------------------
+
+                if (
+                    bookingStatus ===
+                    "ACTIVE"
+                ) {
+
+                    setSuccess(
+                        "Seat booked successfully."
+                    );
+
+                } else {
+
+                    setSuccess(
+                        "Booking created successfully. Complete the payment to confirm your seat."
+                    );
+                }
+
+
+                // ------------------------------------------------
+                // Clear selection
+                // ------------------------------------------------
+
+                setSelectedSeat(
+                    null
+                );
+
+
+                // ------------------------------------------------
+                // IMPORTANT:
+                //
+                // Do NOT manually change the seat to BOOKED.
+                //
+                // Backend remains the source of truth.
+                // ------------------------------------------------
+
+                await loadSeatAvailability(
+                    false
+                );
+
+            } catch (err) {
+
+                console.error(
+                    "Seat booking failed:",
+                    err
+                );
+
+
+                const status =
+                    err?.response?.status;
+
+
+                if (
+                    status === 401
+                ) {
+
+                    navigate(
+                        "/login",
+                        {
+                            state: {
+                                from:
+                                    `/libraries/${libraryId}/seats`,
+
+                                action:
+                                    "BOOK_SEAT",
+
+                                seatId:
+                                    selectedSeat.id,
+
+                                libraryId:
+                                    libraryId,
+
+                                date:
+                                    selectedDate,
+                            },
+                        }
+                    );
+
+                    return;
+                }
+
+
+                setError(
+                    err?.response?.data?.message ||
+                    err?.response?.data ||
+                    "Unable to book this seat. Please try again."
+                );
+
+
+                // Another user may have booked the
+                // seat after it was selected.
+
+                await loadSeatAvailability(
+                    false
+                );
+
+            } finally {
+
+                setBookingLoading(
+                    false
+                );
+            }
+        };
+
+
+    // ========================================================
+    // BACK
+    // ========================================================
+
+    const handleBack =
+        () => {
+
+            navigate(-1);
+        };
+
+
+    // ========================================================
+    // STATUS COUNTS
+    // ========================================================
+
+    const statusCounts =
+        useMemo(
+            () => {
+
+                const counts = {
+
+                    AVAILABLE: 0,
+
+                    BOOKED: 0,
+
+                    RESERVED: 0,
+
+                    RESERVED_FOR_GIRLS: 0,
+
+                    MAINTENANCE: 0,
+                };
+
+
+                seats.forEach(
+                    (
+                        seat
+                    ) => {
+
+                        const status =
+                            String(
+                                seat?.status ||
+                                ""
+                            ).toUpperCase();
+
+
+                        if (
+                            Object.prototype
+                                .hasOwnProperty
+                                .call(
+                                    counts,
+                                    status
+                                )
+                        ) {
+
+                            counts[
+                                status
+                            ] += 1;
+                        }
+                    }
+                );
+
+
+                return counts;
+
+            },
+            [
+                seats,
+            ]
+        );
+
+
+    // ========================================================
+    // STATUS LEGEND
+    // ========================================================
+
+    const statusLegend = [
+        "AVAILABLE",
+        "BOOKED",
+        "RESERVED",
+        "RESERVED_FOR_GIRLS",
+        "MAINTENANCE",
+    ].map(
+        (status) => ({
+
+            status,
+
+            color:
+                SEAT_STATUS_COLORS[
+                    status
+                ],
+
+            label:
+                SEAT_STATUS_LABELS[
+                    status
+                ],
+        })
+    );
+
+
+    // ========================================================
+    // LOADING
+    // ========================================================
+
+    if (loading) {
+
         return (
-            <Container sx={{ py: 10 }}>
-                <Typography
-                    variant="h5"
-                    sx={{ fontWeight: 800 }}
+            <Box
+                sx={{
+                    minHeight:
+                        "70vh",
+
+                    display:
+                        "flex",
+
+                    alignItems:
+                        "center",
+
+                    justifyContent:
+                        "center",
+                }}
+            >
+
+                <Stack
+                    spacing={2}
+                    alignItems="center"
                 >
-                    Library not found
-                </Typography>
-            </Container>
+
+                    <CircularProgress />
+
+                    <Typography
+                        variant="body2"
+                        color="text.secondary"
+                    >
+                        Loading seat availability...
+                    </Typography>
+
+                </Stack>
+
+            </Box>
         );
     }
 
-    const handleBookSeat = () => {
-        if (!selectedSeat) {
-            return;
-        }
 
-        if (!isAuthenticated) {
-            navigate("/login", {
-                state: {
-                    from: `/libraries/${library.id}/seats`,
-                    action: "BOOK_SEAT",
-                    seatId: selectedSeat.id,
-                    libraryId: library.id,
-                },
-            });
-
-            return;
-        }
-
-        /*
-         * Booking API will be connected here.
-         */
-        console.log(
-            "Booking:",
-            selectedSeat,
-            library
-        );
-    };
+    // ========================================================
+    // UI
+    // ========================================================
 
     return (
-        <Box
+        <Container
+            maxWidth="xl"
             sx={{
-                minHeight: "100vh",
-                backgroundColor: "#F8FBFF",
+                py: 2.5,
             }}
         >
-            <Container
-                maxWidth="xl"
-                sx={{ py: 4 }}
-            >
-                <Button
-                    startIcon={<ArrowBack />}
-                    onClick={() =>
-                        navigate(
-                            `/libraries/${library.id}`
-                        )
-                    }
-                    sx={{
-                        color: "#526B91",
-                        fontWeight: 600,
-                    }}
-                >
-                    Back to Library
-                </Button>
 
-                {/* Header */}
+            {/* ==================================================
+                HEADER
+            ================================================== */}
+
+            <Stack
+                direction={{
+                    xs: "column",
+                    sm: "row",
+                }}
+                justifyContent="space-between"
+                alignItems={{
+                    xs: "stretch",
+                    sm: "center",
+                }}
+                spacing={2}
+                sx={{
+                    mb: 3,
+                }}
+            >
 
                 <Stack
-                    direction={{
-                        xs: "column",
-                        md: "row",
-                    }}
-                    justifyContent="space-between"
-                    alignItems={{
-                        xs: "flex-start",
-                        md: "flex-end",
-                    }}
-                    spacing={2}
-                    sx={{ mt: 3, mb: 4 }}
+                    direction="row"
+                    spacing={1.5}
+                    alignItems="center"
                 >
+
+                    <Button
+                        variant="outlined"
+                        startIcon={
+                            <ArrowBack />
+                        }
+                        onClick={
+                            handleBack
+                        }
+                        sx={{
+                            minWidth: 96,
+                        }}
+                    >
+                        Back
+                    </Button>
+
+
                     <Box>
-                        <Typography
-                            sx={{
-                                fontSize: {
-                                    xs: "2rem",
-                                    md: "2.5rem",
-                                },
-                                fontWeight: 800,
-                                color: "#11194B",
-                            }}
-                        >
-                            Choose Your Seat
-                        </Typography>
 
                         <Typography
-                            color="text.secondary"
-                            sx={{ mt: 0.5 }}
+                            variant="h5"
+                            fontWeight={700}
                         >
-                            {library.name} •{" "}
-                            {library.area},{" "}
-                            {library.city}
+                            Seat Availability
                         </Typography>
+
+
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            {
+                                library?.name ||
+                                "Library"
+                            }
+                        </Typography>
+
                     </Box>
+
+                </Stack>
+
+
+                <Button
+                    variant="outlined"
+                    startIcon={
+                        refreshing
+                            ? (
+                                <CircularProgress
+                                    size={18}
+                                />
+                            )
+                            : (
+                                <Refresh />
+                            )
+                    }
+                    onClick={
+                        handleRefresh
+                    }
+                    disabled={
+                        refreshing
+                    }
+                >
+                    Refresh
+                </Button>
+
+            </Stack>
+
+
+            {/* ==================================================
+                ALERTS
+            ================================================== */}
+
+            {error && (
+
+                <Alert
+                    severity="error"
+                    sx={{
+                        mb: 3,
+                    }}
+                    onClose={() =>
+                        setError("")
+                    }
+                >
+                    {error}
+                </Alert>
+            )}
+
+
+            {success && (
+
+                <Alert
+                    severity="success"
+                    sx={{
+                        mb: 3,
+                    }}
+                    onClose={() =>
+                        setSuccess("")
+                    }
+                >
+                    {success}
+                </Alert>
+            )}
+
+
+            {/* ==================================================
+                TOP INFORMATION
+            ================================================== */}
+
+            <Grid
+                container
+                spacing={2}
+                sx={{
+                    mb: 3,
+                }}
+            >
+
+                {/* DATE */}
+
+                <Grid
+                    item
+                    xs={12}
+                    md={4}
+                >
+
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            p: 2,
+                            border:
+                                "1px solid",
+                            borderColor:
+                                "divider",
+                            borderRadius: 2,
+                            height: "100%",
+                        }}
+                    >
+
+                        <Stack
+                            spacing={1.5}
+                        >
+
+                            <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                            >
+
+                                <CalendarMonth
+                                    sx={{
+                                        fontSize: 22,
+                                    }}
+                                />
+
+                                <Typography
+                                    fontWeight={600}
+                                >
+                                    Select Date
+                                </Typography>
+
+                            </Stack>
+
+
+                            <Box
+                                component="input"
+                                type="date"
+                                value={
+                                    selectedDate
+                                }
+                                min={
+                                    getToday()
+                                }
+                                onChange={
+                                    handleDateChange
+                                }
+                                sx={{
+                                    width:
+                                        "100%",
+
+                                    boxSizing:
+                                        "border-box",
+
+                                    padding:
+                                        "11px 12px",
+
+                                    borderRadius:
+                                        "8px",
+
+                                    border:
+                                        "1px solid #ccc",
+
+                                    fontSize:
+                                        "16px",
+
+                                    fontFamily:
+                                        "inherit",
+
+                                    backgroundColor:
+                                        "#fff",
+
+                                    "&:focus":
+                                        {
+                                            outline:
+                                                "none",
+
+                                            borderColor:
+                                                "#1976d2",
+                                        },
+                                }}
+                            />
+
+
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                            >
+                                Showing availability for{" "}
+                                {formatDisplayDate(
+                                    selectedDate
+                                )}
+                            </Typography>
+
+                        </Stack>
+
+                    </Paper>
+
+                </Grid>
+
+
+                {/* LIBRARY */}
+
+                <Grid
+                    item
+                    xs={12}
+                    md={4}
+                >
+
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            p: 2,
+                            border:
+                                "1px solid",
+                            borderColor:
+                                "divider",
+                            borderRadius: 2,
+                            height: "100%",
+                        }}
+                    >
+
+                        <Stack
+                            spacing={0.75}
+                        >
+
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                            >
+                                Library
+                            </Typography>
+
+
+                            <Typography
+                                variant="h6"
+                                fontWeight={700}
+                            >
+                                {
+                                    library?.name ||
+                                    "—"
+                                }
+                            </Typography>
+
+
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                            >
+                                {
+                                    library?.city ||
+                                    ""
+                                }
+
+                                {library?.state
+                                    ? `, ${library.state}`
+                                    : ""}
+                            </Typography>
+
+                        </Stack>
+
+                    </Paper>
+
+                </Grid>
+
+
+                {/* SEAT SUMMARY */}
+
+                <Grid
+                    item
+                    xs={12}
+                    md={4}
+                >
+
+                    <Paper
+                        elevation={0}
+                        sx={{
+                            p: 2,
+                            border:
+                                "1px solid",
+                            borderColor:
+                                "divider",
+                            borderRadius: 2,
+                            height: "100%",
+                        }}
+                    >
+
+                        <Stack
+                            spacing={0.75}
+                        >
+
+                            <Typography
+                                variant="caption"
+                                color="text.secondary"
+                            >
+                                Seat Summary
+                            </Typography>
+
+
+                            <Typography
+                                variant="h6"
+                                fontWeight={700}
+                            >
+                                {
+                                    seats.length
+                                } Seats
+                            </Typography>
+
+
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    color:
+                                        SEAT_STATUS_COLORS
+                                            .AVAILABLE,
+
+                                    fontWeight:
+                                        600,
+                                }}
+                            >
+                                {
+                                    statusCounts
+                                        .AVAILABLE
+                                }{" "}
+                                available
+                            </Typography>
+
+                        </Stack>
+
+                    </Paper>
+
+                </Grid>
+
+            </Grid>
+
+
+            {/* ==================================================
+                STATUS LEGEND
+            ================================================== */}
+
+            <Paper
+                elevation={0}
+                sx={{
+                    p: 2,
+                    mb: 3,
+                    border:
+                        "1px solid",
+                    borderColor:
+                        "divider",
+                    borderRadius: 2,
+                }}
+            >
+
+                <Typography
+                    variant="subtitle1"
+                    fontWeight={700}
+                    sx={{
+                        mb: 1.5,
+                    }}
+                >
+                    Seat Status
+                </Typography>
+
+
+                <Box
+                    sx={{
+                        display:
+                            "flex",
+
+                        alignItems:
+                            "center",
+
+                        flexWrap:
+                            "wrap",
+
+                        columnGap:
+                            3,
+
+                        rowGap:
+                            1.5,
+                    }}
+                >
+
+                    {statusLegend.map(
+                        (
+                            item
+                        ) => (
+
+                            <Box
+                                key={
+                                    item.status
+                                }
+                                sx={{
+                                    display:
+                                        "inline-flex",
+
+                                    alignItems:
+                                        "center",
+
+                                    gap:
+                                        0.8,
+
+                                    whiteSpace:
+                                        "nowrap",
+                                }}
+                            >
+
+                                {/* STATUS DOT */}
+
+                                <Box
+                                    sx={{
+                                        width:
+                                            18,
+
+                                        height:
+                                            18,
+
+                                        minWidth:
+                                            18,
+
+                                        borderRadius:
+                                            "50%",
+
+                                        backgroundColor:
+                                            item.color,
+
+                                        border:
+                                            item.status ===
+                                            "AVAILABLE"
+                                                ? "1px solid rgba(0,0,0,0.15)"
+                                                : "none",
+                                    }}
+                                />
+
+
+                                {/* LABEL */}
+
+                                <Typography
+                                    variant="body2"
+                                    sx={{
+                                        fontWeight:
+                                            500,
+                                    }}
+                                >
+                                    {
+                                        item.label
+                                    }
+                                </Typography>
+
+
+                                {/* COUNT */}
+
+                                <Typography
+                                    variant="body2"
+                                    sx={{
+                                        fontWeight:
+                                            600,
+
+                                        color:
+                                            "text.secondary",
+                                    }}
+                                >
+                                    (
+                                    {
+                                        statusCounts[
+                                            item.status
+                                        ] || 0
+                                    }
+                                    )
+                                </Typography>
+
+                            </Box>
+
+                        )
+                    )}
+
+                </Box>
+
+            </Paper>
+
+
+            {/* ==================================================
+                SEAT MAP
+            ================================================== */}
+
+            <Paper
+                elevation={0}
+                sx={{
+                    p: {
+                        xs: 1.5,
+                        sm: 2,
+                        md: 3,
+                    },
+
+                    border:
+                        "1px solid",
+
+                    borderColor:
+                        "divider",
+
+                    borderRadius: 2,
+
+                    mb: 3,
+                }}
+            >
+
+                <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{
+                        mb: 2,
+                    }}
+                >
+
+                    <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                    >
+
+                        <Chair />
+
+                        <Typography
+                            variant="h6"
+                            fontWeight={700}
+                        >
+                            Seat Map
+                        </Typography>
+
+                    </Stack>
+
+
+                    {refreshing && (
+
+                        <CircularProgress
+                            size={22}
+                        />
+
+                    )}
+
+                </Stack>
+
+
+                <Divider
+                    sx={{
+                        mb: 3,
+                    }}
+                />
+
+
+                {seats.length === 0 ? (
 
                     <Box
                         sx={{
-                            px: 2,
-                            py: 1.2,
-                            borderRadius: 2,
-                            backgroundColor: "#E8F8EF",
-                            color: "#008A3E",
+                            py: 8,
+                            textAlign:
+                                "center",
                         }}
                     >
+
+                        <Chair
+                            sx={{
+                                fontSize: 48,
+                                color:
+                                    "text.disabled",
+
+                                mb: 1,
+                            }}
+                        />
+
+
                         <Typography
-                            sx={{
-                                fontWeight: 700,
-                                fontSize: 14,
-                            }}
+                            variant="h6"
+                            color="text.secondary"
                         >
-                            {library.availableSeats} seats
-                            available
+                            No seats found
                         </Typography>
+
+
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            There are no seats configured
+                            for this library.
+                        </Typography>
+
                     </Box>
-                </Stack>
 
-                <Grid container spacing={3}>
-                    {/* ================= SEAT MAP ================= */}
+                ) : (
 
-                    <Grid
-                        size={{
-                            xs: 12,
-                            md: 8,
+                    <SeatMap
+                        seats={
+                            seats
+                        }
+
+                        selectedSeat={
+                            selectedSeat
+                        }
+
+                        onSeatSelect={
+                            handleSeatSelect
+                        }
+
+                        statusColors={
+                            SEAT_STATUS_COLORS
+                        }
+                    />
+
+                )}
+
+            </Paper>
+
+
+            {/* ==================================================
+                BOOKING PANEL
+            ================================================== */}
+
+            <Paper
+                elevation={0}
+                sx={{
+                    p: 3,
+
+                    border:
+                        "1px solid",
+
+                    borderColor:
+                        "divider",
+
+                    borderRadius: 2,
+                }}
+            >
+
+                {!selectedSeat ? (
+
+                    <Stack
+                        spacing={1}
+                        alignItems="center"
+                        sx={{
+                            py: 2,
+                            textAlign:
+                                "center",
                         }}
                     >
-                        <Paper
-                            elevation={0}
+
+                        <Chair
                             sx={{
-                                p: {
-                                    xs: 2,
-                                    md: 4,
-                                },
-                                border:
-                                    "1px solid #E1E9F3",
-                                borderRadius: 3,
+                                fontSize: 40,
+                                color:
+                                    "text.disabled",
                             }}
+                        />
+
+
+                        <Typography
+                            variant="h6"
+                            fontWeight={600}
                         >
-                            <Stack spacing={3}>
-                                <Stack
-                                    direction={{
-                                        xs: "column",
-                                        sm: "row",
-                                    }}
-                                    justifyContent="space-between"
-                                    spacing={2}
-                                >
-                                    <Box>
-                                        <Typography
-                                            sx={{
-                                                fontSize: 20,
-                                                fontWeight: 800,
-                                                color: "#11194B",
-                                            }}
-                                        >
-                                            Seat Map
-                                        </Typography>
+                            Select an available seat
+                        </Typography>
 
-                                        <Typography
-                                            variant="body2"
-                                            color="text.secondary"
-                                        >
-                                            Select an
-                                            available seat
-                                            to continue.
-                                        </Typography>
-                                    </Box>
 
-                                    <Select
-                                        size="small"
-                                        value={date}
-                                        onChange={(event) =>
-                                            setDate(
-                                                event.target
-                                                    .value
-                                            )
-                                        }
-                                        sx={{
-                                            minWidth: 145,
-                                        }}
-                                    >
-                                        <MenuItem value="Today">
-                                            Today
-                                        </MenuItem>
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            Choose a green seat from the
+                            seat map to continue.
+                        </Typography>
 
-                                        <MenuItem value="Tomorrow">
-                                            Tomorrow
-                                        </MenuItem>
+                    </Stack>
 
-                                        <MenuItem value="Day After">
-                                            Day After
-                                        </MenuItem>
-                                    </Select>
-                                </Stack>
-
-                                {/* Legend */}
-
-                                <Stack
-                                    direction="row"
-                                    spacing={3}
-                                    flexWrap="wrap"
-                                    useFlexGap
-                                >
-                                    <Stack
-                                        direction="row"
-                                        spacing={0.7}
-                                        alignItems="center"
-                                    >
-                                        <Box
-                                            sx={{
-                                                width: 14,
-                                                height: 14,
-                                                borderRadius: 1,
-                                                backgroundColor:
-                                                    "#DCFCE7",
-                                                border:
-                                                    "1px solid #86EFAC",
-                                            }}
-                                        />
-
-                                        <Typography
-                                            variant="caption"
-                                        >
-                                            Available
-                                        </Typography>
-                                    </Stack>
-
-                                    <Stack
-                                        direction="row"
-                                        spacing={0.7}
-                                        alignItems="center"
-                                    >
-                                        <Box
-                                            sx={{
-                                                width: 14,
-                                                height: 14,
-                                                borderRadius: 1,
-                                                backgroundColor:
-                                                    "#FEE2E2",
-                                                border:
-                                                    "1px solid #FCA5A5",
-                                            }}
-                                        />
-
-                                        <Typography
-                                            variant="caption"
-                                        >
-                                            Occupied
-                                        </Typography>
-                                    </Stack>
-
-                                    <Stack
-                                        direction="row"
-                                        spacing={0.7}
-                                        alignItems="center"
-                                    >
-                                        <Box
-                                            sx={{
-                                                width: 14,
-                                                height: 14,
-                                                borderRadius: 1,
-                                                backgroundColor:
-                                                    "#E8F1FF",
-                                                border:
-                                                    "1px solid #7EB1FF",
-                                            }}
-                                        />
-
-                                        <Typography
-                                            variant="caption"
-                                        >
-                                            Selected
-                                        </Typography>
-                                    </Stack>
-                                </Stack>
-
-                                {/* Entrance */}
-
-                                <Box
-                                    sx={{
-                                        py: 1.2,
-                                        textAlign: "center",
-                                        backgroundColor:
-                                            "#F1F6FD",
-                                        borderRadius: 2,
-                                        color: "#526B91",
-                                    }}
-                                >
-                                    <Typography
-                                        variant="caption"
-                                        sx={{
-                                            fontWeight: 800,
-                                            letterSpacing:
-                                                "0.08em",
-                                        }}
-                                    >
-                                        ENTRANCE
-                                    </Typography>
-                                </Box>
-
-                                {/* Seat map */}
-
-                                <SeatMap
-                                    seats={seats}
-                                    selectedSeat={
-                                        selectedSeat
-                                    }
-                                    onSelect={
-                                        setSelectedSeat
-                                    }
-                                />
-                            </Stack>
-                        </Paper>
-                    </Grid>
-
-                    {/* ================= SUMMARY ================= */}
+                ) : (
 
                     <Grid
-                        size={{
-                            xs: 12,
-                            md: 4,
-                        }}
+                        container
+                        spacing={3}
+                        alignItems="center"
                     >
-                        <Paper
-                            elevation={0}
-                            sx={{
-                                p: 3,
-                                border:
-                                    "1px solid #E1E9F3",
-                                borderRadius: 3,
-                                position: {
-                                    md: "sticky",
-                                },
-                                top: {
-                                    md: 95,
-                                },
-                            }}
+
+                        <Grid
+                            item
+                            xs={12}
+                            md={8}
                         >
-                            <Stack spacing={2.5}>
+
+                            <Stack
+                                spacing={1}
+                            >
+
                                 <Typography
-                                    sx={{
-                                        fontSize: 20,
-                                        fontWeight: 800,
-                                        color: "#11194B",
-                                    }}
+                                    variant="overline"
+                                    color="text.secondary"
                                 >
-                                    Booking Summary
+                                    Selected Seat
                                 </Typography>
 
-                                <Divider />
 
-                                <Stack
-                                    direction="row"
-                                    spacing={1.5}
+                                <Typography
+                                    variant="h5"
+                                    fontWeight={700}
                                 >
-                                    <CalendarMonth
-                                        sx={{
-                                            color: "#146EF5",
-                                        }}
-                                    />
+                                    Seat{" "}
+                                    {
+                                        selectedSeat.seatNumber
+                                    }
+                                </Typography>
 
-                                    <Box>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Date
-                                        </Typography>
 
-                                        <Typography
-                                            sx={{
-                                                fontWeight: 700,
-                                            }}
-                                        >
-                                            {date}
-                                        </Typography>
-                                    </Box>
-                                </Stack>
-
-                                <Stack
-                                    direction="row"
-                                    spacing={1.5}
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
                                 >
-                                    <Chair
-                                        sx={{
-                                            color: "#146EF5",
-                                        }}
-                                    />
+                                    Floor:{" "}
+                                    {
+                                        selectedSeat.floorNumber ??
+                                        "—"
+                                    }
+                                </Typography>
 
-                                    <Box>
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Selected Seat
-                                        </Typography>
 
-                                        <Typography
-                                            sx={{
-                                                fontWeight: 700,
-                                            }}
-                                        >
-                                            {selectedSeat
-                                                ? selectedSeat.number
-                                                : "Select a seat"}
-                                        </Typography>
-                                    </Box>
-                                </Stack>
-
-                                <Box
-                                    sx={{
-                                        p: 2,
-                                        borderRadius: 2,
-                                        backgroundColor:
-                                            "#F1F6FD",
-                                    }}
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
                                 >
+                                    Seat Type:{" "}
+                                    {
+                                        selectedSeat.seatType ??
+                                        "—"
+                                    }
+                                </Typography>
+
+
+                                <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                >
+                                    Date:{" "}
+                                    {
+                                        formatDisplayDate(
+                                            selectedDate
+                                        )
+                                    }
+                                </Typography>
+
+                            </Stack>
+
+                        </Grid>
+
+
+                        <Grid
+                            item
+                            xs={12}
+                            md={4}
+                        >
+
+                            <Stack
+                                spacing={1.5}
+                                alignItems={{
+                                    xs:
+                                        "stretch",
+
+                                    md:
+                                        "flex-end",
+                                }}
+                            >
+
+                                {!isAuthenticated && (
+
                                     <Typography
-                                        variant="caption"
+                                        variant="body2"
                                         color="text.secondary"
                                     >
-                                        Library
+                                        Please login to book
+                                        this seat.
                                     </Typography>
 
-                                    <Typography
-                                        sx={{
-                                            fontWeight: 700,
-                                            color: "#11194B",
-                                        }}
-                                    >
-                                        {library.name}
-                                    </Typography>
-                                </Box>
+                                )}
+
 
                                 <Button
-                                    fullWidth
                                     variant="contained"
                                     size="large"
-                                    disabled={
-                                        !selectedSeat
+                                    fullWidth
+                                    startIcon={
+                                        isAuthenticated
+                                            ? (
+                                                <Chair />
+                                            )
+                                            : (
+                                                <Login />
+                                            )
                                     }
                                     onClick={
                                         handleBookSeat
                                     }
-                                    startIcon={
-                                        !isAuthenticated ? (
-                                            <Login />
-                                        ) : (
-                                            <Chair />
-                                        )
+                                    disabled={
+                                        bookingLoading ||
+                                        String(
+                                            selectedSeat.status ||
+                                            ""
+                                        ).toUpperCase() !==
+                                            "AVAILABLE"
                                     }
                                     sx={{
-                                        minHeight: 50,
-                                        fontWeight: 700,
+                                        maxWidth: {
+                                            md:
+                                                260,
+                                        },
                                     }}
                                 >
-                                    {isAuthenticated
-                                        ? "Continue Booking"
-                                        : "Sign In to Book"}
+
+                                    {bookingLoading
+                                        ? (
+                                            <CircularProgress
+                                                size={22}
+                                                color="inherit"
+                                            />
+                                        )
+                                        : isAuthenticated
+                                            ? "Book Seat"
+                                            : "Login to Book"}
+
                                 </Button>
 
-                                {!isAuthenticated && (
-                                    <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                        textAlign="center"
-                                    >
-                                        You can explore
-                                        available seats
-                                        without signing in.
-                                        Sign in is required
-                                        only when you book.
-                                    </Typography>
-                                )}
                             </Stack>
-                        </Paper>
+
+                        </Grid>
+
                     </Grid>
-                </Grid>
-            </Container>
-        </Box>
+
+                )}
+
+            </Paper>
+
+        </Container>
     );
 }
+
 
 export default SeatAvailability;

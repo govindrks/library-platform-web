@@ -25,32 +25,159 @@ import {
     Menu as MuiMenu,
 } from "@mui/material";
 
-import { useState } from "react";
-import { useDispatch } from "react-redux";
+import { useMemo, useState } from "react";
+
+import {
+    useDispatch,
+    useSelector,
+} from "react-redux";
+
 import { useNavigate } from "react-router-dom";
 
 import { logout } from "../../../redux/reducer/authReducer";
 
+
 const drawerWidth = 250;
 
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+const getInitials = (name) => {
+
+    if (!name) {
+        return "U";
+    }
+
+    return name
+        .trim()
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(
+            (part) =>
+                part.charAt(0).toUpperCase()
+        )
+        .join("");
+};
+
+
+const formatRole = (role) => {
+
+    if (!role) {
+        return "User";
+    }
+
+    switch (role) {
+
+        case "ADMIN":
+            return "Admin";
+
+        case "LIBRARY_OWNER":
+            return "Library Owner";
+
+        case "USER":
+            return "Member";
+
+        default:
+            return role
+                .toLowerCase()
+                .replace(/_/g, " ")
+                .replace(
+                    /\b\w/g,
+                    (char) =>
+                        char.toUpperCase()
+                );
+    }
+};
+
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
 function Header({ onMenuClick }) {
+
     const [anchorEl, setAnchorEl] =
         useState(null);
 
     const dispatch = useDispatch();
+
     const navigate = useNavigate();
 
-    const userMenuOpen = Boolean(anchorEl);
 
-    const handleUserMenuOpen = (event) => {
-        setAnchorEl(event.currentTarget);
+    // ========================================================
+    // LOGGED-IN USER
+    // ========================================================
+
+    const user = useSelector(
+        (state) =>
+            state.auth?.user
+    );
+
+
+    // ========================================================
+    // DERIVED USER DATA
+    // ========================================================
+
+    const userName =
+        user?.fullName?.trim() ||
+        "User";
+
+    const userRole =
+        user?.role ||
+        "USER";
+
+    const userInitials =
+        useMemo(
+            () =>
+                getInitials(
+                    userName
+                ),
+            [userName]
+        );
+
+
+    const userRoleLabel =
+        useMemo(
+            () =>
+                formatRole(
+                    userRole
+                ),
+            [userRole]
+        );
+
+
+    const userMenuOpen =
+        Boolean(anchorEl);
+
+
+    // ========================================================
+    // USER MENU
+    // ========================================================
+
+    const handleUserMenuOpen = (
+        event
+    ) => {
+
+        setAnchorEl(
+            event.currentTarget
+        );
     };
 
+
     const handleUserMenuClose = () => {
+
         setAnchorEl(null);
     };
 
+
+    // ========================================================
+    // LOGOUT
+    // ========================================================
+
     const handleLogout = () => {
+
         dispatch(logout());
 
         handleUserMenuClose();
@@ -59,6 +186,11 @@ function Header({ onMenuClick }) {
             replace: true,
         });
     };
+
+
+    // ========================================================
+    // RENDER
+    // ========================================================
 
     return (
         <AppBar
@@ -75,26 +207,46 @@ function Header({ onMenuClick }) {
                     md: `${drawerWidth}px`,
                 },
 
-                backgroundColor: "background.paper",
-                color: "text.primary",
-                borderBottom: "1px solid",
-                borderColor: "divider",
+                backgroundColor:
+                    "background.paper",
+
+                color:
+                    "text.primary",
+
+                borderBottom:
+                    "1px solid",
+
+                borderColor:
+                    "divider",
+
+                zIndex:
+                    (theme) =>
+                        theme.zIndex.drawer + 1,
             }}
         >
+
             <Toolbar
                 sx={{
-                    minHeight: "72px !important",
+                    minHeight:
+                        "72px !important",
+
                     px: {
                         xs: 2,
                         md: 3,
                     },
+
                     gap: 2,
                 }}
             >
-                {/* Mobile Menu */}
+
+                {/* =================================================
+                    MOBILE MENU
+                ================================================= */}
 
                 <IconButton
-                    onClick={onMenuClick}
+                    onClick={
+                        onMenuClick
+                    }
                     sx={{
                         display: {
                             xs: "flex",
@@ -105,22 +257,33 @@ function Header({ onMenuClick }) {
                     <Menu />
                 </IconButton>
 
-                {/* Library Selector */}
+
+                {/* =================================================
+                    LIBRARY SELECTOR
+                    -------------------------------------------------
+                    Still using the current mock library selector.
+                    We will connect this to the owner's real
+                    libraries separately.
+                ================================================= */}
 
                 <Select
                     value="main-library"
                     variant="standard"
                     disableUnderline
-                    IconComponent={ExpandMore}
+                    IconComponent={
+                        ExpandMore
+                    }
                     sx={{
                         minWidth: 180,
 
-                        "& .MuiSelect-select": {
-                            py: 0.5,
-                            fontWeight: 600,
-                        },
+                        "& .MuiSelect-select":
+                            {
+                                py: 0.5,
+                                fontWeight: 600,
+                            },
                     }}
                 >
+
                     <MenuItem value="main-library">
                         Main Library
                     </MenuItem>
@@ -128,9 +291,13 @@ function Header({ onMenuClick }) {
                     <MenuItem value="city-library">
                         City Library
                     </MenuItem>
+
                 </Select>
 
-                {/* Search */}
+
+                {/* =================================================
+                    SEARCH
+                ================================================= */}
 
                 <Paper
                     component="form"
@@ -141,7 +308,8 @@ function Header({ onMenuClick }) {
                             sm: "flex",
                         },
 
-                        alignItems: "center",
+                        alignItems:
+                            "center",
 
                         width: {
                             sm: 240,
@@ -149,20 +317,28 @@ function Header({ onMenuClick }) {
                         },
 
                         height: 40,
+
                         px: 1.5,
 
                         backgroundColor:
                             "background.default",
 
-                        border: "1px solid",
-                        borderColor: "divider",
+                        border:
+                            "1px solid",
+
+                        borderColor:
+                            "divider",
+
                         borderRadius: 2,
                     }}
                 >
+
                     <Search
                         fontSize="small"
                         sx={{
-                            color: "text.secondary",
+                            color:
+                                "text.secondary",
+
                             mr: 1,
                         }}
                     />
@@ -171,24 +347,45 @@ function Header({ onMenuClick }) {
                         placeholder="Search..."
                         sx={{
                             flex: 1,
-                            fontSize: "0.875rem",
+                            fontSize:
+                                "0.875rem",
                         }}
                     />
+
                 </Paper>
 
-                <Box sx={{ flex: 1 }} />
 
-                {/* Help */}
+                {/* =================================================
+                    SPACER
+                ================================================= */}
 
-                <Tooltip title="Help & Documentation">
+                <Box
+                    sx={{
+                        flex: 1,
+                    }}
+                />
+
+
+                {/* =================================================
+                    HELP
+                ================================================= */}
+
+                <Tooltip
+                    title="Help & Documentation"
+                >
                     <IconButton>
                         <Help />
                     </IconButton>
                 </Tooltip>
 
-                {/* Notifications */}
 
-                <Tooltip title="Notifications">
+                {/* =================================================
+                    NOTIFICATIONS
+                ================================================= */}
+
+                <Tooltip
+                    title="Notifications"
+                >
                     <IconButton>
                         <Badge
                             badgeContent={4}
@@ -199,19 +396,35 @@ function Header({ onMenuClick }) {
                     </IconButton>
                 </Tooltip>
 
-                {/* User */}
+
+                {/* =================================================
+                    USER PROFILE
+                ================================================= */}
 
                 <Box>
+
                     <Box
-                        onClick={handleUserMenuOpen}
+                        onClick={
+                            handleUserMenuOpen
+                        }
                         sx={{
-                            display: "flex",
-                            alignItems: "center",
+                            display:
+                                "flex",
+
+                            alignItems:
+                                "center",
+
                             gap: 1,
+
                             ml: 1,
-                            cursor: "pointer",
+
+                            cursor:
+                                "pointer",
+
                             borderRadius: 2,
+
                             px: 1,
+
                             py: 0.5,
 
                             "&:hover": {
@@ -220,17 +433,27 @@ function Header({ onMenuClick }) {
                             },
                         }}
                     >
+
+                        {/* Avatar */}
+
                         <Avatar
                             sx={{
                                 width: 36,
                                 height: 36,
+
                                 backgroundColor:
                                     "primary.main",
+
                                 fontSize: 14,
+
+                                fontWeight: 600,
                             }}
                         >
-                            GK
+                            {userInitials}
                         </Avatar>
+
+
+                        {/* User Details */}
 
                         <Box
                             sx={{
@@ -240,28 +463,36 @@ function Header({ onMenuClick }) {
                                 },
                             }}
                         >
+
                             <Typography
                                 variant="body2"
                                 sx={{
-                                    fontWeight: 600,
-                                    lineHeight: 1.2,
+                                    fontWeight:
+                                        600,
+
+                                    lineHeight:
+                                        1.2,
                                 }}
                             >
-                                Govind Kumar
+                                {userName}
                             </Typography>
+
 
                             <Typography
                                 variant="caption"
                                 color="text.secondary"
                             >
-                                Library Owner
+                                {userRoleLabel}
                             </Typography>
+
                         </Box>
+
 
                         <ExpandMore
                             fontSize="small"
                             sx={{
-                                color: "text.secondary",
+                                color:
+                                    "text.secondary",
 
                                 display: {
                                     xs: "none",
@@ -269,25 +500,39 @@ function Header({ onMenuClick }) {
                                 },
                             }}
                         />
+
                     </Box>
 
-                    {/* User Menu */}
+
+                    {/* =================================================
+                        USER MENU
+                    ================================================= */}
 
                     <MuiMenu
                         anchorEl={anchorEl}
                         open={userMenuOpen}
-                        onClose={handleUserMenuClose}
+                        onClose={
+                            handleUserMenuClose
+                        }
+
                         anchorOrigin={{
-                            vertical: "bottom",
-                            horizontal: "right",
+                            vertical:
+                                "bottom",
+                            horizontal:
+                                "right",
                         }}
+
                         transformOrigin={{
-                            vertical: "top",
-                            horizontal: "right",
+                            vertical:
+                                "top",
+                            horizontal:
+                                "right",
                         }}
                     >
+
                         <MenuItem
                             onClick={() => {
+
                                 handleUserMenuClose();
 
                                 navigate(
@@ -295,6 +540,7 @@ function Header({ onMenuClick }) {
                                 );
                             }}
                         >
+
                             <Person
                                 fontSize="small"
                                 sx={{
@@ -303,10 +549,13 @@ function Header({ onMenuClick }) {
                             />
 
                             My Profile
+
                         </MenuItem>
+
 
                         <MenuItem
                             onClick={() => {
+
                                 handleUserMenuClose();
 
                                 navigate(
@@ -314,6 +563,7 @@ function Header({ onMenuClick }) {
                                 );
                             }}
                         >
+
                             <Settings
                                 fontSize="small"
                                 sx={{
@@ -322,11 +572,16 @@ function Header({ onMenuClick }) {
                             />
 
                             Settings
+
                         </MenuItem>
 
+
                         <MenuItem
-                            onClick={handleLogout}
+                            onClick={
+                                handleLogout
+                            }
                         >
+
                             <Logout
                                 fontSize="small"
                                 sx={{
@@ -335,12 +590,18 @@ function Header({ onMenuClick }) {
                             />
 
                             Logout
+
                         </MenuItem>
+
                     </MuiMenu>
+
                 </Box>
+
             </Toolbar>
+
         </AppBar>
     );
 }
+
 
 export default Header;

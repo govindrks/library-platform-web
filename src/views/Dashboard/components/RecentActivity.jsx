@@ -1,112 +1,247 @@
 import {
-    EventSeat,
-    Payment,
-    PersonAdd,
-} from "@mui/icons-material";
-
-import {
     Box,
     Card,
     CardContent,
+    Divider,
     Stack,
     Typography,
 } from "@mui/material";
 
-const activities = [
-    {
-        title: "New member registered",
-        description: "Rahul Kumar joined the library",
-        time: "10 minutes ago",
-        icon: PersonAdd,
-    },
-    {
-        title: "Payment received",
-        description: "₹1,500 payment received from Priya Singh",
-        time: "35 minutes ago",
-        icon: Payment,
-    },
-    {
-        title: "Seat booking created",
-        description: "Seat B-018 booked successfully",
-        time: "1 hour ago",
-        icon: EventSeat,
-    },
-];
+import {
+    EventSeat,
+    Login,
+    Logout,
+    CardMembership,
+} from "@mui/icons-material";
 
-function RecentActivity() {
+function RecentActivity({ activities = [] }) {
+
+    const getActivityIcon = (activity) => {
+        switch (activity?.activityType) {
+            case "CHECK_IN":
+                return Login;
+
+            case "CHECK_OUT":
+                return Logout;
+
+            case "SEAT_BOOKED":
+                return EventSeat;
+
+            case "SUBSCRIPTION_CREATED":
+            case "SUBSCRIPTION_EXPIRED":
+                return CardMembership;
+
+            default:
+                return EventSeat;
+        }
+    };
+
+    const getActivityColor = (activity) => {
+        switch (activity?.activityType) {
+            case "CHECK_IN":
+                return "success.main";
+
+            case "CHECK_OUT":
+                return "warning.main";
+
+            case "SEAT_BOOKED":
+                return "primary.main";
+
+            case "SUBSCRIPTION_CREATED":
+                return "info.main";
+
+            case "SUBSCRIPTION_EXPIRED":
+                return "error.main";
+
+            default:
+                return "primary.main";
+        }
+    };
+
+    const formatTimeAgo = (date) => {
+        if (!date) {
+            return "-";
+        }
+
+        const activityDate = new Date(date);
+
+        if (Number.isNaN(activityDate.getTime())) {
+            return "-";
+        }
+
+        const now = new Date();
+
+        const difference =
+            Math.max(
+                0,
+                now.getTime() - activityDate.getTime()
+            );
+
+        const seconds = Math.floor(
+            difference / 1000
+        );
+
+        if (seconds < 60) {
+            return "Just now";
+        }
+
+        const minutes = Math.floor(
+            seconds / 60
+        );
+
+        if (minutes < 60) {
+            return `${minutes} ${
+                minutes === 1 ? "minute" : "minutes"
+            } ago`;
+        }
+
+        const hours = Math.floor(
+            minutes / 60
+        );
+
+        if (hours < 24) {
+            return `${hours} ${
+                hours === 1 ? "hour" : "hours"
+            } ago`;
+        }
+
+        const days = Math.floor(
+            hours / 24
+        );
+
+        if (days < 7) {
+            return `${days} ${
+                days === 1 ? "day" : "days"
+            } ago`;
+        }
+
+        return activityDate.toLocaleDateString(
+            "en-IN",
+            {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+            }
+        );
+    };
+
     return (
-        <Card>
+        <Card
+            sx={{
+                height: "100%",
+                borderRadius: 3,
+            }}
+        >
             <CardContent>
-                <Typography variant="h6">
+                <Typography
+                    variant="h6"
+                    fontWeight={600}
+                    sx={{ mb: 2 }}
+                >
                     Recent Activity
                 </Typography>
 
-                <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mt: 0.5, mb: 2 }}
-                >
-                    Latest activity in your library
-                </Typography>
+                {activities.length === 0 ? (
+                    <Box
+                        sx={{
+                            py: 5,
+                            textAlign: "center",
+                        }}
+                    >
+                        <Typography
+                            variant="body2"
+                            color="text.secondary"
+                        >
+                            No recent activity
+                        </Typography>
+                    </Box>
+                ) : (
+                    <Stack divider={<Divider />}>
+                        {activities.slice(0, 5).map(
+                            (activity, index) => {
+                                const Icon =
+                                    getActivityIcon(
+                                        activity
+                                    );
 
-                <Stack spacing={2.5}>
-                    {activities.map((activity) => {
-                        const Icon = activity.icon;
+                                const iconColor =
+                                    getActivityColor(
+                                        activity
+                                    );
 
-                        return (
-                            <Stack
-                                key={activity.title}
-                                direction="row"
-                                spacing={1.5}
-                            >
-                                <Box
-                                    sx={{
-                                        width: 36,
-                                        height: 36,
-                                        minWidth: 36,
-                                        borderRadius: 2,
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent:
-                                            "center",
-                                        backgroundColor:
-                                            "primary.light",
-                                        color: "primary.main",
-                                    }}
-                                >
-                                    <Icon fontSize="small" />
-                                </Box>
-
-                                <Box>
-                                    <Typography
-                                        variant="body2"
-                                        fontWeight={600}
-                                    >
-                                        {activity.title}
-                                    </Typography>
-
-                                    <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                    >
-                                        {activity.description}
-                                    </Typography>
-
-                                    <Typography
-                                        variant="caption"
-                                        color="text.disabled"
+                                return (
+                                    <Stack
+                                        key={
+                                            activity.referenceId ??
+                                            `${activity.activityType}-${index}`
+                                        }
+                                        direction="row"
+                                        spacing={1.5}
                                         sx={{
-                                            display: "block",
-                                            mt: 0.25,
+                                            py: 1.5,
                                         }}
                                     >
-                                        {activity.time}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        );
-                    })}
-                </Stack>
+                                        <Box
+                                            sx={{
+                                                width: 38,
+                                                height: 38,
+                                                borderRadius: 2,
+                                                display: "flex",
+                                                alignItems:
+                                                    "center",
+                                                justifyContent:
+                                                    "center",
+                                                bgcolor:
+                                                    "action.hover",
+                                                color: iconColor,
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            <Icon fontSize="small" />
+                                        </Box>
+
+                                        <Box
+                                            sx={{
+                                                minWidth: 0,
+                                                flex: 1,
+                                            }}
+                                        >
+                                            <Typography
+                                                variant="body2"
+                                                fontWeight={600}
+                                            >
+                                                {activity.title ||
+                                                    "Activity"}
+                                            </Typography>
+
+                                            <Typography
+                                                variant="caption"
+                                                color="text.secondary"
+                                                sx={{
+                                                    display:
+                                                        "block",
+                                                }}
+                                            >
+                                                {activity.description ||
+                                                    activity.studentName ||
+                                                    "-"}
+                                            </Typography>
+
+                                            <Typography
+                                                variant="caption"
+                                                color="text.disabled"
+                                            >
+                                                {formatTimeAgo(
+                                                    activity.activityTime
+                                                )}
+                                            </Typography>
+                                        </Box>
+                                    </Stack>
+                                );
+                            }
+                        )}
+                    </Stack>
+                )}
             </CardContent>
         </Card>
     );
