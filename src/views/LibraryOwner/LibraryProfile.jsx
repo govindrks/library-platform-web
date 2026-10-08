@@ -25,9 +25,11 @@ import {
 
 import { useCallback, useEffect, useState } from "react";
 
-import libraryApi from "../../../api/libraryApi";
-import LibraryImageGallery from "./LibraryImageGallery";
-import getImageUrl from "../../../utility/imageUrl";
+import libraryApi from "../../api/libraryApi";
+
+import LibraryImageGallery from "./components/LibraryImageGallery";
+
+import getImageUrl from "../../utility/imageUrl";
 
 // ============================================================
 // EMPTY LIBRARY STATE

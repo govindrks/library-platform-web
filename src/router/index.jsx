@@ -1,4 +1,9 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+    BrowserRouter,
+    Navigate,
+    Route,
+    Routes,
+} from "react-router-dom";
 
 // ============================================================
 // LAYOUTS
@@ -39,225 +44,292 @@ import Register from "../views/Auth/Register";
 import RegisterLibrary from "../views/LibraryOwner/RegisterLibrary";
 import SeatChangeRequests from "../views/LibraryOwner/SeatChangeRequests";
 import SubscriptionBilling from "../views/LibraryOwner/SubscriptionBilling";
-
-// ============================================================
-// MEMBER
-// ============================================================
-
-
-
-// ============================================================
-// ROUTES
-// ============================================================
-
-import reportRoutes from "./routes/Reports";
-import bookingRoutes from "./routes/Booking";
-
-// ============================================================
-// DASHBOARD
-// ============================================================
-
-import Dashboard from "../views/Dashboard/Dashboard";
 import AutomationCenter from "../views/LibraryOwner/AutomationCenter";
 import Notifications from "../views/LibraryOwner/Notifications";
 import Settings from "../views/LibraryOwner/Settings";
 import Coupons from "../views/LibraryOwner/Coupons";
-import MembershipPaymentSuccess from "../views/Student/Membership/MembershipPaymentSuccess";
+
+// ============================================================
+// STUDENT / MEMBER
+// ============================================================
+
+import MembershipPaymentSuccess
+    from "../views/Student/Membership/MembershipPaymentSuccess";
+
+// ============================================================
+// ROUTE GROUPS
+// ============================================================
+
+import ownerRoutes from "./routes/Owner";
+import bookingRoutes from "./routes/Booking";
+import reportRoutes from "./routes/Reports";
+
+// ============================================================
+// DASHBOARD ROLE DISPATCHER
+// ============================================================
+
+import DashboardRedirect from "./routes/Dashboard";
 
 // ============================================================
 // APP ROUTER
 // ============================================================
 
 function AppRouter() {
-  return (
-    <BrowserRouter>
-      <Routes>
 
-        {/* =====================================================
-                            PUBLIC
-        ====================================================== */}
+    return (
+        <BrowserRouter>
 
-        <Route element={<PublicLayout />}>
+            <Routes>
 
-          <Route path="/" element={<Home />} />
+                {/* =================================================
+                    PUBLIC APPLICATION
+                ================================================== */}
 
-          <Route
-            path="/libraries"
-            element={<LibraryList />}
-          />
+                <Route element={<PublicLayout />}>
 
-          <Route
-            path="/libraries/:libraryId"
-            element={<LibraryDetails />}
-          />
+                    <Route
+                        path="/"
+                        element={<Home />}
+                    />
 
-          <Route
-            path="/libraries/:libraryId/seats"
-            element={<SeatAvailability />}
-          />
+                    <Route
+                        path="/libraries"
+                        element={<LibraryList />}
+                    />
 
-          <Route
-            path="/platform-plans"
-            element={<PlatformPlans />}
-          />
+                    <Route
+                        path="/libraries/:libraryId"
+                        element={<LibraryDetails />}
+                    />
 
-          <Route
-            path="/register-library"
-            element={<RegisterLibrary />}
-          />
+                    <Route
+                        path="/libraries/:libraryId/seats"
+                        element={<SeatAvailability />}
+                    />
 
-        </Route>
+                    <Route
+                        path="/platform-plans"
+                        element={<PlatformPlans />}
+                    />
 
-        {/* =====================================================
-                            AUTH
-        ====================================================== */}
+                    {/*
+                     * Registration starts publicly because Step 1
+                     * creates the LIBRARY_OWNER account.
+                     *
+                     * After Step 1, the JWT is used by the remaining
+                     * onboarding API calls.
+                     */}
+                    <Route
+                        path="/register-library"
+                        element={<RegisterLibrary />}
+                    />
 
-        <Route element={<PublicRoute />}>
+                </Route>
 
-          <Route
-            path="/login"
-            element={<Login />}
-          />
 
-          <Route
-            path="/register"
-            element={<Register />}
-          />
+                {/* =================================================
+                    AUTHENTICATION
+                ================================================== */}
 
-        </Route>
+                <Route element={<PublicRoute />}>
 
-        {/* =====================================================
+                    <Route
+                        path="/login"
+                        element={<Login />}
+                    />
+
+                    <Route
+                        path="/register"
+                        element={<Register />}
+                    />
+
+                </Route>
+
+
+                {/* =================================================
                     PROTECTED APPLICATION
-        ====================================================== */}
+                ================================================== */}
 
-        <Route element={<ProtectedRoute />}>
+                <Route element={<ProtectedRoute />}>
 
-          <Route element={<VerticalLayout />}>
+                    <Route element={<VerticalLayout />}>
 
-            {/* =================================================
-                        COMMON AUTHENTICATED ROUTES
-            ================================================== */}
+                        {/* =========================================
+                            DASHBOARD ROLE DISPATCHER
+                        ========================================== */}
 
-            <Route
-              path="/dashboard"
-              element={<Dashboard />}
-            />
+                        <Route
+                            path="/dashboard"
+                            element={<DashboardRedirect />}
+                        />
 
-            {/* =================================================
-                        BOOKING / MEMBER ROUTES
-            ================================================== */}
 
-            {bookingRoutes.map((route) => (
-              <Route
-                key={route.path}
-                path={route.path}
-                element={route.element}
-              />
-            ))}
+                        {/* =========================================
+                            STUDENT / USER ROUTES
+                        ========================================== */}
 
-            {/* =================================================
-                        MEMBER PAYMENT
-            ================================================== */}
+                        <Route
+                            element={
+                                <RoleRoute
+                                    allowedRoles={["USER"]}
+                                />
+                            }
+                        >
 
-            <Route
-              path="/member/membership/payment-success"
-              element={<MembershipPaymentSuccess />}
-            />
+                            {bookingRoutes.map((route) => (
+                                <Route
+                                    key={route.path}
+                                    path={route.path}
+                                    element={route.element}
+                                />
+                            ))}
 
-            {/* =================================================
-                        LIBRARY OWNER ROUTES
-            ================================================== */}
+                            <Route
+                                path="/member/membership/payment-success"
+                                element={
+                                    <MembershipPaymentSuccess />
+                                }
+                            />
 
-            <Route
-              element={
-                <RoleRoute allowedRoles={["LIBRARY_OWNER"]} />
-              }
-            >
+                        </Route>
 
-              {/* ---------------------------------------------
+
+                        {/* =========================================
+                            LIBRARY OWNER ROUTES
+                        ========================================== */}
+
+                        <Route
+                            element={
+                                <RoleRoute
+                                    allowedRoles={[
+                                        "LIBRARY_OWNER",
+                                    ]}
+                                />
+                            }
+                        >
+
+                            {/* -------------------------------------
+                                CORE OWNER ROUTES
+                            -------------------------------------- */}
+
+                            {ownerRoutes.map((route) => (
+                                <Route
+                                    key={route.path}
+                                    path={route.path}
+                                    element={route.element}
+                                />
+                            ))}
+
+
+                            {/* -------------------------------------
                                 REPORTS
-              ---------------------------------------------- */}
+                            -------------------------------------- */}
 
-              {reportRoutes.map((route) => (
+                            {reportRoutes.map((route) => (
+                                <Route
+                                    key={route.path}
+                                    path={route.path}
+                                    element={route.element}
+                                />
+                            ))}
+
+
+                            {/* -------------------------------------
+                                AUTOMATION CENTER
+                            -------------------------------------- */}
+
+                            <Route
+                                path="/owner/automation"
+                                element={
+                                    <AutomationCenter />
+                                }
+                            />
+
+
+                            {/* -------------------------------------
+                                NOTIFICATIONS
+                            -------------------------------------- */}
+
+                            <Route
+                                path="/owner/notifications"
+                                element={
+                                    <Notifications />
+                                }
+                            />
+
+
+                            {/* -------------------------------------
+                                SETTINGS
+                            -------------------------------------- */}
+
+                            <Route
+                                path="/owner/settings"
+                                element={
+                                    <Settings />
+                                }
+                            />
+
+
+                            {/* -------------------------------------
+                                SEAT CHANGE REQUESTS
+                            -------------------------------------- */}
+
+                            <Route
+                                path="/owner/seat-change-requests"
+                                element={
+                                    <SeatChangeRequests />
+                                }
+                            />
+
+
+                            {/* -------------------------------------
+                                COUPONS
+                            -------------------------------------- */}
+
+                            <Route
+                                path="/owner/coupons"
+                                element={
+                                    <Coupons />
+                                }
+                            />
+
+
+                            {/* -------------------------------------
+                                PLATFORM SUBSCRIPTION / BILLING
+                            -------------------------------------- */}
+
+                            <Route
+                                path="/owner/subscription"
+                                element={
+                                    <SubscriptionBilling />
+                                }
+                            />
+
+                        </Route>
+
+                    </Route>
+
+                </Route>
+
+
+                {/* =================================================
+                    FALLBACK
+                ================================================== */}
+
                 <Route
-                  key={route.path}
-                  path={route.path}
-                  element={route.element}
+                    path="*"
+                    element={
+                        <Navigate
+                            to="/"
+                            replace
+                        />
+                    }
                 />
-              ))}
 
-              {/* ---------------------------------------------
-                            AUTOMATION CENTER
-              ---------------------------------------------- */}
+            </Routes>
 
-              <Route
-                path="/owner/automation"
-                element={<AutomationCenter />}
-              />
-
-              {/* ---------------------------------------------
-                          NOTIFICATION CENTER
-              ---------------------------------------------- */}
-
-              <Route
-                path="/owner/notifications"
-                element={<Notifications />}
-              />
-
-              {/* ---------------------------------------------
-                              SETTINGS
-              ---------------------------------------------- */}
-
-              <Route
-                path="/owner/settings"
-                element={<Settings />}
-              />
-
-              {/* ---------------------------------------------
-                        SEAT CHANGE REQUESTS
-              ---------------------------------------------- */}
-
-              <Route
-                path="/owner/seat-change-requests"
-                element={<SeatChangeRequests />}
-              />
-
-              {/* ---------------------------------------------
-                              COUPONS
-              ---------------------------------------------- */}
-
-              <Route
-                path="/owner/coupons"
-                element={<Coupons />}
-              />
-
-              {/* ---------------------------------------------
-                        SUBSCRIPTION & BILLING
-              ---------------------------------------------- */}
-
-              <Route
-                path="/owner/subscription"
-                element={<SubscriptionBilling />}
-              />
-
-            </Route>
-
-          </Route>
-
-        </Route>
-
-        {/* =====================================================
-                            FALLBACK
-        ====================================================== */}
-
-        <Route
-          path="*"
-          element={<Navigate to="/" replace />}
-        />
-
-      </Routes>
-    </BrowserRouter>
-  );
+        </BrowserRouter>
+    );
 }
 
 export default AppRouter;
