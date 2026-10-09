@@ -24,14 +24,13 @@ import {
 } from "@mui/material";
 
 import {
-  Assessment,
   CalendarMonth,
   Download,
-  EventSeat,
   Groups,
   PictureAsPdf,
   Refresh,
   TrendingUp,
+  WorkspacePremium,
 } from "@mui/icons-material";
 
 import {
@@ -58,7 +57,7 @@ import reportApi from "../../api/reportApi";
 // CONSTANTS
 // ============================================================
 
-const STATUS_COLORS = ["#16A34A", "#0284C7", "#DC2626"];
+const STATUS_COLORS = ["#16A34A", "#F59E0B", "#DC2626", "#0284C7", "#64748B"];
 
 // ============================================================
 // DATE HELPERS
@@ -96,9 +95,9 @@ const getPeriodRange = (period) => {
     }
 
     case "quarter": {
-      const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+      const quarterStart = Math.floor(today.getMonth() / 3) * 3;
 
-      from.setMonth(quarterStartMonth, 1);
+      from.setMonth(quarterStart, 1);
 
       break;
     }
@@ -144,6 +143,40 @@ const formatDate = (value) => {
   }).format(date);
 };
 
+const formatDateTime = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const formatCurrency = (value, currency = "INR") => {
+  const amount = Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currency || "INR",
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `₹${amount.toFixed(2)}`;
+  }
+};
+
 const formatEnum = (value) => {
   if (!value) {
     return "-";
@@ -156,6 +189,26 @@ const formatEnum = (value) => {
     .join(" ");
 };
 
+const getStatusColor = (status) => {
+  switch (status) {
+    case "ACTIVE":
+      return "success";
+
+    case "PENDING":
+    case "PENDING_PAYMENT":
+      return "warning";
+
+    case "EXPIRED":
+      return "info";
+
+    case "CANCELLED":
+      return "error";
+
+    default:
+      return "default";
+  }
+};
+
 const getErrorMessage = (error, fallback) => {
   return (
     error?.response?.data?.message ||
@@ -166,89 +219,42 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
-// ITEM HELPERS
+// RESPONSE HELPERS
 //
-// These support both the old seat-utilization DTO names and the
-// newer occupancy-aware fields we added to the backend.
+// These tolerate the current Subscription Report naming while
+// keeping the user-facing page called Membership Report.
 // ============================================================
 
-const getSeatId = (item) => item?.seatId ?? item?.id ?? null;
+const getSubscriptionId = (item) => item?.subscriptionId ?? item?.id ?? null;
+
+const getStudentName = (item) =>
+  item?.studentName ?? item?.memberName ?? item?.userName ?? "-";
+
+const getStudentEmail = (item) =>
+  item?.studentEmail ?? item?.memberEmail ?? item?.userEmail ?? null;
+
+const getPlanName = (item) =>
+  item?.planName ?? item?.membershipPlanName ?? item?.membershipPlan ?? "-";
 
 const getSeatNumber = (item) => item?.seatNumber ?? "-";
 
-const getFloorName = (item) => {
-  if (item?.floorName) {
-    return item.floorName;
-  }
+const getSubscriptionStatus = (item) =>
+  item?.status ?? item?.subscriptionStatus ?? "-";
 
-  if (item?.floorNumber != null) {
-    return `Floor ${item.floorNumber}`;
-  }
+const getStartDate = (item) => item?.startDate ?? null;
 
-  return "Unassigned";
-};
+const getEndDate = (item) => item?.endDate ?? null;
 
-const getOccupancyStatus = (item) => {
-  if (item?.occupancyStatus) {
-    return item.occupancyStatus;
-  }
+const getAmount = (item) =>
+  Number(item?.amount ?? item?.price ?? item?.subscriptionAmount ?? 0);
 
-  const utilization = Number(item?.utilizationRate || 0);
-
-  if (utilization > 0) {
-    return "OCCUPIED";
-  }
-
-  const physicalStatus = item?.seatStatus || item?.status;
-
-  if (
-    physicalStatus === "RESERVED" ||
-    physicalStatus === "MAINTENANCE" ||
-    physicalStatus === "BOOKED"
-  ) {
-    return "BLOCKED";
-  }
-
-  return "AVAILABLE";
-};
-
-const getUtilizationRate = (item) => {
-  if (item?.utilizationRate != null) {
-    return Number(item.utilizationRate);
-  }
-
-  const occupied = Number(item?.occupiedUnits || 0);
-
-  const capacity = Number(item?.capacityUnits || 0);
-
-  if (capacity <= 0) {
-    return 0;
-  }
-
-  return (occupied * 100) / capacity;
-};
-
-const getStatusColor = (status) => {
-  switch (status) {
-    case "OCCUPIED":
-      return "error";
-
-    case "AVAILABLE":
-      return "success";
-
-    case "BLOCKED":
-      return "warning";
-
-    default:
-      return "default";
-  }
-};
+const getCreatedAt = (item) => item?.createdAt ?? null;
 
 // ============================================================
 // COMPONENT
 // ============================================================
 
-function OccupancyReport() {
+function MembershipReport() {
   // ========================================================
   // STATE
   // ========================================================
@@ -272,7 +278,7 @@ function OccupancyReport() {
   const [error, setError] = useState("");
 
   // ========================================================
-  // DATE RANGE
+  // PERIOD
   // ========================================================
 
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
@@ -293,16 +299,20 @@ function OccupancyReport() {
 
       toDate: dateRange.toDate,
 
-      slotId: null,
+      studentId: null,
 
       page: 0,
 
       size: 200,
+
+      sortBy: "createdAt",
+
+      sortDirection: "DESC",
     };
   }, [selectedLibraryId, dateRange]);
 
   // ========================================================
-  // LOAD LIBRARIES
+  // LOAD OWNER LIBRARIES
   // ========================================================
 
   useEffect(() => {
@@ -360,7 +370,7 @@ function OccupancyReport() {
   }, []);
 
   // ========================================================
-  // LOAD OCCUPANCY REPORT
+  // LOAD REPORT
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -375,16 +385,16 @@ function OccupancyReport() {
 
       setError("");
 
-      const response = await reportApi.generateOccupancyReport(reportPayload);
+      const response = await reportApi.generateMembershipReport(reportPayload);
 
       setReport(response);
     } catch (requestError) {
-      console.error("Failed to load occupancy report:", requestError);
+      console.error("Failed to load membership report:", requestError);
 
       setReport(null);
 
       setError(
-        getErrorMessage(requestError, "Unable to generate occupancy report."),
+        getErrorMessage(requestError, "Unable to generate membership report."),
       );
     } finally {
       setLoadingReport(false);
@@ -406,140 +416,135 @@ function OccupancyReport() {
   const records = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
-  // SUMMARY VALUES
+  // SUMMARY FALLBACKS
   // ========================================================
 
-  const totalSeats = Number(summary.totalSeats || 0);
-
-  const occupiedSeats = Number(summary.occupiedSeats || 0);
-
-  const availableSeats = Number(summary.availableSeats || 0);
-
-  const blockedSeats = Number(
-    summary.blockedSeats ?? summary.reservedSeats ?? 0,
+  const totalSubscriptions = Number(
+    summary.totalSubscriptions ??
+      summary.totalRecords ??
+      report?.totalElements ??
+      records.length ??
+      0,
   );
 
-  const totalBookings = Number(summary.totalBookings || 0);
+  const activeSubscriptions = Number(
+    summary.activeSubscriptions ??
+      records.filter((item) => getSubscriptionStatus(item) === "ACTIVE").length,
+  );
 
-  const totalOccupiedUnits = Number(summary.totalOccupiedUnits || 0);
+  const expiredSubscriptions = Number(
+    summary.expiredSubscriptions ??
+      records.filter((item) => getSubscriptionStatus(item) === "EXPIRED")
+        .length,
+  );
 
-  const totalCapacityUnits = Number(summary.totalCapacityUnits || 0);
+  const cancelledSubscriptions = Number(
+    summary.cancelledSubscriptions ??
+      records.filter((item) => getSubscriptionStatus(item) === "CANCELLED")
+        .length,
+  );
+
+  const uniqueMembers = Number(
+    summary.uniqueStudents ??
+      summary.uniqueMembers ??
+      new Set(
+        records
+          .map(
+            (item) =>
+              item.studentId ??
+              item.memberId ??
+              item.userId ??
+              getStudentEmail(item),
+          )
+          .filter(Boolean),
+      ).size,
+  );
+
+  const totalAmount = Number(
+    summary.totalRevenue ??
+      summary.totalAmount ??
+      records.reduce((total, item) => total + getAmount(item), 0),
+  );
 
   // ========================================================
-  // UTILIZATION
+  // STATUS DATA
   // ========================================================
 
-  const occupancyPercentage = useMemo(() => {
-    if (totalCapacityUnits > 0) {
-      return (totalOccupiedUnits * 100) / totalCapacityUnits;
+  const statusData = useMemo(() => {
+    const grouped = new Map();
+
+    records.forEach((item) => {
+      const status = getSubscriptionStatus(item);
+
+      grouped.set(status, (grouped.get(status) || 0) + 1);
+    });
+
+    if (grouped.size === 0 && totalSubscriptions > 0) {
+      return [
+        {
+          name: "Active",
+          value: activeSubscriptions,
+        },
+        {
+          name: "Expired",
+          value: expiredSubscriptions,
+        },
+        {
+          name: "Cancelled",
+          value: cancelledSubscriptions,
+        },
+      ].filter((item) => item.value > 0);
     }
 
-    if (summary.utilizationRate != null) {
-      return Number(summary.utilizationRate);
-    }
+    return Array.from(grouped.entries()).map(([status, value]) => ({
+      name: formatEnum(status),
 
-    if (totalSeats > 0) {
-      return (occupiedSeats * 100) / totalSeats;
-    }
-
-    return 0;
+      value,
+    }));
   }, [
-    totalCapacityUnits,
-    totalOccupiedUnits,
-    summary.utilizationRate,
-    totalSeats,
-    occupiedSeats,
+    records,
+    totalSubscriptions,
+    activeSubscriptions,
+    expiredSubscriptions,
+    cancelledSubscriptions,
   ]);
 
   // ========================================================
-  // STATUS BREAKDOWN
+  // PLAN DISTRIBUTION
   // ========================================================
 
-  const seatStatusData = useMemo(
-    () => [
-      {
-        name: "Occupied",
-
-        value: occupiedSeats,
-      },
-      {
-        name: "Available",
-
-        value: availableSeats,
-      },
-      {
-        name: "Blocked",
-
-        value: blockedSeats,
-      },
-    ],
-    [occupiedSeats, availableSeats, blockedSeats],
-  );
-
-  // ========================================================
-  // FLOOR UTILIZATION
-  // ========================================================
-
-  const floorUtilizationData = useMemo(() => {
-    const floors = new Map();
+  const planData = useMemo(() => {
+    const grouped = new Map();
 
     records.forEach((item) => {
-      const floor = getFloorName(item);
+      const plan = getPlanName(item);
 
-      const existing = floors.get(floor) || {
-        floor,
-        seats: 0,
-        occupiedUnits: 0,
-        capacityUnits: 0,
-        utilizationTotal: 0,
+      const existing = grouped.get(plan) || {
+        plan,
+        subscriptions: 0,
+        amount: 0,
       };
 
-      existing.seats += 1;
+      existing.subscriptions += 1;
 
-      existing.occupiedUnits += Number(item.occupiedUnits || 0);
+      existing.amount += getAmount(item);
 
-      existing.capacityUnits += Number(item.capacityUnits || 0);
-
-      existing.utilizationTotal += getUtilizationRate(item);
-
-      floors.set(floor, existing);
+      grouped.set(plan, existing);
     });
 
-    return Array.from(floors.values())
-      .map((floor) => {
-        let utilization = 0;
-
-        if (floor.capacityUnits > 0) {
-          utilization = (floor.occupiedUnits * 100) / floor.capacityUnits;
-        } else if (floor.seats > 0) {
-          utilization = floor.utilizationTotal / floor.seats;
-        }
-
-        return {
-          floor: floor.floor,
-
-          utilization: Number(utilization.toFixed(1)),
-
-          seats: floor.seats,
-        };
-      })
-      .sort((a, b) => b.utilization - a.utilization);
+    return Array.from(grouped.values()).sort(
+      (a, b) => b.subscriptions - a.subscriptions,
+    );
   }, [records]);
 
   // ========================================================
-  // TOP UTILIZED SEATS
+  // RECENT SUBSCRIPTIONS
   // ========================================================
 
-  const topUtilizedSeats = useMemo(
-    () =>
-      [...records]
-        .sort((a, b) => getUtilizationRate(b) - getUtilizationRate(a))
-        .slice(0, 10),
-    [records],
-  );
+  const recentSubscriptions = useMemo(() => records.slice(0, 15), [records]);
 
   // ========================================================
-  // SELECTED LIBRARY
+  // LIBRARY / PERIOD LABEL
   // ========================================================
 
   const selectedLibrary = useMemo(
@@ -556,7 +561,7 @@ function OccupancyReport() {
   );
 
   // ========================================================
-  // PDF EXPORT
+  // EXPORT PDF
   // ========================================================
 
   const handlePdfExport = async () => {
@@ -569,12 +574,12 @@ function OccupancyReport() {
 
       setError("");
 
-      await reportApi.downloadOccupancyPdf(reportPayload);
+      await reportApi.downloadMembershipPdf(reportPayload);
     } catch (requestError) {
-      console.error("Unable to export occupancy PDF:", requestError);
+      console.error("Failed to export Membership PDF:", requestError);
 
       setError(
-        getErrorMessage(requestError, "Unable to export Occupancy PDF."),
+        getErrorMessage(requestError, "Unable to export Membership PDF."),
       );
     } finally {
       setExportingPdf(false);
@@ -582,7 +587,7 @@ function OccupancyReport() {
   };
 
   // ========================================================
-  // EXCEL EXPORT
+  // EXPORT EXCEL
   // ========================================================
 
   const handleExcelExport = async () => {
@@ -595,12 +600,12 @@ function OccupancyReport() {
 
       setError("");
 
-      await reportApi.downloadOccupancyExcel(reportPayload);
+      await reportApi.downloadMembershipExcel(reportPayload);
     } catch (requestError) {
-      console.error("Unable to export occupancy Excel:", requestError);
+      console.error("Failed to export Membership Excel:", requestError);
 
       setError(
-        getErrorMessage(requestError, "Unable to export Occupancy Excel."),
+        getErrorMessage(requestError, "Unable to export Membership Excel."),
       );
     } finally {
       setExportingExcel(false);
@@ -639,20 +644,20 @@ function OccupancyReport() {
             ================================================== */}
 
       <ReportHeader
-        title="Occupancy Report"
-        description="Analyze historical seat utilization and occupancy performance."
+        title="Membership Report"
+        description="Analyze library memberships, member subscriptions and plan performance."
         action={
           <Stack
             direction={{
               xs: "column",
               md: "row",
             }}
-            spacing={1.5}
+            spacing={1}
           >
             <FormControl
               size="small"
               sx={{
-                minWidth: 200,
+                minWidth: 190,
               }}
             >
               <InputLabel>Library</InputLabel>
@@ -741,10 +746,6 @@ function OccupancyReport() {
           <Chip label={selectedLibrary.name} variant="outlined" />
         )}
 
-        {report?.slotName && (
-          <Chip label={`Slot: ${report.slotName}`} variant="outlined" />
-        )}
-
         <Chip icon={<CalendarMonth />} label={periodLabel} variant="outlined" />
       </Stack>
 
@@ -767,50 +768,169 @@ function OccupancyReport() {
       {!loadingReport && report && (
         <>
           {/* ======================================
-                            SUMMARY
+                            SUMMARY CARDS
                         ====================================== */}
 
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
-                title="Occupancy Rate"
-                value={`${occupancyPercentage.toFixed(1)}%`}
-                icon={Assessment}
+                title="Total Memberships"
+                value={totalSubscriptions}
+                icon={WorkspacePremium}
               />
             </Grid>
 
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
-                title="Total Seats"
-                value={totalSeats}
-                icon={EventSeat}
+                title="Active Memberships"
+                value={activeSubscriptions}
+                icon={TrendingUp}
               />
             </Grid>
 
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
-                title="Total Bookings"
-                value={totalBookings}
+                title="Unique Members"
+                value={uniqueMembers}
                 icon={Groups}
               />
             </Grid>
 
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
-                title="Blocked Seats"
-                value={blockedSeats}
-                icon={EventSeat}
-                positive={false}
+                title="Membership Value"
+                value={formatCurrency(totalAmount)}
+                icon={WorkspacePremium}
               />
             </Grid>
           </Grid>
 
           {/* ======================================
-                            FLOOR UTILIZATION + STATUS
+                            STATUS + PLAN
                         ====================================== */}
 
           <Grid container spacing={2.5} mb={3}>
-            {/* Floor Utilization */}
+            {/* STATUS */}
+
+            <Grid item xs={12} lg={5}>
+              <Card
+                sx={{
+                  height: "100%",
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h6">Membership Status</Typography>
+
+                  <Typography variant="body2" color="text.secondary" mb={2}>
+                    Subscription status distribution for the selected period.
+                  </Typography>
+
+                  {statusData.length === 0 ? (
+                    <Box
+                      sx={{
+                        minHeight: 300,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Typography color="text.secondary">
+                        No membership status data available.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <>
+                      <Box
+                        sx={{
+                          height: 250,
+                          position: "relative",
+                        }}
+                      >
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={statusData}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={95}
+                              paddingAngle={3}
+                            >
+                              {statusData.map((item, index) => (
+                                <Cell
+                                  key={item.name}
+                                  fill={
+                                    STATUS_COLORS[index % STATUS_COLORS.length]
+                                  }
+                                />
+                              ))}
+                            </Pie>
+
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -50%)",
+                            textAlign: "center",
+                          }}
+                        >
+                          <Typography variant="h5" fontWeight={700}>
+                            {totalSubscriptions}
+                          </Typography>
+
+                          <Typography variant="caption" color="text.secondary">
+                            Memberships
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Stack spacing={1}>
+                        {statusData.map((item, index) => (
+                          <Stack
+                            key={item.name}
+                            direction="row"
+                            justifyContent="space-between"
+                          >
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                            >
+                              <Box
+                                sx={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: "50%",
+                                  backgroundColor:
+                                    STATUS_COLORS[index % STATUS_COLORS.length],
+                                }}
+                              />
+
+                              <Typography variant="body2">
+                                {item.name}
+                              </Typography>
+                            </Stack>
+
+                            <Typography variant="body2" fontWeight={600}>
+                              {item.value}
+                            </Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* PLAN DISTRIBUTION */}
 
             <Grid item xs={12} lg={7}>
               <Card
@@ -819,23 +939,23 @@ function OccupancyReport() {
                 }}
               >
                 <CardContent>
-                  <Typography variant="h6">Utilization by Floor</Typography>
+                  <Typography variant="h6">Memberships by Plan</Typography>
 
                   <Typography variant="body2" color="text.secondary" mb={3}>
-                    Seat utilization grouped by floor for the selected period.
+                    Subscription count grouped by membership plan.
                   </Typography>
 
-                  {floorUtilizationData.length === 0 ? (
+                  {planData.length === 0 ? (
                     <Box
                       sx={{
-                        height: 300,
+                        minHeight: 320,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                       }}
                     >
                       <Typography color="text.secondary">
-                        No floor utilization data available.
+                        No membership plan data available.
                       </Typography>
                     </Box>
                   ) : (
@@ -846,33 +966,28 @@ function OccupancyReport() {
                       }}
                     >
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={floorUtilizationData}>
+                        <BarChart data={planData}>
                           <CartesianGrid
                             strokeDasharray="3 3"
                             vertical={false}
                           />
 
                           <XAxis
-                            dataKey="floor"
+                            dataKey="plan"
                             tickLine={false}
                             axisLine={false}
                           />
 
                           <YAxis
-                            domain={[0, 100]}
-                            tickFormatter={(value) => `${value}%`}
+                            allowDecimals={false}
                             tickLine={false}
                             axisLine={false}
                           />
 
-                          <Tooltip
-                            formatter={(value) =>
-                              `${Number(value).toFixed(1)}%`
-                            }
-                          />
+                          <Tooltip />
 
                           <Bar
-                            dataKey="utilization"
+                            dataKey="subscriptions"
                             fill="#4F46E5"
                             radius={[6, 6, 0, 0]}
                           />
@@ -883,185 +998,10 @@ function OccupancyReport() {
                 </CardContent>
               </Card>
             </Grid>
-
-            {/* Seat Status */}
-
-            <Grid item xs={12} lg={5}>
-              <Card
-                sx={{
-                  height: "100%",
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6">Seat Status</Typography>
-
-                  <Typography variant="body2" color="text.secondary">
-                    Seat distribution for this report.
-                  </Typography>
-
-                  <Box
-                    sx={{
-                      width: "100%",
-                      height: 250,
-                      position: "relative",
-                    }}
-                  >
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={seatStatusData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={60}
-                          outerRadius={95}
-                          paddingAngle={3}
-                        >
-                          {seatStatusData.map((item, index) => (
-                            <Cell
-                              key={item.name}
-                              fill={STATUS_COLORS[index % STATUS_COLORS.length]}
-                            />
-                          ))}
-                        </Pie>
-
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        top: "50%",
-                        left: "50%",
-                        transform: "translate(-50%, -50%)",
-                        textAlign: "center",
-                      }}
-                    >
-                      <Typography variant="h5" fontWeight={700}>
-                        {totalSeats}
-                      </Typography>
-
-                      <Typography variant="caption" color="text.secondary">
-                        Total Seats
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Stack spacing={1.5}>
-                    {seatStatusData.map((item, index) => (
-                      <Stack
-                        key={item.name}
-                        direction="row"
-                        justifyContent="space-between"
-                      >
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Box
-                            sx={{
-                              width: 10,
-                              height: 10,
-                              borderRadius: "50%",
-                              backgroundColor:
-                                STATUS_COLORS[index % STATUS_COLORS.length],
-                            }}
-                          />
-
-                          <Typography variant="body2">{item.name}</Typography>
-                        </Stack>
-
-                        <Typography variant="body2" fontWeight={600}>
-                          {item.value}
-                        </Typography>
-                      </Stack>
-                    ))}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
           </Grid>
 
           {/* ======================================
-                            UTILIZATION PERFORMANCE
-                        ====================================== */}
-
-          <Card
-            sx={{
-              mb: 3,
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6" mb={0.5}>
-                Occupancy Performance
-              </Typography>
-
-              <Typography variant="body2" color="text.secondary" mb={3}>
-                Capacity and utilization statistics across the selected period.
-              </Typography>
-
-              <Grid container spacing={3}>
-                <Grid item xs={12} sm={4}>
-                  <Box
-                    sx={{
-                      p: 2,
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary">
-                      Occupied Units
-                    </Typography>
-
-                    <Typography variant="h5" fontWeight={700} mt={0.5}>
-                      {totalOccupiedUnits}
-                    </Typography>
-                  </Box>
-                </Grid>
-
-                <Grid item xs={12} sm={4}>
-                  <Box
-                    sx={{
-                      p: 2,
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary">
-                      Capacity Units
-                    </Typography>
-
-                    <Typography variant="h5" fontWeight={700} mt={0.5}>
-                      {totalCapacityUnits}
-                    </Typography>
-                  </Box>
-                </Grid>
-
-                <Grid item xs={12} sm={4}>
-                  <Box
-                    sx={{
-                      p: 2,
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: 2,
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary">
-                      Average Study Hours
-                    </Typography>
-
-                    <Typography variant="h5" fontWeight={700} mt={0.5}>
-                      {Number(summary.averageStudyHours || 0).toFixed(1)}
-                    </Typography>
-                  </Box>
-                </Grid>
-              </Grid>
-            </CardContent>
-          </Card>
-
-          {/* ======================================
-                            SEAT UTILIZATION TABLE
+                            MEMBERSHIP TABLE
                         ====================================== */}
 
           <Card>
@@ -1080,17 +1020,17 @@ function OccupancyReport() {
                 mb={2}
               >
                 <Box>
-                  <Typography variant="h6">Seat Utilization</Typography>
+                  <Typography variant="h6">Membership Records</Typography>
 
                   <Typography variant="body2" color="text.secondary">
-                    Highest utilized seats in the selected reporting period.
+                    Membership subscriptions included in the selected report.
                   </Typography>
                 </Box>
 
                 <Chip
-                  label={`${report.totalElements ?? records.length} seats`}
-                  variant="outlined"
                   size="small"
+                  variant="outlined"
+                  label={`${report.totalElements ?? records.length} records`}
                 />
               </Stack>
 
@@ -1098,63 +1038,101 @@ function OccupancyReport() {
                 <Table>
                   <TableHead>
                     <TableRow>
+                      <TableCell>Subscription</TableCell>
+
+                      <TableCell>Member</TableCell>
+
+                      <TableCell>Plan</TableCell>
+
                       <TableCell>Seat</TableCell>
 
-                      <TableCell>Floor</TableCell>
+                      <TableCell>Start Date</TableCell>
+
+                      <TableCell>End Date</TableCell>
+
+                      <TableCell>Amount</TableCell>
 
                       <TableCell>Status</TableCell>
 
-                      <TableCell>Bookings</TableCell>
-
-                      <TableCell>Members</TableCell>
-
-                      <TableCell>Occupied Units</TableCell>
-
-                      <TableCell>Capacity Units</TableCell>
-
-                      <TableCell>Utilization</TableCell>
+                      <TableCell>Created</TableCell>
                     </TableRow>
                   </TableHead>
 
                   <TableBody>
-                    {topUtilizedSeats.length === 0 ? (
+                    {recentSubscriptions.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={9}
                           align="center"
                           sx={{
                             py: 5,
                           }}
                         >
                           <Typography color="text.secondary">
-                            No seat utilization records found for the selected
-                            period.
+                            No membership records found for the selected period.
                           </Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      topUtilizedSeats.map((item, index) => {
-                        const status = getOccupancyStatus(item);
-
-                        const utilization = getUtilizationRate(item);
+                      recentSubscriptions.map((item, index) => {
+                        const status = getSubscriptionStatus(item);
 
                         return (
                           <TableRow
-                            key={
-                              getSeatId(item) ??
-                              `${getSeatNumber(item)}-${index}`
-                            }
+                            key={getSubscriptionId(item) ?? index}
                             hover
                           >
                             <TableCell>
+                              <Typography variant="body2" fontWeight={600}>
+                                {getSubscriptionId(item) != null
+                                  ? `#${getSubscriptionId(item)}`
+                                  : "-"}
+                              </Typography>
+                            </TableCell>
+
+                            <TableCell>
+                              <Box>
+                                <Typography variant="body2" fontWeight={500}>
+                                  {getStudentName(item)}
+                                </Typography>
+
+                                {getStudentEmail(item) && (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    {getStudentEmail(item)}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </TableCell>
+
+                            <TableCell>
                               <Chip
                                 size="small"
-                                label={getSeatNumber(item)}
+                                label={getPlanName(item)}
                                 variant="outlined"
                               />
                             </TableCell>
 
-                            <TableCell>{getFloorName(item)}</TableCell>
+                            <TableCell>{getSeatNumber(item)}</TableCell>
+
+                            <TableCell>
+                              {formatDate(getStartDate(item))}
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDate(getEndDate(item))}
+                            </TableCell>
+
+                            <TableCell>
+                              <Typography fontWeight={600}>
+                                {formatCurrency(
+                                  getAmount(item),
+                                  item.currency || "INR",
+                                )}
+                              </Typography>
+                            </TableCell>
 
                             <TableCell>
                               <Chip
@@ -1166,34 +1144,7 @@ function OccupancyReport() {
                             </TableCell>
 
                             <TableCell>
-                              {Number(item.bookingCount || 0)}
-                            </TableCell>
-
-                            <TableCell>
-                              {Number(item.distinctMembers || 0)}
-                            </TableCell>
-
-                            <TableCell>
-                              {Number(item.occupiedUnits || 0)}
-                            </TableCell>
-
-                            <TableCell>
-                              {Number(item.capacityUnits || 0)}
-                            </TableCell>
-
-                            <TableCell>
-                              <Typography
-                                fontWeight={600}
-                                color={
-                                  utilization >= 80
-                                    ? "error.main"
-                                    : utilization >= 60
-                                      ? "warning.main"
-                                      : "success.main"
-                                }
-                              >
-                                {utilization.toFixed(1)}%
-                              </Typography>
+                              {formatDateTime(getCreatedAt(item))}
                             </TableCell>
                           </TableRow>
                         );
@@ -1210,4 +1161,4 @@ function OccupancyReport() {
   );
 }
 
-export default OccupancyReport;
+export default MembershipReport;

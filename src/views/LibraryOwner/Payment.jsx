@@ -12,474 +12,1297 @@ import {
     Stack,
     Typography,
 } from "@mui/material";
+
 import {
     ArrowBack,
     CheckCircle,
-    CreditCard,
     LocalOffer,
     Payment as PaymentIcon,
     Security,
 } from "@mui/icons-material";
-import { useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+
+import {
+    useMemo,
+    useState,
+} from "react";
+
+import {
+    useLocation,
+    useNavigate,
+} from "react-router-dom";
 
 import CouponApply from "../LibraryOwner/components/CouponApply";
 
+import paymentApi from "../../api/paymentApi";
+
+
+// =============================================================
+// RAZORPAY SCRIPT
+// =============================================================
+
+const RAZORPAY_SCRIPT_URL =
+    "https://checkout.razorpay.com/v1/checkout.js";
+
+
 /**
- * Student Payment Page
+ * Dynamically loads Razorpay Checkout.
  *
- * Current implementation:
- * - Supports normal membership pricing
- * - Supports member-specific/custom pricing
- * - Supports coupon application
- * - Calculates final payable amount
- * - Uses mock payment processing until Razorpay is integrated
- *
- * Future Razorpay flow:
- *
- * create order
- *      ↓
- * Razorpay Checkout
- *      ↓
- * payment response
- *      ↓
- * backend verification
- *      ↓
- * payment success
- *      ↓
- * consume coupon
- *      ↓
- * membership / booking confirmation
+ * The script is loaded only once.
  */
+const loadRazorpayScript = () =>
+    new Promise((resolve) => {
+
+        if (window.Razorpay) {
+            resolve(true);
+            return;
+        }
+
+        const existingScript =
+            document.querySelector(
+                `script[src="${RAZORPAY_SCRIPT_URL}"]`
+            );
+
+        if (existingScript) {
+
+            existingScript.addEventListener(
+                "load",
+                () => resolve(true)
+            );
+
+            existingScript.addEventListener(
+                "error",
+                () => resolve(false)
+            );
+
+            return;
+        }
+
+        const script =
+            document.createElement(
+                "script"
+            );
+
+        script.src =
+            RAZORPAY_SCRIPT_URL;
+
+        script.async = true;
+
+        script.onload = () =>
+            resolve(true);
+
+        script.onerror = () =>
+            resolve(false);
+
+        document.body.appendChild(
+            script
+        );
+    });
+
+
+// =============================================================
+// HELPERS
+// =============================================================
+
+const getErrorMessage = (
+    error,
+    fallback =
+        "Payment could not be completed. Please try again."
+) =>
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback;
+
+
+/**
+ * Converts an ID into a valid positive number.
+ *
+ * Invalid mock IDs such as:
+ *
+ * PLAN-001
+ * BOOK-1001
+ *
+ * return null and therefore cannot accidentally reach
+ * the real payment backend.
+ */
+const normalizeId = (value) => {
+
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return null;
+    }
+
+    const number =
+        Number(value);
+
+    if (
+        !Number.isInteger(number) ||
+        number <= 0
+    ) {
+        return null;
+    }
+
+    return number;
+};
+
+
+// =============================================================
+// PAYMENT PAGE
+// =============================================================
 
 function Payment() {
-    const navigate = useNavigate();
-    const location = useLocation();
+
+    const navigate =
+        useNavigate();
+
+    const location =
+        useLocation();
+
+
+    // =========================================================
+    // NAVIGATION STATE
+    // =========================================================
+
+    const paymentState =
+        location.state || {};
+
 
     /**
-     * Expected navigation state:
+     * Supported:
      *
-     * {
-     *     paymentType: "MEMBERSHIP" | "BOOKING",
-     *
-     *     member: {
-     *         id: "M001",
-     *         name: "Ramesh Kumar"
-     *     },
-     *
-     *     membership: {
-     *         id: "PLAN-001",
-     *         name: "Standard Membership",
-     *         billingCycle: "MONTHLY",
-     *         price: 699
-     *     },
-     *
-     *     customPricing: {
-     *         enabled: true,
-     *         price: 500,
-     *         effectiveFrom: "2026-10-01",
-     *         effectiveUntil: "2026-12-31",
-     *         reason: "Special member pricing"
-     *     },
-     *
-     *     booking: {
-     *         id: "BOOK-1001",
-     *         libraryName: "GNC Central Library",
-     *         date: "2026-10-01",
-     *         slot: "Morning",
-     *         seat: "A12",
-     *         amount: 80
-     *     }
-     * }
-     *
-     * The page also contains fallback mock data so it can
-     * be opened directly while frontend development is in progress.
+     * MEMBERSHIP
+     * BOOKING
      */
+    const paymentType =
+        paymentState.paymentType ||
+        "MEMBERSHIP";
 
-    const paymentState = location.state || {};
 
-    const paymentType = paymentState.paymentType || "MEMBERSHIP";
+    // =========================================================
+    // DISPLAY DATA
+    // =========================================================
+    //
+    // Fallback values remain only so the page layout does not
+    // crash when opened directly during development.
+    //
+    // They are NOT allowed to create a real payment because
+    // handlePayment validates all IDs before calling backend.
+    // =========================================================
 
-    const member = paymentState.member || {
-        id: "M001",
-        name: "Ramesh Kumar",
-    };
+    const member =
+        paymentState.member || {
+            id: null,
+            name: "Member",
+            email: "",
+            phone: "",
+        };
 
-    const membership = paymentState.membership || {
-        id: "PLAN-002",
-        name: "Standard Membership",
-        billingCycle: "MONTHLY",
-        price: 699,
-    };
 
-    const customPricing = paymentState.customPricing || {
-        enabled: true,
-        price: 500,
-        effectiveFrom: "2026-10-01",
-        effectiveUntil: "2026-12-31",
-        reason: "Special member pricing",
-    };
+    const membership =
+        paymentState.membership || {
+            id: null,
+            libraryId: null,
+            name: "Membership",
+            billingCycle: "MONTHLY",
+            price: 0,
+        };
 
-    const booking = paymentState.booking || null;
+
+    const customPricing =
+        paymentState.customPricing || {
+            enabled: false,
+            price: 0,
+            effectiveFrom: null,
+            effectiveUntil: null,
+            reason: "",
+        };
+
+
+    const booking =
+        paymentState.booking || null;
+
+
+    // =========================================================
+    // PAYMENT STATE
+    // =========================================================
+
+    const [
+        paymentStatus,
+        setPaymentStatus,
+    ] = useState("IDLE");
+
+
+    const [
+        paymentError,
+        setPaymentError,
+    ] = useState("");
+
 
     /**
-     * CouponApply exposes consumeCoupon() through ref.
+     * Backend-authoritative paid amount.
      *
-     * Coupon is NOT consumed when it is applied.
-     * It is consumed only after payment succeeds.
+     * The frontend calculated amount is only for display before
+     * payment. Razorpay order amount returned by backend is the
+     * authoritative amount.
      */
-    const couponRef = useRef(null);
+    const [
+        paidAmount,
+        setPaidAmount,
+    ] = useState(null);
 
-    const [paymentStatus, setPaymentStatus] = useState("IDLE");
-    const [paymentError, setPaymentError] = useState("");
 
-    const [couponDiscount, setCouponDiscount] = useState(0);
-    const [appliedCoupon, setAppliedCoupon] = useState(null);
+    const [
+        paymentTransactionId,
+        setPaymentTransactionId,
+    ] = useState(null);
 
-    /**
-     * Determine the original amount.
-     *
-     * Membership:
-     *     membership.price
-     *
-     * Booking:
-     *     booking.amount
-     */
-    const regularAmount = useMemo(() => {
-        if (paymentType === "BOOKING") {
-            return Number(booking?.amount || 0);
-        }
 
-        return Number(membership?.price || 0);
-    }, [paymentType, booking, membership]);
+    // =========================================================
+    // COUPON STATE
+    // =========================================================
 
-    /**
-     * Determine whether custom pricing is currently active.
-     *
-     * For production this calculation should ultimately come
-     * from the backend. This frontend check is only for the
-     * current UI/mock implementation.
-     */
-    const isCustomPricingActive = useMemo(() => {
-        if (paymentType !== "MEMBERSHIP") {
-            return false;
-        }
+    const [
+        couponDiscount,
+        setCouponDiscount,
+    ] = useState(0);
 
-        if (!customPricing?.enabled) {
-            return false;
-        }
 
-        const today = new Date();
+    const [
+        appliedCoupon,
+        setAppliedCoupon,
+    ] = useState(null);
 
-        const effectiveFrom = customPricing.effectiveFrom
-            ? new Date(`${customPricing.effectiveFrom}T00:00:00`)
-            : null;
 
-        const effectiveUntil = customPricing.effectiveUntil
-            ? new Date(`${customPricing.effectiveUntil}T23:59:59`)
-            : null;
+    // =========================================================
+    // REGULAR AMOUNT
+    // =========================================================
 
-        if (effectiveFrom && today < effectiveFrom) {
-            return false;
-        }
+    const regularAmount =
+        useMemo(() => {
 
-        if (effectiveUntil && today > effectiveUntil) {
-            return false;
-        }
+            if (
+                paymentType ===
+                "BOOKING"
+            ) {
 
-        return Number(customPricing.price) >= 0;
-    }, [paymentType, customPricing]);
+                return Number(
+                    booking?.amount || 0
+                );
+            }
 
-    /**
-     * Effective membership price.
-     *
-     * Example:
-     *
-     * Plan price     = ₹699
-     * Custom price   = ₹500
-     *
-     * Effective price = ₹500
-     */
-    const effectiveAmount = useMemo(() => {
-        if (
-            paymentType === "MEMBERSHIP" &&
-            isCustomPricingActive
-        ) {
-            return Number(customPricing.price || 0);
-        }
+            return Number(
+                membership?.price || 0
+            );
 
-        return regularAmount;
-    }, [
-        paymentType,
-        isCustomPricingActive,
-        customPricing,
-        regularAmount,
-    ]);
+        }, [
+            paymentType,
+            booking,
+            membership,
+        ]);
 
-    /**
-     * Difference between regular plan price and custom price.
-     */
-    const memberPricingDiscount = useMemo(() => {
-        if (
-            paymentType !== "MEMBERSHIP" ||
-            !isCustomPricingActive
-        ) {
-            return 0;
-        }
 
-        return Math.max(
-            regularAmount - effectiveAmount,
-            0
+    // =========================================================
+    // CUSTOM MEMBER PRICING
+    // =========================================================
+
+    const isCustomPricingActive =
+        useMemo(() => {
+
+            if (
+                paymentType !==
+                "MEMBERSHIP"
+            ) {
+                return false;
+            }
+
+            if (
+                !customPricing?.enabled
+            ) {
+                return false;
+            }
+
+
+            const today =
+                new Date();
+
+
+            const effectiveFrom =
+                customPricing.effectiveFrom
+
+                    ? new Date(
+                        `${customPricing.effectiveFrom}T00:00:00`
+                    )
+
+                    : null;
+
+
+            const effectiveUntil =
+                customPricing.effectiveUntil
+
+                    ? new Date(
+                        `${customPricing.effectiveUntil}T23:59:59`
+                    )
+
+                    : null;
+
+
+            if (
+                effectiveFrom &&
+                today < effectiveFrom
+            ) {
+                return false;
+            }
+
+
+            if (
+                effectiveUntil &&
+                today > effectiveUntil
+            ) {
+                return false;
+            }
+
+
+            return (
+                Number(
+                    customPricing.price
+                ) >= 0
+            );
+
+        }, [
+            paymentType,
+            customPricing,
+        ]);
+
+
+    // =========================================================
+    // EFFECTIVE MEMBER PRICE
+    // =========================================================
+
+    const effectiveAmount =
+        useMemo(() => {
+
+            if (
+                paymentType ===
+                    "MEMBERSHIP" &&
+                isCustomPricingActive
+            ) {
+
+                return Number(
+                    customPricing.price ||
+                    0
+                );
+            }
+
+            return regularAmount;
+
+        }, [
+            paymentType,
+            isCustomPricingActive,
+            customPricing,
+            regularAmount,
+        ]);
+
+
+    // =========================================================
+    // MEMBER PRICE DISCOUNT
+    // =========================================================
+
+    const memberPricingDiscount =
+        useMemo(() => {
+
+            if (
+                paymentType !==
+                    "MEMBERSHIP" ||
+                !isCustomPricingActive
+            ) {
+                return 0;
+            }
+
+            return Math.max(
+                regularAmount -
+                effectiveAmount,
+                0
+            );
+
+        }, [
+            paymentType,
+            isCustomPricingActive,
+            regularAmount,
+            effectiveAmount,
+        ]);
+
+
+    // =========================================================
+    // COUPON
+    // =========================================================
+
+    const handleCouponApplied = (
+        couponData
+    ) => {
+
+        setAppliedCoupon(
+            couponData
         );
-    }, [
-        paymentType,
-        isCustomPricingActive,
-        regularAmount,
-        effectiveAmount,
-    ]);
-
-    /**
-     * Coupon callback.
-     */
-    const handleCouponApplied = (couponData) => {
-        setAppliedCoupon(couponData);
 
         setCouponDiscount(
-            Number(couponData?.discountAmount || 0)
+            Number(
+                couponData
+                    ?.discountAmount ||
+                0
+            )
         );
     };
 
-    /**
-     * Coupon removal callback.
-     */
-    const handleCouponRemoved = () => {
-        setAppliedCoupon(null);
-        setCouponDiscount(0);
-    };
 
-    /**
-     * Calculate final payable amount.
-     */
-    const finalAmount = useMemo(() => {
-        return Math.max(
-            effectiveAmount - couponDiscount,
-            0
-        );
-    }, [effectiveAmount, couponDiscount]);
+    const handleCouponRemoved =
+        () => {
 
-    /**
-     * Coupon callback after successful payment.
-     */
-    const handleCouponConsumed = (consumedCoupon) => {
-        console.log(
-            "Coupon successfully consumed:",
-            consumedCoupon
-        );
-    };
+            setAppliedCoupon(
+                null
+            );
 
-    /**
-     * Back navigation.
-     */
+            setCouponDiscount(
+                0
+            );
+        };
+
+
+    // =========================================================
+    // UI PAYABLE AMOUNT
+    // =========================================================
+    //
+    // IMPORTANT:
+    //
+    // This amount is for frontend display only.
+    //
+    // RazorpayServiceImpl calculates the authoritative amount
+    // again using:
+    //
+    // MembershipPlan
+    // MemberPricing
+    // Coupon
+    // Booking
+    //
+    // =========================================================
+
+    const finalAmount =
+        useMemo(() => {
+
+            return Math.max(
+                effectiveAmount -
+                couponDiscount,
+                0
+            );
+
+        }, [
+            effectiveAmount,
+            couponDiscount,
+        ]);
+
+
+    // =========================================================
+    // BACK
+    // =========================================================
+
     const handleBack = () => {
+
         if (paymentState.from) {
-            navigate(paymentState.from);
+
+            navigate(
+                paymentState.from
+            );
+
             return;
         }
 
         navigate(-1);
     };
 
-    /**
-     * This is currently MOCK payment processing.
-     *
-     * Replace the inside of this function with:
-     *
-     * 1. Create backend payment order
-     * 2. Open Razorpay
-     * 3. Receive Razorpay response
-     * 4. Send response to backend
-     * 5. Verify payment
-     * 6. After backend confirms SUCCESS,
-     *    consume the coupon.
-     */
-    const handlePayment = async () => {
-        if (finalAmount <= 0) {
-            setPaymentError(
-                "Invalid payment amount."
-            );
-            return;
-        }
 
-        setPaymentError("");
-        setPaymentStatus("PROCESSING");
+    // =========================================================
+    // REAL RAZORPAY PAYMENT
+    // =========================================================
 
-        try {
-            /**
-             * --------------------------------------------------
-             * FUTURE RAZORPAY INTEGRATION
-             * --------------------------------------------------
-             *
-             * const order = await paymentApi.createOrder({
-             *     amount: finalAmount,
-             *     bookingId: booking?.id,
-             *     membershipId: membership?.id,
-             * });
-             *
-             * const razorpayResponse =
-             *     await openRazorpayCheckout(order);
-             *
-             * const verification =
-             *     await paymentApi.verifyPayment({
-             *         orderId: razorpayResponse.razorpay_order_id,
-             *         paymentId: razorpayResponse.razorpay_payment_id,
-             *         signature: razorpayResponse.razorpay_signature,
-             *     });
-             *
-             * if (!verification.success) {
-             *     throw new Error(
-             *         "Payment verification failed."
-             *     );
-             * }
-             */
+    const handlePayment =
+        async () => {
 
-            /**
-             * Temporary mock delay.
-             */
-            await new Promise((resolve) =>
-                setTimeout(resolve, 1200)
-            );
+            // -------------------------------------------------
+            // Basic amount validation
+            // -------------------------------------------------
 
-            /**
-             * IMPORTANT:
-             *
-             * Coupon is consumed ONLY AFTER payment success.
-             */
-            if (
-                appliedCoupon &&
-                couponRef.current?.hasAppliedCoupon()
-            ) {
-                await couponRef.current.consumeCoupon({
-                    usedBy: member.id,
-                    bookingId:
-                        booking?.id ||
-                        paymentState.bookingId ||
-                        null,
-                    paymentId: `MOCK-PAY-${Date.now()}`,
-                });
+            if (finalAmount <= 0) {
+
+                setPaymentError(
+                    "Invalid payment amount."
+                );
+
+                return;
             }
 
-            setPaymentStatus("SUCCESS");
 
-            /**
-             * Future:
-             *
-             * Navigate to payment success page:
-             *
-             * navigate(
-             *     `/payment/success/${paymentId}`,
-             *     {
-             *         state: {
-             *             payment,
-             *             booking,
-             *             membership,
-             *         },
-             *     }
-             * );
-             */
-        } catch (error) {
-            console.error(
-                "Payment failed:",
-                error
+            setPaymentError("");
+
+            setPaymentStatus(
+                "PROCESSING"
             );
 
-            /**
-             * IMPORTANT:
-             *
-             * Coupon is NOT consumed here.
-             *
-             * Therefore:
-             *
-             * PAYMENT FAILED
-             *       ↓
-             * Coupon remains ACTIVE
-             */
-            setPaymentStatus("FAILED");
 
-            setPaymentError(
-                error?.message ||
-                    "Payment could not be completed. Please try again."
-            );
-        }
-    };
+            try {
 
-    /**
-     * Payment success screen.
-     */
-    if (paymentStatus === "SUCCESS") {
+                // =============================================
+                // RESOLVE LIBRARY ID
+                // =============================================
+
+                const libraryId =
+                    normalizeId(
+
+                        paymentState
+                            ?.libraryId ??
+
+                        paymentState
+                            ?.library
+                            ?.id ??
+
+                        booking
+                            ?.libraryId ??
+
+                        membership
+                            ?.libraryId
+                    );
+
+
+                if (!libraryId) {
+
+                    throw new Error(
+                        "Library information is missing. Please return and select the library again."
+                    );
+                }
+
+
+                // =============================================
+                // RESOLVE BUSINESS REFERENCE
+                // =============================================
+
+                const referenceId =
+                    normalizeId(
+
+                        paymentType ===
+                            "BOOKING"
+
+                            ? (
+                                booking?.id ??
+                                booking?.bookingId ??
+                                paymentState
+                                    ?.bookingId
+                            )
+
+                            : (
+                                membership?.id ??
+                                membership
+                                    ?.membershipPlanId ??
+                                paymentState
+                                    ?.membershipId ??
+                                paymentState
+                                    ?.membershipPlanId
+                            )
+                    );
+
+
+                if (!referenceId) {
+
+                    throw new Error(
+
+                        paymentType ===
+                            "BOOKING"
+
+                            ? "Booking information is missing. Please create the booking again."
+
+                            : "Membership plan information is missing. Please select the membership plan again."
+                    );
+                }
+
+
+                // =============================================
+                // MEMBERSHIP SEAT
+                // =============================================
+
+                const seatId =
+                    normalizeId(
+
+                        paymentState
+                            ?.seatId ??
+
+                        paymentState
+                            ?.selectedSeat
+                            ?.id ??
+
+                        paymentState
+                            ?.selectedSeat
+                            ?.seatId ??
+
+                        membership
+                            ?.seatId ??
+
+                        booking
+                            ?.seatId
+                    );
+
+
+                if (
+                    paymentType ===
+                        "MEMBERSHIP" &&
+                    !seatId
+                ) {
+
+                    throw new Error(
+                        "Selected seat information is missing. Please select a seat before payment."
+                    );
+                }
+
+
+                // =============================================
+                // COUPON ID
+                // =============================================
+
+                const couponId =
+                    normalizeId(
+
+                        appliedCoupon
+                            ?.couponId ??
+
+                        appliedCoupon
+                            ?.id
+                    );
+
+
+                // =============================================
+                // LOAD RAZORPAY SCRIPT
+                // =============================================
+
+                const razorpayLoaded =
+                    await loadRazorpayScript();
+
+
+                if (!razorpayLoaded) {
+
+                    throw new Error(
+                        "Unable to load Razorpay Checkout. Please check your internet connection and try again."
+                    );
+                }
+
+
+                // =============================================
+                // CREATE BACKEND PAYMENT ORDER
+                // =============================================
+
+                const createPayload = {
+
+                    referenceId,
+
+                    referenceType:
+                        paymentType ===
+                            "BOOKING"
+
+                            ? "BOOKING"
+
+                            : "MEMBERSHIP",
+
+                    libraryId,
+
+                    seatId:
+                        paymentType ===
+                            "MEMBERSHIP"
+
+                            ? seatId
+
+                            : null,
+
+                    couponId:
+                        couponId ||
+                        null,
+
+                    /**
+                     * The backend does not trust this as the
+                     * authoritative amount.
+                     */
+                    amount:
+                        Number(
+                            finalAmount
+                        ),
+
+                    currency:
+                        "INR",
+
+                    description:
+                        paymentType ===
+                            "BOOKING"
+
+                            ? (
+                                booking?.seat
+
+                                    ? `Seat booking payment - ${booking.seat}`
+
+                                    : "Seat booking payment"
+                            )
+
+                            : (
+                                membership?.name
+
+                                    ? `Membership payment - ${membership.name}`
+
+                                    : "Membership payment"
+                            ),
+                };
+
+
+                const order =
+                    await paymentApi
+                        .createPayment(
+                            createPayload
+                        );
+
+
+                // =============================================
+                // VALIDATE BACKEND RESPONSE
+                // =============================================
+
+                if (
+                    !order
+                        ?.transactionId
+                ) {
+
+                    throw new Error(
+                        "Payment transaction could not be created."
+                    );
+                }
+
+
+                if (
+                    !order
+                        ?.gatewayOrderId
+                ) {
+
+                    throw new Error(
+                        "Razorpay order could not be created."
+                    );
+                }
+
+
+                if (!order?.keyId) {
+
+                    throw new Error(
+                        "Razorpay checkout key is missing."
+                    );
+                }
+
+
+                if (
+                    order?.gatewayName &&
+                    order.gatewayName !==
+                        "RAZORPAY"
+                ) {
+
+                    throw new Error(
+                        `Unsupported payment gateway: ${order.gatewayName}`
+                    );
+                }
+
+
+                const backendAmount =
+                    Number(
+                        order.amount
+                    );
+
+
+                if (
+                    !Number.isFinite(
+                        backendAmount
+                    ) ||
+                    backendAmount <= 0
+                ) {
+
+                    throw new Error(
+                        "Backend returned an invalid payment amount."
+                    );
+                }
+
+
+                setPaymentTransactionId(
+                    order.transactionId
+                );
+
+
+                // =============================================
+                // RAZORPAY CHECKOUT OPTIONS
+                // =============================================
+
+                const options = {
+
+                    key:
+                        order.keyId,
+
+
+                    /**
+                     * Razorpay Checkout uses paise.
+                     *
+                     * ₹100
+                     * ↓
+                     * 10000
+                     */
+                    amount:
+                        Math.round(
+                            backendAmount *
+                            100
+                        ),
+
+
+                    currency:
+                        order.currency ||
+                        "INR",
+
+
+                    name:
+                        "LibraryHub",
+
+
+                    description:
+                        createPayload
+                            .description,
+
+
+                    order_id:
+                        order
+                            .gatewayOrderId,
+
+
+                    // =========================================
+                    // SUCCESS CALLBACK
+                    // =========================================
+
+                    handler:
+                        async (
+                            razorpayResponse
+                        ) => {
+
+                            try {
+
+                                setPaymentStatus(
+                                    "VERIFYING"
+                                );
+
+
+                                // ---------------------------------
+                                // Razorpay response validation
+                                // ---------------------------------
+
+                                if (
+                                    !razorpayResponse
+                                        ?.razorpay_order_id ||
+                                    !razorpayResponse
+                                        ?.razorpay_payment_id ||
+                                    !razorpayResponse
+                                        ?.razorpay_signature
+                                ) {
+
+                                    throw new Error(
+                                        "Incomplete payment response received from Razorpay."
+                                    );
+                                }
+
+
+                                // ---------------------------------
+                                // Backend verification
+                                // ---------------------------------
+
+                                const verification =
+                                    await paymentApi
+                                        .verifyPayment({
+                                            transactionId:
+                                                order.transactionId,
+
+                                            gatewayOrderId:
+                                                razorpayResponse
+                                                    .razorpay_order_id,
+
+                                            gatewayPaymentId:
+                                                razorpayResponse
+                                                    .razorpay_payment_id,
+
+                                            gatewaySignature:
+                                                razorpayResponse
+                                                    .razorpay_signature,
+                                        });
+
+
+                                // ---------------------------------
+                                // Verify final backend status
+                                // ---------------------------------
+
+                                if (
+                                    verification
+                                        ?.status !==
+                                    "SUCCESS"
+                                ) {
+
+                                    throw new Error(
+                                        verification
+                                            ?.message ||
+                                        "Payment verification failed."
+                                    );
+                                }
+
+
+                                /**
+                                 * IMPORTANT
+                                 * =================================
+                                 *
+                                 * Do NOT consume coupon here.
+                                 *
+                                 * Backend:
+                                 *
+                                 * RazorpayServiceImpl
+                                 *      ↓
+                                 * markSuccess()
+                                 *      ↓
+                                 * PaymentCompletionProcessor
+                                 *      ↓
+                                 * booking confirmation
+                                 * membership activation
+                                 * coupon consumption
+                                 *
+                                 * Therefore frontend must not
+                                 * duplicate that business logic.
+                                 */
+
+
+                                setPaidAmount(
+                                    backendAmount
+                                );
+
+
+                                setPaymentTransactionId(
+                                    verification
+                                        ?.transactionId ??
+                                    order
+                                        .transactionId
+                                );
+
+
+                                setPaymentError(
+                                    ""
+                                );
+
+
+                                setPaymentStatus(
+                                    "SUCCESS"
+                                );
+
+                            } catch (
+                                verificationError
+                            ) {
+
+                                console.error(
+                                    "Payment verification failed:",
+                                    verificationError
+                                );
+
+
+                                setPaymentStatus(
+                                    "FAILED"
+                                );
+
+
+                                setPaymentError(
+                                    getErrorMessage(
+                                        verificationError,
+                                        "Payment may have been completed, but verification failed. Please do not pay again immediately."
+                                    )
+                                );
+                            }
+                        },
+
+
+                    // =========================================
+                    // PREFILL
+                    // =========================================
+
+                    prefill: {
+                        name:
+                            member
+                                ?.name ||
+                            "",
+
+                        email:
+                            member
+                                ?.email ||
+                            "",
+
+                        contact:
+                            member
+                                ?.phone ||
+                            "",
+                    },
+
+
+                    // =========================================
+                    // NOTES
+                    // =========================================
+
+                    notes: {
+                        transactionId:
+                            String(
+                                order
+                                    .transactionId
+                            ),
+
+                        referenceType:
+                            createPayload
+                                .referenceType,
+
+                        referenceId:
+                            String(
+                                referenceId
+                            ),
+
+                        libraryId:
+                            String(
+                                libraryId
+                            ),
+                    },
+
+
+                    // =========================================
+                    // CHECKOUT MODAL
+                    // =========================================
+
+                    modal: {
+
+                        ondismiss:
+                            () => {
+
+                                setPaymentStatus(
+                                    "IDLE"
+                                );
+
+                                setPaymentError(
+                                    "Payment was cancelled."
+                                );
+                            },
+                    },
+
+
+                    retry: {
+                        enabled: true,
+                    },
+                };
+
+
+                // =============================================
+                // OPEN RAZORPAY
+                // =============================================
+
+                const razorpay =
+                    new window.Razorpay(
+                        options
+                    );
+
+
+                // =============================================
+                // PAYMENT FAILURE EVENT
+                // =============================================
+
+                razorpay.on(
+                    "payment.failed",
+                    (response) => {
+
+                        console.error(
+                            "Razorpay payment failed:",
+                            response?.error
+                        );
+
+
+                        setPaymentStatus(
+                            "FAILED"
+                        );
+
+
+                        setPaymentError(
+                            response
+                                ?.error
+                                ?.description ||
+
+                            response
+                                ?.error
+                                ?.reason ||
+
+                            "Payment failed. Please try again."
+                        );
+                    }
+                );
+
+
+                razorpay.open();
+
+            } catch (error) {
+
+                console.error(
+                    "Payment failed:",
+                    error
+                );
+
+
+                setPaymentStatus(
+                    "FAILED"
+                );
+
+
+                setPaymentError(
+                    getErrorMessage(
+                        error
+                    )
+                );
+            }
+        };
+
+
+    // =========================================================
+    // SUCCESS SCREEN
+    // =========================================================
+
+    if (
+        paymentStatus ===
+        "SUCCESS"
+    ) {
+
+        const successfulAmount =
+            paidAmount ??
+            finalAmount;
+
+
         return (
+
             <Box
                 sx={{
                     maxWidth: 720,
                     mx: "auto",
-                    py: { xs: 3, md: 6 },
+                    py: {
+                        xs: 3,
+                        md: 6,
+                    },
                 }}
             >
+
                 <Card
                     elevation={0}
                     sx={{
                         border:
                             "1px solid #E2E8F0",
+
                         borderRadius: 3,
-                        textAlign: "center",
-                        overflow: "hidden",
+
+                        textAlign:
+                            "center",
+
+                        overflow:
+                            "hidden",
                     }}
                 >
+
                     <CardContent
                         sx={{
                             px: {
                                 xs: 3,
                                 md: 6,
                             },
+
                             py: {
                                 xs: 5,
                                 md: 7,
                             },
                         }}
                     >
+
                         <CheckCircle
+                            color="success"
                             sx={{
                                 fontSize: 72,
                                 mb: 2,
                             }}
                         />
 
+
                         <Typography
                             variant="h4"
                             fontWeight={700}
                             gutterBottom
                         >
+
                             Payment Successful
+
                         </Typography>
+
 
                         <Typography
                             color="text.secondary"
                             sx={{
-                                mb: 4,
+                                mb: 2,
                             }}
                         >
+
                             Your payment of{" "}
+
                             <strong>
+
                                 ₹
-                                {finalAmount.toLocaleString(
-                                    "en-IN"
+                                {Number(
+                                    successfulAmount
+                                ).toLocaleString(
+                                    "en-IN",
+                                    {
+                                        minimumFractionDigits:
+                                            2,
+
+                                        maximumFractionDigits:
+                                            2,
+                                    }
                                 )}
+
                             </strong>{" "}
+
                             has been successfully
                             processed.
+
                         </Typography>
+
+
+                        {paymentTransactionId && (
+
+                            <Typography
+                                variant="body2"
+                                color="text.secondary"
+                                sx={{
+                                    mb: 4,
+                                }}
+                            >
+
+                                Transaction ID:{" "}
+
+                                <strong>
+                                    {
+                                        paymentTransactionId
+                                    }
+                                </strong>
+
+                            </Typography>
+                        )}
+
 
                         {paymentType ===
                             "MEMBERSHIP" && (
+
                             <Alert
                                 severity="success"
                                 sx={{
@@ -488,146 +1311,226 @@ function Payment() {
                                         "left",
                                 }}
                             >
+
                                 Your{" "}
-                                {
-                                    membership.name
-                                }{" "}
-                                membership has
-                                been renewed.
+
+                                <strong>
+                                    {
+                                        membership.name
+                                    }
+                                </strong>{" "}
+
+                                membership payment
+                                has been completed
+                                successfully.
+
                             </Alert>
                         )}
+
 
                         {paymentType ===
                             "BOOKING" &&
                             booking && (
-                                <Alert
-                                    severity="success"
-                                    sx={{
-                                        mb: 3,
-                                        textAlign:
-                                            "left",
-                                    }}
-                                >
-                                    Your seat
-                                    booking has
-                                    been confirmed.
-                                </Alert>
-                            )}
+
+                            <Alert
+                                severity="success"
+                                sx={{
+                                    mb: 3,
+                                    textAlign:
+                                        "left",
+                                }}
+                            >
+
+                                Your seat booking
+                                has been confirmed
+                                successfully.
+
+                            </Alert>
+                        )}
+
 
                         <Stack
                             direction={{
                                 xs: "column",
                                 sm: "row",
                             }}
+
                             spacing={2}
+
                             justifyContent="center"
                         >
+
                             <Button
                                 variant="contained"
+
                                 onClick={() =>
                                     navigate(
                                         "/dashboard"
                                     )
                                 }
                             >
+
                                 Go to Dashboard
+
                             </Button>
+
 
                             <Button
                                 variant="outlined"
+
                                 onClick={() =>
-                                    navigate(
-                                        "/"
-                                    )
+                                    navigate("/")
                                 }
                             >
+
                                 Back to Home
+
                             </Button>
+
                         </Stack>
+
                     </CardContent>
+
                 </Card>
+
             </Box>
         );
     }
 
+
+    // =========================================================
+    // MAIN PAYMENT SCREEN
+    // =========================================================
+
     return (
+
         <Box
             sx={{
                 maxWidth: 1180,
                 mx: "auto",
             }}
         >
-            {/* Page header */}
+
+            {/* =================================================
+                PAGE HEADER
+            ================================================= */}
 
             <Stack
                 direction={{
                     xs: "column",
                     sm: "row",
                 }}
+
                 spacing={2}
+
                 justifyContent="space-between"
+
                 alignItems={{
                     xs: "flex-start",
                     sm: "center",
                 }}
+
                 sx={{
                     mb: 3,
                 }}
             >
+
                 <Box>
+
                     <Button
-                        startIcon={<ArrowBack />}
-                        onClick={handleBack}
+                        startIcon={
+                            <ArrowBack />
+                        }
+
+                        onClick={
+                            handleBack
+                        }
+
                         sx={{
                             mb: 1,
                             px: 0,
                         }}
                     >
+
                         Back
+
                     </Button>
+
 
                     <Typography
                         variant="h4"
                         fontWeight={700}
                     >
+
                         Payment
+
                     </Typography>
+
 
                     <Typography
                         color="text.secondary"
+
                         sx={{
                             mt: 0.5,
                         }}
                     >
+
                         Complete your payment
                         securely.
+
                     </Typography>
+
                 </Box>
 
+
                 <Chip
-                    icon={<Security />}
+                    icon={
+                        <Security />
+                    }
+
                     label="Secure Payment"
+
                     variant="outlined"
                 />
+
             </Stack>
 
-            {paymentStatus === "FAILED" &&
-                paymentError && (
-                    <Alert
-                        severity="error"
-                        sx={{
-                            mb: 3,
-                        }}
-                    >
-                        {paymentError}
-                    </Alert>
-                )}
+
+            {/* =================================================
+                PAYMENT ERROR
+            ================================================= */}
+
+            {paymentError && (
+
+                <Alert
+                    severity={
+                        paymentStatus ===
+                        "FAILED"
+
+                            ? "error"
+
+                            : "warning"
+                    }
+
+                    sx={{
+                        mb: 3,
+                    }}
+                >
+
+                    {paymentError}
+
+                </Alert>
+            )}
+
 
             <Grid
                 container
                 spacing={3}
             >
-                {/* LEFT SIDE */}
+
+                {/* =================================================
+                    LEFT SIDE
+                ================================================= */}
 
                 <Grid
                     size={{
@@ -635,17 +1538,27 @@ function Payment() {
                         md: 7,
                     }}
                 >
-                    <Stack spacing={3}>
-                        {/* Membership / Booking information */}
+
+                    <Stack
+                        spacing={3}
+                    >
+
+                        {/* =========================================
+                            MEMBERSHIP / BOOKING DETAILS
+                        ========================================= */}
 
                         <Card
                             elevation={0}
+
                             sx={{
                                 border:
                                     "1px solid #E2E8F0",
-                                borderRadius: 3,
+
+                                borderRadius:
+                                    3,
                             }}
                         >
+
                             <CardContent
                                 sx={{
                                     p: {
@@ -654,206 +1567,310 @@ function Payment() {
                                     },
                                 }}
                             >
+
                                 <Typography
                                     variant="h6"
-                                    fontWeight={700}
+
+                                    fontWeight={
+                                        700
+                                    }
+
                                     sx={{
                                         mb: 2.5,
                                     }}
                                 >
+
                                     {paymentType ===
                                     "BOOKING"
+
                                         ? "Booking Details"
+
                                         : "Membership Details"}
+
                                 </Typography>
+
 
                                 {paymentType ===
                                 "MEMBERSHIP" ? (
-                                    <Stack spacing={2}>
+
+                                    <Stack
+                                        spacing={2}
+                                    >
+
                                         <DetailRow
                                             label="Member"
+
                                             value={
-                                                member.name
+                                                member.name ||
+                                                "-"
                                             }
                                         />
+
 
                                         <DetailRow
                                             label="Membership"
+
                                             value={
-                                                membership.name
+                                                membership.name ||
+                                                "-"
                                             }
                                         />
 
+
                                         <DetailRow
                                             label="Billing Cycle"
-                                            value={formatBillingCycle(
-                                                membership.billingCycle
-                                            )}
+
+                                            value={
+                                                formatBillingCycle(
+                                                    membership.billingCycle
+                                                )
+                                            }
                                         />
+
 
                                         <DetailRow
                                             label="Regular Price"
+
                                             value={`₹${regularAmount.toLocaleString(
                                                 "en-IN"
                                             )}`}
                                         />
+
                                     </Stack>
+
                                 ) : (
-                                    <Stack spacing={2}>
+
+                                    <Stack
+                                        spacing={2}
+                                    >
+
                                         <DetailRow
                                             label="Library"
+
                                             value={
-                                                booking?.libraryName ||
+                                                booking
+                                                    ?.libraryName ||
                                                 "Library"
                                             }
                                         />
 
+
                                         <DetailRow
                                             label="Date"
+
                                             value={
-                                                booking?.date ||
+                                                booking
+                                                    ?.date ||
+                                                booking
+                                                    ?.startDate ||
                                                 "-"
                                             }
                                         />
+
 
                                         <DetailRow
                                             label="Slot"
+
                                             value={
-                                                booking?.slot ||
+                                                booking
+                                                    ?.slot ||
+                                                booking
+                                                    ?.slotName ||
                                                 "-"
                                             }
                                         />
+
 
                                         <DetailRow
                                             label="Seat"
+
                                             value={
-                                                booking?.seat ||
+                                                booking
+                                                    ?.seat ||
+                                                booking
+                                                    ?.seatNumber ||
                                                 "-"
                                             }
                                         />
+
                                     </Stack>
                                 )}
+
                             </CardContent>
+
                         </Card>
 
-                        {/* Member-specific pricing */}
+
+                        {/* =========================================
+                            MEMBER-SPECIFIC PRICING
+                        ========================================= */}
 
                         {paymentType ===
                             "MEMBERSHIP" &&
                             isCustomPricingActive && (
-                                <Card
-                                    elevation={0}
+
+                            <Card
+                                elevation={0}
+
+                                sx={{
+                                    border:
+                                        "1px solid #E2E8F0",
+
+                                    borderRadius:
+                                        3,
+                                }}
+                            >
+
+                                <CardContent
                                     sx={{
-                                        border:
-                                            "1px solid #E2E8F0",
-                                        borderRadius: 3,
+                                        p: {
+                                            xs: 2.5,
+                                            md: 3,
+                                        },
                                     }}
                                 >
-                                    <CardContent
+
+                                    <Stack
+                                        direction="row"
+
+                                        spacing={1}
+
+                                        alignItems="center"
+
                                         sx={{
-                                            p: {
-                                                xs: 2.5,
-                                                md: 3,
-                                            },
+                                            mb: 2,
                                         }}
                                     >
-                                        <Stack
-                                            direction="row"
-                                            spacing={1}
-                                            alignItems="center"
-                                            sx={{
-                                                mb: 2,
-                                            }}
-                                        >
-                                            <CheckCircle />
 
-                                            <Typography
-                                                variant="h6"
-                                                fontWeight={
-                                                    700
-                                                }
-                                            >
-                                                Special Member Pricing
-                                            </Typography>
-                                        </Stack>
+                                        <CheckCircle
+                                            color="success"
+                                        />
 
-                                        <Alert
-                                            severity="success"
-                                            sx={{
-                                                mb: 2,
-                                            }}
-                                        >
-                                            A special
-                                            price has
-                                            been assigned
-                                            to your
-                                            membership.
-                                        </Alert>
 
-                                        <Stack
-                                            spacing={
-                                                1.5
+                                        <Typography
+                                            variant="h6"
+
+                                            fontWeight={
+                                                700
                                             }
                                         >
-                                            <DetailRow
-                                                label="Regular Price"
-                                                value={`₹${regularAmount.toLocaleString(
-                                                    "en-IN"
-                                                )}`}
-                                            />
+
+                                            Special Member Pricing
+
+                                        </Typography>
+
+                                    </Stack>
+
+
+                                    <Alert
+                                        severity="success"
+
+                                        sx={{
+                                            mb: 2,
+                                        }}
+                                    >
+
+                                        A special price
+                                        has been assigned
+                                        to your membership.
+
+                                    </Alert>
+
+
+                                    <Stack
+                                        spacing={1.5}
+                                    >
+
+                                        <DetailRow
+                                            label="Regular Price"
+
+                                            value={`₹${regularAmount.toLocaleString(
+                                                "en-IN"
+                                            )}`}
+                                        />
+
+
+                                        <DetailRow
+                                            label="Your Price"
+
+                                            value={`₹${effectiveAmount.toLocaleString(
+                                                "en-IN"
+                                            )}`}
+
+                                            highlight
+                                        />
+
+
+                                        <DetailRow
+                                            label="You Save"
+
+                                            value={`₹${memberPricingDiscount.toLocaleString(
+                                                "en-IN"
+                                            )}`}
+                                        />
+
+
+                                        {customPricing
+                                            .effectiveUntil && (
 
                                             <DetailRow
-                                                label="Your Price"
-                                                value={`₹${effectiveAmount.toLocaleString(
-                                                    "en-IN"
-                                                )}`}
-                                                highlight
-                                            />
+                                                label="Valid Until"
 
-                                            <DetailRow
-                                                label="You Save"
-                                                value={`₹${memberPricingDiscount.toLocaleString(
-                                                    "en-IN"
-                                                )}`}
-                                            />
-
-                                            {customPricing.effectiveUntil && (
-                                                <DetailRow
-                                                    label="Valid Until"
-                                                    value={formatDate(
-                                                        customPricing.effectiveUntil
-                                                    )}
-                                                />
-                                            )}
-                                        </Stack>
-
-                                        {customPricing.reason && (
-                                            <Typography
-                                                variant="body2"
-                                                color="text.secondary"
-                                                sx={{
-                                                    mt: 2,
-                                                }}
-                                            >
-                                                {
-                                                    customPricing.reason
+                                                value={
+                                                    formatDate(
+                                                        customPricing
+                                                            .effectiveUntil
+                                                    )
                                                 }
-                                            </Typography>
+                                            />
                                         )}
-                                    </CardContent>
-                                </Card>
-                            )}
 
-                        {/* Coupon */}
+                                    </Stack>
+
+
+                                    {customPricing
+                                        .reason && (
+
+                                        <Typography
+                                            variant="body2"
+
+                                            color="text.secondary"
+
+                                            sx={{
+                                                mt: 2,
+                                            }}
+                                        >
+
+                                            {
+                                                customPricing
+                                                    .reason
+                                            }
+
+                                        </Typography>
+                                    )}
+
+                                </CardContent>
+
+                            </Card>
+                        )}
+
+
+                        {/* =========================================
+                            COUPON
+                        ========================================= */}
 
                         <Card
                             elevation={0}
+
                             sx={{
                                 border:
                                     "1px solid #E2E8F0",
-                                borderRadius: 3,
+
+                                borderRadius:
+                                    3,
                             }}
                         >
+
                             <CardContent
                                 sx={{
                                     p: {
@@ -862,103 +1879,149 @@ function Payment() {
                                     },
                                 }}
                             >
+
                                 <Stack
                                     direction="row"
+
                                     spacing={1}
+
                                     alignItems="center"
+
                                     sx={{
                                         mb: 2,
                                     }}
                                 >
+
                                     <LocalOffer />
+
 
                                     <Typography
                                         variant="h6"
-                                        fontWeight={700}
+
+                                        fontWeight={
+                                            700
+                                        }
                                     >
+
                                         Have a Coupon?
+
                                     </Typography>
+
                                 </Stack>
+
 
                                 <Typography
                                     variant="body2"
+
                                     color="text.secondary"
+
                                     sx={{
                                         mb: 2,
                                     }}
                                 >
+
                                     Apply your coupon
                                     code to get an
-                                    additional
-                                    discount.
+                                    additional discount.
+
                                 </Typography>
 
+
                                 <CouponApply
-                                    ref={couponRef}
                                     amount={
                                         effectiveAmount
                                     }
+
                                     onCouponApplied={
                                         handleCouponApplied
                                     }
+
                                     onCouponRemoved={
                                         handleCouponRemoved
                                     }
-                                    onCouponConsumed={
-                                        handleCouponConsumed
-                                    }
                                 />
+
                             </CardContent>
+
                         </Card>
 
-                        {/* Security information */}
+
+                        {/* =========================================
+                            SECURITY
+                        ========================================= */}
 
                         <Paper
                             elevation={0}
+
                             sx={{
                                 p: 2,
+
                                 border:
                                     "1px solid #E2E8F0",
-                                borderRadius: 2,
+
+                                borderRadius:
+                                    2,
+
                                 backgroundColor:
                                     "#F8FAFC",
                             }}
                         >
+
                             <Stack
                                 direction="row"
+
                                 spacing={1.5}
+
                                 alignItems="flex-start"
                             >
+
                                 <Security
                                     fontSize="small"
                                 />
 
+
                                 <Box>
+
                                     <Typography
                                         variant="body2"
-                                        fontWeight={600}
+
+                                        fontWeight={
+                                            600
+                                        }
                                     >
+
                                         Secure payment
+
                                     </Typography>
+
 
                                     <Typography
                                         variant="caption"
+
                                         color="text.secondary"
                                     >
+
                                         Your payment
                                         information is
-                                        securely
-                                        processed by
-                                        the payment
-                                        gateway.
+                                        securely processed
+                                        by Razorpay.
+
                                     </Typography>
+
                                 </Box>
+
                             </Stack>
+
                         </Paper>
+
                     </Stack>
+
                 </Grid>
 
-                {/* RIGHT SIDE */}
+
+                {/* =================================================
+                    RIGHT SIDE
+                ================================================= */}
 
                 <Grid
                     size={{
@@ -966,20 +2029,27 @@ function Payment() {
                         md: 5,
                     }}
                 >
+
                     <Card
                         elevation={0}
+
                         sx={{
                             border:
                                 "1px solid #E2E8F0",
-                            borderRadius: 3,
+
+                            borderRadius:
+                                3,
+
                             position: {
                                 md: "sticky",
                             },
+
                             top: {
                                 md: 88,
                             },
                         }}
                     >
+
                         <CardContent
                             sx={{
                                 p: {
@@ -988,240 +2058,395 @@ function Payment() {
                                 },
                             }}
                         >
+
                             <Typography
                                 variant="h6"
-                                fontWeight={700}
+
+                                fontWeight={
+                                    700
+                                }
+
                                 sx={{
                                     mb: 3,
                                 }}
                             >
+
                                 Payment Summary
+
                             </Typography>
 
-                            <Stack spacing={2}>
+
+                            <Stack
+                                spacing={2}
+                            >
+
                                 <SummaryRow
                                     label={
                                         paymentType ===
                                         "MEMBERSHIP"
+
                                             ? "Regular Price"
+
                                             : "Booking Amount"
                                     }
+
                                     value={`₹${regularAmount.toLocaleString(
                                         "en-IN"
                                     )}`}
                                 />
 
+
                                 {memberPricingDiscount >
                                     0 && (
+
                                     <SummaryRow
                                         label="Member-specific pricing"
+
                                         value={`-₹${memberPricingDiscount.toLocaleString(
                                             "en-IN"
                                         )}`}
+
                                         success
                                     />
                                 )}
 
+
                                 {couponDiscount >
                                     0 && (
+
                                     <SummaryRow
                                         label={
                                             appliedCoupon
                                                 ?.code
+
                                                 ? `Coupon (${appliedCoupon.code})`
+
                                                 : "Coupon Discount"
                                         }
+
                                         value={`-₹${couponDiscount.toLocaleString(
                                             "en-IN"
                                         )}`}
+
                                         success
                                     />
                                 )}
 
+
                                 <Divider />
+
 
                                 <SummaryRow
                                     label="Amount Payable"
+
                                     value={`₹${finalAmount.toLocaleString(
                                         "en-IN"
                                     )}`}
+
                                     total
                                 />
+
                             </Stack>
+
 
                             <Button
                                 fullWidth
+
                                 size="large"
+
                                 variant="contained"
+
                                 startIcon={
                                     paymentStatus ===
-                                    "PROCESSING" ? (
-                                        <CircularProgress
-                                            size={20}
-                                            color="inherit"
-                                        />
-                                    ) : (
-                                        <PaymentIcon />
-                                    )
+                                        "PROCESSING" ||
+                                    paymentStatus ===
+                                        "VERIFYING"
+
+                                        ? (
+                                            <CircularProgress
+                                                size={20}
+                                                color="inherit"
+                                            />
+                                        )
+
+                                        : (
+                                            <PaymentIcon />
+                                        )
                                 }
+
                                 disabled={
                                     paymentStatus ===
-                                    "PROCESSING"
+                                        "PROCESSING" ||
+                                    paymentStatus ===
+                                        "VERIFYING"
                                 }
+
                                 onClick={
                                     handlePayment
                                 }
+
                                 sx={{
                                     mt: 3,
                                     py: 1.5,
-                                    fontWeight: 700,
+                                    fontWeight:
+                                        700,
                                 }}
                             >
+
                                 {paymentStatus ===
-                                "PROCESSING"
-                                    ? "Processing Payment..."
-                                    : `Pay ₹${finalAmount.toLocale(
-                                          "en-IN"
-                                      )}`}
+                                    "PROCESSING"
+
+                                    ? "Opening Payment..."
+
+                                    : paymentStatus ===
+                                        "VERIFYING"
+
+                                        ? "Verifying Payment..."
+
+                                        : `Pay ₹${finalAmount.toLocaleString(
+                                            "en-IN"
+                                        )}`}
+
                             </Button>
+
 
                             <Typography
                                 variant="caption"
+
                                 color="text.secondary"
+
                                 sx={{
-                                    display: "block",
+                                    display:
+                                        "block",
+
                                     textAlign:
                                         "center",
+
                                     mt: 2,
                                 }}
                             >
-                                You will be securely
-                                redirected to the
-                                payment gateway.
+
+                                Payment will be
+                                securely processed
+                                through Razorpay.
+
                             </Typography>
+
                         </CardContent>
+
                     </Card>
+
                 </Grid>
+
             </Grid>
+
         </Box>
     );
 }
 
-/**
- * Small reusable detail row.
- */
+
+// =============================================================
+// DETAIL ROW
+// =============================================================
+
 function DetailRow({
     label,
     value,
     highlight = false,
 }) {
+
     return (
+
         <Stack
             direction="row"
+
             justifyContent="space-between"
+
             spacing={2}
         >
-            <Typography
-                variant="body2"
-                color="text.secondary"
-            >
-                {label}
-            </Typography>
 
             <Typography
                 variant="body2"
-                fontWeight={highlight ? 700 : 600}
+
+                color="text.secondary"
+            >
+
+                {label}
+
+            </Typography>
+
+
+            <Typography
+                variant="body2"
+
+                fontWeight={
+                    highlight
+                        ? 700
+                        : 600
+                }
+
                 sx={
                     highlight
                         ? {
-                              fontSize:
-                                  "1rem",
-                          }
+                            fontSize:
+                                "1rem",
+                        }
+
                         : undefined
                 }
             >
+
                 {value}
+
             </Typography>
+
         </Stack>
     );
 }
 
-/**
- * Payment summary row.
- */
+
+// =============================================================
+// SUMMARY ROW
+// =============================================================
+
 function SummaryRow({
     label,
     value,
     success = false,
     total = false,
 }) {
+
     return (
+
         <Stack
             direction="row"
+
             justifyContent="space-between"
+
             alignItems="center"
+
             spacing={2}
         >
+
             <Typography
-                variant={total ? "body1" : "body2"}
-                fontWeight={total ? 700 : 500}
+                variant={
+                    total
+                        ? "body1"
+                        : "body2"
+                }
+
+                fontWeight={
+                    total
+                        ? 700
+                        : 500
+                }
+
                 color={
                     total
                         ? "text.primary"
                         : "text.secondary"
                 }
             >
+
                 {label}
+
             </Typography>
 
+
             <Typography
-                variant={total ? "h6" : "body2"}
+                variant={
+                    total
+                        ? "h6"
+                        : "body2"
+                }
+
                 fontWeight={700}
-                sx={
+
+                color={
                     success
-                        ? {}
-                        : undefined
+                        ? "success.main"
+                        : "text.primary"
                 }
             >
+
                 {value}
+
             </Typography>
+
         </Stack>
     );
 }
 
+
+// =============================================================
+// BILLING CYCLE
+// =============================================================
+
 function formatBillingCycle(
     billingCycle
 ) {
+
     if (!billingCycle) {
         return "-";
     }
 
-    switch (billingCycle) {
+
+    switch (
+        billingCycle
+    ) {
+
         case "MONTHLY":
             return "Monthly";
 
         case "QUARTERLY":
             return "Quarterly";
 
+        case "HALF_YEARLY":
+            return "Half Yearly";
+
         case "YEARLY":
+        case "ANNUAL":
             return "Yearly";
 
         case "DAILY":
             return "Daily";
 
         default:
-            return billingCycle;
+
+            return String(
+                billingCycle
+            )
+                .replaceAll(
+                    "_",
+                    " "
+                )
+                .toLowerCase()
+                .replace(
+                    /\b\w/g,
+                    (character) =>
+                        character
+                            .toUpperCase()
+                );
     }
 }
 
+
+// =============================================================
+// DATE FORMATTER
+// =============================================================
+
 function formatDate(date) {
+
     if (!date) {
         return "-";
     }
 
-    const parsedDate = new Date(
-        `${date}T00:00:00`
-    );
+
+    const parsedDate =
+        new Date(
+            `${date}T00:00:00`
+        );
+
 
     if (
         Number.isNaN(
@@ -1231,14 +2456,22 @@ function formatDate(date) {
         return date;
     }
 
-    return parsedDate.toLocaleDateString(
-        "en-IN",
-        {
-            day: "2-digit",
-            month: "short",
-            year: "numeric",
-        }
-    );
+
+    return parsedDate
+        .toLocaleDateString(
+            "en-IN",
+            {
+                day:
+                    "2-digit",
+
+                month:
+                    "short",
+
+                year:
+                    "numeric",
+            }
+        );
 }
+
 
 export default Payment;

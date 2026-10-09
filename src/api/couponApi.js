@@ -1,56 +1,70 @@
-import api from "../utility/axiosInterceptor";
+import api from "./axios";
 
 const couponApi = {
 
-    createCoupon: async (libraryId, payload) => {
-        return (
+    getLibraryCoupons: async (
+        libraryId
+    ) => {
+
+        const response =
+            await api.get(
+                `/api/libraries/${libraryId}/coupons`
+            );
+
+        return response.data;
+    },
+
+
+    getActiveCoupons: async (
+        libraryId
+    ) => {
+
+        const response =
+            await api.get(
+                `/api/libraries/${libraryId}/coupons/active`
+            );
+
+        return response.data;
+    },
+
+
+    createCoupon: async (
+        libraryId,
+        payload
+    ) => {
+
+        const response =
             await api.post(
                 `/api/libraries/${libraryId}/coupons`,
                 payload
-            )
-        ).data;
+            );
+
+        return response.data;
     },
 
-    getLibraryCoupons: async (libraryId) => {
-        return (
-            await api.get(
-                `/api/libraries/${libraryId}/coupons`
-            )
-        ).data;
-    },
-
-    getActiveCoupons: async (libraryId) => {
-        return (
-            await api.get(
-                `/api/libraries/${libraryId}/coupons/active`
-            )
-        ).data;
-    },
-
-    validateCoupon: async ({
-        libraryId,
-        code,
-        amount,
-    }) => {
-        return (
-            await api.post(
-                "/api/coupons/validate",
-                {
-                    libraryId,
-                    code,
-                    amount,
-                }
-            )
-        ).data;
-    },
 
     deactivateCoupon: async (
         libraryId,
         couponId
     ) => {
+
         await api.patch(
             `/api/libraries/${libraryId}/coupons/${couponId}/deactivate`
         );
+    },
+
+
+    validateCoupon: async (
+        payload
+    ) => {
+
+        const response =
+            await api.post(
+                "/api/coupons/validate",
+                payload
+            );
+
+        return response.data;
     },
 };
 

@@ -26,20 +26,21 @@ import {
 import {
   AccountBalanceWallet,
   CalendarMonth,
-  CreditCard,
+  CheckCircle,
   Download,
-  Payments,
+  HourglassEmpty,
   PictureAsPdf,
   Refresh,
-  TrendingUp,
+  Replay,
 } from "@mui/icons-material";
 
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -52,6 +53,23 @@ import ReportStatCard from "../../components/reports/ReportStatCard";
 
 import libraryApi from "../../api/libraryApi";
 import reportApi from "../../api/reportApi";
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+const REFUND_STATUSES = [
+  "ALL",
+  "PENDING",
+  "PROCESSING",
+  "SUCCESS",
+  "FAILED",
+  "CANCELLED",
+];
+
+const REFERENCE_TYPES = ["ALL", "BOOKING", "MEMBERSHIP"];
+
+const STATUS_COLORS = ["#F59E0B", "#0284C7", "#16A34A", "#DC2626", "#64748B"];
 
 // ============================================================
 // DATE HELPERS
@@ -89,9 +107,9 @@ const getPeriodRange = (period) => {
     }
 
     case "quarter": {
-      const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+      const quarterStart = Math.floor(today.getMonth() / 3) * 3;
 
-      from.setMonth(quarterStartMonth, 1);
+      from.setMonth(quarterStart, 1);
 
       break;
     }
@@ -133,6 +151,24 @@ const formatCurrency = (value, currency = "INR") => {
   }
 };
 
+const formatDate = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+};
+
 const formatDateTime = (value) => {
   if (!value) {
     return "-";
@@ -153,41 +189,6 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
-const formatShortDate = (value) => {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-  }).format(date);
-};
-
-const formatDate = (value) => {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
-};
-
 const formatEnum = (value) => {
   if (!value) {
     return "-";
@@ -205,17 +206,8 @@ const getStatusColor = (status) => {
     case "SUCCESS":
       return "success";
 
-    case "REFUND_PENDING":
-      return "warning";
-
-    case "PARTIALLY_REFUNDED":
-      return "warning";
-
-    case "REFUNDED":
-      return "info";
-
     case "PENDING":
-    case "CREATED":
+    case "PROCESSING":
       return "warning";
 
     case "FAILED":
@@ -237,34 +229,10 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
-// REVENUE HELPERS
-// ============================================================
-
-const getReferenceType = (transaction) => {
-  return transaction?.referenceType || transaction?.paymentFor || "-";
-};
-
-const getTransactionStatus = (transaction) => {
-  return transaction?.paymentStatus || transaction?.status || "-";
-};
-
-const getTransactionNetAmount = (transaction) => {
-  if (transaction?.netAmount != null) {
-    return Number(transaction.netAmount);
-  }
-
-  const amount = Number(transaction?.amount || 0);
-
-  const refunded = Number(transaction?.refundedAmount || 0);
-
-  return Math.max(amount - refunded, 0);
-};
-
-// ============================================================
 // COMPONENT
 // ============================================================
 
-function RevenueReport() {
+function RefundReport() {
   // ========================================================
   // STATE
   // ========================================================
@@ -274,6 +242,10 @@ function RevenueReport() {
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
 
   const [period, setPeriod] = useState("month");
+
+  const [refundStatus, setRefundStatus] = useState("ALL");
+
+  const [referenceType, setReferenceType] = useState("ALL");
 
   const [report, setReport] = useState(null);
 
@@ -294,7 +266,7 @@ function RevenueReport() {
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
 
   // ========================================================
-  // REQUEST
+  // REQUEST PAYLOAD
   // ========================================================
 
   const reportPayload = useMemo(() => {
@@ -309,23 +281,23 @@ function RevenueReport() {
 
       toDate: dateRange.toDate,
 
-      studentId: null,
+      customerId: null,
 
-      paymentStatus: null,
+      paymentTransactionId: null,
 
-      paymentMethod: null,
+      refundStatus: refundStatus === "ALL" ? null : refundStatus,
 
-      referenceType: null,
+      referenceType: referenceType === "ALL" ? null : referenceType,
 
       page: 0,
 
       size: 200,
 
-      sortBy: "transactionDate",
+      sortBy: "createdAt",
 
       sortDirection: "DESC",
     };
-  }, [selectedLibraryId, dateRange]);
+  }, [selectedLibraryId, dateRange, refundStatus, referenceType]);
 
   // ========================================================
   // LOAD OWNER LIBRARIES
@@ -386,7 +358,7 @@ function RevenueReport() {
   }, []);
 
   // ========================================================
-  // LOAD REVENUE REPORT
+  // LOAD REFUND REPORT
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -401,16 +373,16 @@ function RevenueReport() {
 
       setError("");
 
-      const response = await reportApi.generateRevenueReport(reportPayload);
+      const response = await reportApi.generateRefundReport(reportPayload);
 
       setReport(response);
     } catch (requestError) {
-      console.error("Failed to load revenue report:", requestError);
+      console.error("Failed to load refund report:", requestError);
 
       setReport(null);
 
       setError(
-        getErrorMessage(requestError, "Unable to generate revenue report."),
+        getErrorMessage(requestError, "Unable to generate refund report."),
       );
     } finally {
       setLoadingReport(false);
@@ -429,140 +401,113 @@ function RevenueReport() {
 
   const summary = report?.summary || {};
 
-  const transactions = Array.isArray(report?.records) ? report.records : [];
+  const records = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
-  // SUMMARY
+  // SUMMARY VALUES
   // ========================================================
 
-  /*
-   * New RevenueReportSummary:
-   *
-   * grossRevenue
-   * refundedAmount
-   * netRevenue
-   * totalRevenue (compatibility alias)
-   * successfulPayments
-   * refundPendingPayments
-   * partiallyRefundedPayments
-   * refundedPayments
-   */
+  const totalRefunds = Number(summary.totalRefunds || 0);
 
-  const grossRevenue = Number(
-    summary.grossRevenue ?? summary.totalRevenue ?? 0,
+  const successfulRefunds = Number(summary.successfulRefunds || 0);
+
+  const pendingRefunds = Number(summary.pendingRefunds || 0);
+
+  const processingRefunds = Number(summary.processingRefunds || 0);
+
+  const failedRefunds = Number(summary.failedRefunds || 0);
+
+  const cancelledRefunds = Number(summary.cancelledRefunds || 0);
+
+  const totalRequestedAmount = Number(summary.totalRequestedRefundAmount || 0);
+
+  const successfulRefundAmount = Number(summary.successfulRefundAmount || 0);
+
+  const averageSuccessfulRefundAmount = Number(
+    summary.averageSuccessfulRefundAmount || 0,
   );
 
-  const refundedAmount = Number(summary.refundedAmount || 0);
-
-  const netRevenue = Number(
-    summary.netRevenue ??
-      summary.totalRevenue ??
-      Math.max(grossRevenue - refundedAmount, 0),
-  );
-
-  const successfulPayments = Number(summary.successfulPayments || 0);
-
-  const totalTransactions = Number(
-    summary.totalTransactions || report?.totalElements || 0,
-  );
-
-  const averageTransactionValue = Number(summary.averageTransactionValue || 0);
-
   // ========================================================
-  // REVENUE TREND
+  // STATUS DISTRIBUTION
   // ========================================================
 
-  const revenueData = useMemo(() => {
+  const statusData = useMemo(
+    () =>
+      [
+        {
+          name: "Pending",
+
+          value: pendingRefunds,
+        },
+        {
+          name: "Processing",
+
+          value: processingRefunds,
+        },
+        {
+          name: "Success",
+
+          value: successfulRefunds,
+        },
+        {
+          name: "Failed",
+
+          value: failedRefunds,
+        },
+        {
+          name: "Cancelled",
+
+          value: cancelledRefunds,
+        },
+      ].filter((item) => item.value > 0),
+    [
+      pendingRefunds,
+      processingRefunds,
+      successfulRefunds,
+      failedRefunds,
+      cancelledRefunds,
+    ],
+  );
+
+  // ========================================================
+  // REFUNDS BY SOURCE
+  // ========================================================
+
+  const sourceData = useMemo(() => {
     const grouped = new Map();
 
-    transactions.forEach((transaction) => {
-      if (!transaction.transactionDate) {
-        return;
-      }
+    records.forEach((refund) => {
+      const source = refund.referenceType || "UNKNOWN";
 
-      const date = String(transaction.transactionDate).slice(0, 10);
-
-      const current = grouped.get(date) || 0;
-
-      grouped.set(date, current + getTransactionNetAmount(transaction));
-    });
-
-    return Array.from(grouped.entries())
-      .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-      .map(([date, revenue]) => ({
-        date: formatShortDate(`${date}T00:00:00`),
-
-        revenue: Number(revenue.toFixed(2)),
-      }));
-  }, [transactions]);
-
-  // ========================================================
-  // REVENUE BY BUSINESS SOURCE
-  // ========================================================
-
-  const sourceRevenue = useMemo(() => {
-    const grouped = new Map();
-
-    transactions.forEach((transaction) => {
-      const source = getReferenceType(transaction);
-
-      grouped.set(
+      const existing = grouped.get(source) || {
         source,
-        (grouped.get(source) || 0) + getTransactionNetAmount(transaction),
-      );
+        refunds: 0,
+        amount: 0,
+      };
+
+      existing.refunds += 1;
+
+      existing.amount += Number(refund.refundAmount || 0);
+
+      grouped.set(source, existing);
     });
 
-    return Array.from(grouped.entries())
-      .map(([source, revenue]) => ({
-        source: formatEnum(source),
+    return Array.from(grouped.values())
+      .map((item) => ({
+        source: formatEnum(item.source),
 
-        revenue: Number(revenue.toFixed(2)),
-      }))
-      .sort((a, b) => b.revenue - a.revenue);
-  }, [transactions]);
+        refunds: item.refunds,
 
-  // ========================================================
-  // PAYMENT METHOD BREAKDOWN
-  // ========================================================
-
-  const paymentMethodData = useMemo(() => {
-    const grouped = new Map();
-
-    transactions.forEach((transaction) => {
-      const method = transaction.paymentMethod || "UNKNOWN";
-
-      grouped.set(
-        method,
-        (grouped.get(method) || 0) + getTransactionNetAmount(transaction),
-      );
-    });
-
-    return Array.from(grouped.entries())
-      .map(([method, amount]) => ({
-        method: formatEnum(method),
-
-        amount: Number(amount.toFixed(2)),
+        amount: item.amount,
       }))
       .sort((a, b) => b.amount - a.amount);
-  }, [transactions]);
-
-  const totalPaymentMethodRevenue = useMemo(
-    () =>
-      paymentMethodData.reduce(
-        (total, item) => total + Number(item.amount || 0),
-        0,
-      ),
-    [paymentMethodData],
-  );
+  }, [records]);
 
   // ========================================================
-  // RECENT TRANSACTIONS
+  // RECENT REFUNDS
   // ========================================================
 
-  const recentTransactions = useMemo(
-    () => transactions.slice(0, 10),
-    [transactions],
-  );
+  const recentRefunds = useMemo(() => records.slice(0, 15), [records]);
 
   // ========================================================
   // SELECTED LIBRARY
@@ -575,10 +520,6 @@ function RevenueReport() {
       ) || null,
     [libraries, selectedLibraryId],
   );
-
-  // ========================================================
-  // PERIOD LABEL
-  // ========================================================
 
   const periodLabel = useMemo(
     () => `${formatDate(dateRange.fromDate)} - ${formatDate(dateRange.toDate)}`,
@@ -599,11 +540,11 @@ function RevenueReport() {
 
       setError("");
 
-      await reportApi.downloadRevenuePdf(reportPayload);
+      await reportApi.downloadRefundPdf(reportPayload);
     } catch (requestError) {
-      console.error("Failed to export Revenue PDF:", requestError);
+      console.error("Failed to export Refund PDF:", requestError);
 
-      setError(getErrorMessage(requestError, "Unable to export Revenue PDF."));
+      setError(getErrorMessage(requestError, "Unable to export Refund PDF."));
     } finally {
       setExportingPdf(false);
     }
@@ -623,13 +564,11 @@ function RevenueReport() {
 
       setError("");
 
-      await reportApi.downloadRevenueExcel(reportPayload);
+      await reportApi.downloadRefundExcel(reportPayload);
     } catch (requestError) {
-      console.error("Failed to export Revenue Excel:", requestError);
+      console.error("Failed to export Refund Excel:", requestError);
 
-      setError(
-        getErrorMessage(requestError, "Unable to export Revenue Excel."),
-      );
+      setError(getErrorMessage(requestError, "Unable to export Refund Excel."));
     } finally {
       setExportingExcel(false);
     }
@@ -642,9 +581,9 @@ function RevenueReport() {
   if (loadingLibraries) {
     return (
       <Stack
+        minHeight={320}
         alignItems="center"
         justifyContent="center"
-        minHeight={320}
         spacing={2}
       >
         <CircularProgress />
@@ -667,20 +606,20 @@ function RevenueReport() {
             ================================================== */}
 
       <ReportHeader
-        title="Revenue"
-        description="Track your library revenue and payment performance."
+        title="Refund Report"
+        description="Track refund requests, processing states and successfully refunded amounts."
         action={
           <Stack
             direction={{
               xs: "column",
               md: "row",
             }}
-            spacing={1.5}
+            spacing={1}
           >
             <FormControl
               size="small"
               sx={{
-                minWidth: 200,
+                minWidth: 180,
               }}
             >
               <InputLabel>Library</InputLabel>
@@ -704,7 +643,7 @@ function RevenueReport() {
               variant="outlined"
               startIcon={<Refresh />}
               onClick={loadReport}
-              disabled={loadingReport || !selectedLibraryId}
+              disabled={loadingReport || !reportPayload}
             >
               Refresh
             </Button>
@@ -754,34 +693,105 @@ function RevenueReport() {
       )}
 
       {/* ==================================================
-                CONTEXT
+                FILTERS
             ================================================== */}
 
-      <Stack
-        direction={{
-          xs: "column",
-          sm: "row",
+      <Card
+        sx={{
+          mb: 3,
         }}
-        spacing={1}
-        mb={3}
       >
-        {selectedLibrary && (
-          <Chip label={selectedLibrary.name} variant="outlined" />
-        )}
+        <CardContent>
+          <Stack
+            direction={{
+              xs: "column",
+              md: "row",
+            }}
+            spacing={2}
+            alignItems={{
+              xs: "stretch",
+              md: "center",
+            }}
+          >
+            <FormControl
+              size="small"
+              sx={{
+                minWidth: 180,
+              }}
+            >
+              <InputLabel>Refund Status</InputLabel>
 
-        <Chip icon={<CalendarMonth />} label={periodLabel} variant="outlined" />
-      </Stack>
+              <Select
+                value={refundStatus}
+                label="Refund Status"
+                onChange={(event) => setRefundStatus(event.target.value)}
+              >
+                {REFUND_STATUSES.map((status) => (
+                  <MenuItem key={status} value={status}>
+                    {status === "ALL" ? "All Statuses" : formatEnum(status)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl
+              size="small"
+              sx={{
+                minWidth: 180,
+              }}
+            >
+              <InputLabel>Refund Source</InputLabel>
+
+              <Select
+                value={referenceType}
+                label="Refund Source"
+                onChange={(event) => setReferenceType(event.target.value)}
+              >
+                {REFERENCE_TYPES.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {type === "ALL" ? "All Sources" : formatEnum(type)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Box
+              sx={{
+                flexGrow: 1,
+              }}
+            />
+
+            <Stack
+              direction={{
+                xs: "column",
+                sm: "row",
+              }}
+              spacing={1}
+            >
+              {selectedLibrary && (
+                <Chip label={selectedLibrary.name} variant="outlined" />
+              )}
+
+              <Chip
+                icon={<CalendarMonth />}
+                label={periodLabel}
+                variant="outlined"
+              />
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
 
       {/* ==================================================
-                LOADING REPORT
+                LOADING
             ================================================== */}
 
       {loadingReport && (
         <Box
           sx={{
+            py: 8,
             display: "flex",
             justifyContent: "center",
-            py: 8,
           }}
         >
           <CircularProgress />
@@ -797,133 +807,163 @@ function RevenueReport() {
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
-                title="Gross Revenue"
-                value={formatCurrency(grossRevenue)}
-                icon={AccountBalanceWallet}
+                title="Total Refund Requests"
+                value={totalRefunds}
+                icon={Replay}
               />
             </Grid>
 
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
-                title="Net Revenue"
-                value={formatCurrency(netRevenue)}
-                icon={Payments}
+                title="Successful Refunds"
+                value={successfulRefunds}
+                icon={CheckCircle}
               />
             </Grid>
 
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
                 title="Refunded Amount"
-                value={formatCurrency(refundedAmount)}
-                positive={false}
-                icon={TrendingUp}
+                value={formatCurrency(successfulRefundAmount)}
+                icon={AccountBalanceWallet}
               />
             </Grid>
 
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
-                title="Successful Payments"
-                value={successfulPayments}
-                icon={CreditCard}
+                title="In Progress"
+                value={pendingRefunds + processingRefunds}
+                icon={HourglassEmpty}
               />
             </Grid>
           </Grid>
 
           {/* ======================================
-                            REVENUE TREND
-                        ====================================== */}
-
-          <Card
-            sx={{
-              mb: 3,
-            }}
-          >
-            <CardContent>
-              <Stack
-                direction={{
-                  xs: "column",
-                  sm: "row",
-                }}
-                justifyContent="space-between"
-                alignItems={{
-                  xs: "flex-start",
-                  sm: "center",
-                }}
-                spacing={1}
-                mb={3}
-              >
-                <Box>
-                  <Typography variant="h6">Revenue Trend</Typography>
-
-                  <Typography variant="body2" color="text.secondary">
-                    Net revenue generated during the selected period.
-                  </Typography>
-                </Box>
-
-                <Chip
-                  icon={<CalendarMonth />}
-                  label={periodLabel}
-                  variant="outlined"
-                  size="small"
-                />
-              </Stack>
-
-              {revenueData.length === 0 ? (
-                <Box
-                  sx={{
-                    minHeight: 300,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Typography color="text.secondary">
-                    No revenue activity found for this period.
-                  </Typography>
-                </Box>
-              ) : (
-                <Box
-                  sx={{
-                    width: "100%",
-                    height: 340,
-                  }}
-                >
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={revenueData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-
-                      <XAxis dataKey="date" tickLine={false} axisLine={false} />
-
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) =>
-                          `₹${(Number(value) / 1000).toFixed(0)}k`
-                        }
-                      />
-
-                      <Tooltip formatter={(value) => formatCurrency(value)} />
-
-                      <Area
-                        type="monotone"
-                        dataKey="revenue"
-                        stroke="#4F46E5"
-                        fill="#EEF2FF"
-                        strokeWidth={3}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ======================================
-                            REVENUE BREAKDOWN
+                            STATUS + SOURCE
                         ====================================== */}
 
           <Grid container spacing={2.5} mb={3}>
-            {/* Revenue Source */}
+            {/* REFUND STATUS */}
+
+            <Grid item xs={12} lg={5}>
+              <Card
+                sx={{
+                  height: "100%",
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h6">Refund Status</Typography>
+
+                  <Typography variant="body2" color="text.secondary" mb={2}>
+                    Distribution of refund requests by processing state.
+                  </Typography>
+
+                  {statusData.length === 0 ? (
+                    <Box
+                      sx={{
+                        minHeight: 300,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Typography color="text.secondary">
+                        No refund status data available.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <>
+                      <Box
+                        sx={{
+                          height: 250,
+                          position: "relative",
+                        }}
+                      >
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={statusData}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={95}
+                              paddingAngle={3}
+                            >
+                              {statusData.map((item, index) => (
+                                <Cell
+                                  key={item.name}
+                                  fill={
+                                    STATUS_COLORS[index % STATUS_COLORS.length]
+                                  }
+                                />
+                              ))}
+                            </Pie>
+
+                            <Tooltip />
+                          </PieChart>
+                        </ResponsiveContainer>
+
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: "50%",
+                            left: "50%",
+                            transform: "translate(-50%, -50%)",
+                            textAlign: "center",
+                          }}
+                        >
+                          <Typography variant="h5" fontWeight={700}>
+                            {totalRefunds}
+                          </Typography>
+
+                          <Typography variant="caption" color="text.secondary">
+                            Refunds
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      <Stack spacing={1}>
+                        {statusData.map((item, index) => (
+                          <Stack
+                            key={item.name}
+                            direction="row"
+                            justifyContent="space-between"
+                          >
+                            <Stack
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
+                            >
+                              <Box
+                                sx={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: "50%",
+                                  backgroundColor:
+                                    STATUS_COLORS[index % STATUS_COLORS.length],
+                                }}
+                              />
+
+                              <Typography variant="body2">
+                                {item.name}
+                              </Typography>
+                            </Stack>
+
+                            <Typography variant="body2" fontWeight={600}>
+                              {item.value}
+                            </Typography>
+                          </Stack>
+                        ))}
+                      </Stack>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* SOURCE BREAKDOWN */}
 
             <Grid item xs={12} lg={7}>
               <Card
@@ -932,34 +972,35 @@ function RevenueReport() {
                 }}
               >
                 <CardContent>
-                  <Typography variant="h6">Revenue by Source</Typography>
+                  <Typography variant="h6">Refunds by Source</Typography>
 
                   <Typography variant="body2" color="text.secondary" mb={3}>
-                    Net revenue contribution from bookings and memberships.
+                    Requested refund amounts grouped by booking or membership
+                    source.
                   </Typography>
 
-                  {sourceRevenue.length === 0 ? (
+                  {sourceData.length === 0 ? (
                     <Box
                       sx={{
-                        height: 280,
+                        minHeight: 320,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                       }}
                     >
                       <Typography color="text.secondary">
-                        No revenue source data available.
+                        No refund source data available.
                       </Typography>
                     </Box>
                   ) : (
                     <Box
                       sx={{
                         width: "100%",
-                        height: 280,
+                        height: 320,
                       }}
                     >
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={sourceRevenue}>
+                        <BarChart data={sourceData}>
                           <CartesianGrid
                             strokeDasharray="3 3"
                             vertical={false}
@@ -984,7 +1025,7 @@ function RevenueReport() {
                           />
 
                           <Bar
-                            dataKey="revenue"
+                            dataKey="amount"
                             fill="#4F46E5"
                             radius={[6, 6, 0, 0]}
                           />
@@ -995,98 +1036,10 @@ function RevenueReport() {
                 </CardContent>
               </Card>
             </Grid>
-
-            {/* Payment Methods */}
-
-            <Grid item xs={12} lg={5}>
-              <Card
-                sx={{
-                  height: "100%",
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6">
-                    Revenue by Payment Method
-                  </Typography>
-
-                  <Typography variant="body2" color="text.secondary" mb={3}>
-                    Net collected amount grouped by payment method.
-                  </Typography>
-
-                  {paymentMethodData.length === 0 ? (
-                    <Box
-                      sx={{
-                        height: 240,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Typography color="text.secondary">
-                        No payment method data available.
-                      </Typography>
-                    </Box>
-                  ) : (
-                    <Stack spacing={2.5}>
-                      {paymentMethodData.map((item) => {
-                        const percentage =
-                          totalPaymentMethodRevenue > 0
-                            ? (item.amount / totalPaymentMethodRevenue) * 100
-                            : 0;
-
-                        return (
-                          <Box key={item.method}>
-                            <Stack
-                              direction="row"
-                              justifyContent="space-between"
-                              spacing={2}
-                              mb={0.75}
-                            >
-                              <Typography variant="body2">
-                                {item.method}
-                              </Typography>
-
-                              <Typography variant="body2" fontWeight={600}>
-                                {formatCurrency(item.amount)}
-                              </Typography>
-                            </Stack>
-
-                            <Box
-                              sx={{
-                                height: 7,
-                                borderRadius: 5,
-                                backgroundColor: "grey.200",
-                                overflow: "hidden",
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  width: `${Math.min(percentage, 100)}%`,
-                                  height: "100%",
-                                  backgroundColor: "primary.main",
-                                  borderRadius: 5,
-                                }}
-                              />
-                            </Box>
-
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                            >
-                              {percentage.toFixed(1)}%
-                            </Typography>
-                          </Box>
-                        );
-                      })}
-                    </Stack>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
           </Grid>
 
           {/* ======================================
-                            ADDITIONAL SUMMARY
+                            REFUND PERFORMANCE
                         ====================================== */}
 
           <Card
@@ -1096,15 +1049,15 @@ function RevenueReport() {
           >
             <CardContent>
               <Typography variant="h6" mb={0.5}>
-                Revenue Performance
+                Refund Performance
               </Typography>
 
               <Typography variant="body2" color="text.secondary" mb={3}>
-                Financial performance for the selected reporting period.
+                Operational refund values for the selected period.
               </Typography>
 
               <Grid container spacing={3}>
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={6} lg={3}>
                   <Box
                     sx={{
                       p: 2,
@@ -1114,16 +1067,16 @@ function RevenueReport() {
                     }}
                   >
                     <Typography variant="body2" color="text.secondary">
-                      Total Transactions
+                      Requested Amount
                     </Typography>
 
                     <Typography variant="h5" fontWeight={700} mt={0.5}>
-                      {totalTransactions}
+                      {formatCurrency(totalRequestedAmount)}
                     </Typography>
                   </Box>
                 </Grid>
 
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={6} lg={3}>
                   <Box
                     sx={{
                       p: 2,
@@ -1133,16 +1086,16 @@ function RevenueReport() {
                     }}
                   >
                     <Typography variant="body2" color="text.secondary">
-                      Average Transaction Value
+                      Successful Amount
                     </Typography>
 
                     <Typography variant="h5" fontWeight={700} mt={0.5}>
-                      {formatCurrency(averageTransactionValue)}
+                      {formatCurrency(successfulRefundAmount)}
                     </Typography>
                   </Box>
                 </Grid>
 
-                <Grid item xs={12} sm={4}>
+                <Grid item xs={12} sm={6} lg={3}>
                   <Box
                     sx={{
                       p: 2,
@@ -1152,14 +1105,30 @@ function RevenueReport() {
                     }}
                   >
                     <Typography variant="body2" color="text.secondary">
-                      Refund Rate
+                      Average Successful Refund
                     </Typography>
 
                     <Typography variant="h5" fontWeight={700} mt={0.5}>
-                      {grossRevenue > 0
-                        ? ((refundedAmount / grossRevenue) * 100).toFixed(1)
-                        : "0.0"}
-                      %
+                      {formatCurrency(averageSuccessfulRefundAmount)}
+                    </Typography>
+                  </Box>
+                </Grid>
+
+                <Grid item xs={12} sm={6} lg={3}>
+                  <Box
+                    sx={{
+                      p: 2,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: 2,
+                    }}
+                  >
+                    <Typography variant="body2" color="text.secondary">
+                      Failed / Cancelled
+                    </Typography>
+
+                    <Typography variant="h5" fontWeight={700} mt={0.5}>
+                      {failedRefunds + cancelledRefunds}
                     </Typography>
                   </Box>
                 </Grid>
@@ -1168,7 +1137,7 @@ function RevenueReport() {
           </Card>
 
           {/* ======================================
-                            RECENT TRANSACTIONS
+                            REFUND TABLE
                         ====================================== */}
 
           <Card>
@@ -1187,17 +1156,17 @@ function RevenueReport() {
                 mb={2}
               >
                 <Box>
-                  <Typography variant="h6">Revenue Transactions</Typography>
+                  <Typography variant="h6">Refund Records</Typography>
 
                   <Typography variant="body2" color="text.secondary">
-                    Latest financial transactions included in this report.
+                    Refund audit trail for the selected filters.
                   </Typography>
                 </Box>
 
                 <Chip
                   label={`${report.totalElements || 0} records`}
-                  size="small"
                   variant="outlined"
+                  size="small"
                 />
               </Stack>
 
@@ -1205,28 +1174,28 @@ function RevenueReport() {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Payment ID</TableCell>
+                      <TableCell>Refund ID</TableCell>
 
-                      <TableCell>Member</TableCell>
+                      <TableCell>Customer</TableCell>
+
+                      <TableCell>Payment</TableCell>
 
                       <TableCell>Source</TableCell>
 
-                      <TableCell>Method</TableCell>
-
-                      <TableCell>Gross</TableCell>
-
-                      <TableCell>Refunded</TableCell>
-
-                      <TableCell>Net</TableCell>
+                      <TableCell>Amount</TableCell>
 
                       <TableCell>Status</TableCell>
 
-                      <TableCell>Date</TableCell>
+                      <TableCell>Requested By</TableCell>
+
+                      <TableCell>Created</TableCell>
+
+                      <TableCell>Processed</TableCell>
                     </TableRow>
                   </TableHead>
 
                   <TableBody>
-                    {recentTransactions.length === 0 ? (
+                    {recentRefunds.length === 0 ? (
                       <TableRow>
                         <TableCell
                           colSpan={9}
@@ -1236,95 +1205,130 @@ function RevenueReport() {
                           }}
                         >
                           <Typography color="text.secondary">
-                            No revenue transactions found for the selected
-                            period.
+                            No refund records found for the selected filters.
                           </Typography>
                         </TableCell>
                       </TableRow>
                     ) : (
-                      recentTransactions.map((transaction) => {
-                        const status = getTransactionStatus(transaction);
+                      recentRefunds.map((refund) => (
+                        <TableRow key={refund.refundId} hover>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={600}>
+                              {refund.refundId != null
+                                ? `#${refund.refundId}`
+                                : "-"}
+                            </Typography>
 
-                        const currency = transaction.currency || "INR";
-
-                        return (
-                          <TableRow key={transaction.paymentId} hover>
-                            <TableCell>
-                              <Typography variant="body2" fontWeight={600}>
-                                {transaction.paymentId != null
-                                  ? `#${transaction.paymentId}`
-                                  : "-"}
+                            {refund.gatewayRefundId && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                display="block"
+                              >
+                                {refund.gatewayRefundId}
                               </Typography>
-                            </TableCell>
+                            )}
+                          </TableCell>
 
-                            <TableCell>
-                              <Box>
-                                <Typography variant="body2" fontWeight={500}>
-                                  {transaction.studentName || "-"}
+                          <TableCell>
+                            <Box>
+                              <Typography variant="body2" fontWeight={500}>
+                                {refund.customerName || "-"}
+                              </Typography>
+
+                              {refund.customerEmail && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {refund.customerEmail}
                                 </Typography>
-
-                                {transaction.studentEmail && (
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                  >
-                                    {transaction.studentEmail}
-                                  </Typography>
-                                )}
-                              </Box>
-                            </TableCell>
-
-                            <TableCell>
-                              <Chip
-                                size="small"
-                                label={formatEnum(
-                                  getReferenceType(transaction),
-                                )}
-                                variant="outlined"
-                              />
-                            </TableCell>
-
-                            <TableCell>
-                              {formatEnum(transaction.paymentMethod)}
-                            </TableCell>
-
-                            <TableCell>
-                              <Typography fontWeight={600}>
-                                {formatCurrency(transaction.amount, currency)}
-                              </Typography>
-                            </TableCell>
-
-                            <TableCell>
-                              {formatCurrency(
-                                transaction.refundedAmount,
-                                currency,
                               )}
-                            </TableCell>
+                            </Box>
+                          </TableCell>
 
-                            <TableCell>
-                              <Typography fontWeight={600}>
-                                {formatCurrency(
-                                  getTransactionNetAmount(transaction),
-                                  currency,
-                                )}
-                              </Typography>
-                            </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={500}>
+                              {refund.paymentTransactionId != null
+                                ? `#${refund.paymentTransactionId}`
+                                : "-"}
+                            </Typography>
 
-                            <TableCell>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              display="block"
+                            >
+                              {formatCurrency(
+                                refund.originalPaymentAmount,
+                                refund.currency,
+                              )}
+                            </Typography>
+                          </TableCell>
+
+                          <TableCell>
+                            <Stack spacing={0.5}>
                               <Chip
                                 size="small"
-                                label={formatEnum(status)}
-                                color={getStatusColor(status)}
                                 variant="outlined"
+                                label={formatEnum(refund.referenceType)}
                               />
-                            </TableCell>
 
-                            <TableCell>
-                              {formatDateTime(transaction.transactionDate)}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
+                              {refund.referenceId != null && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  #{refund.referenceId}
+                                </Typography>
+                              )}
+                            </Stack>
+                          </TableCell>
+
+                          <TableCell>
+                            <Typography fontWeight={600}>
+                              {formatCurrency(
+                                refund.refundAmount,
+                                refund.currency,
+                              )}
+                            </Typography>
+                          </TableCell>
+
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={formatEnum(refund.refundStatus)}
+                              color={getStatusColor(refund.refundStatus)}
+                              variant="outlined"
+                            />
+                          </TableCell>
+
+                          <TableCell>
+                            <Box>
+                              <Typography variant="body2">
+                                {refund.requestedByName || "-"}
+                              </Typography>
+
+                              {refund.requestedByEmail && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {refund.requestedByEmail}
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+
+                          <TableCell>
+                            {formatDateTime(refund.createdAt)}
+                          </TableCell>
+
+                          <TableCell>
+                            {formatDateTime(refund.processedAt)}
+                          </TableCell>
+                        </TableRow>
+                      ))
                     )}
                   </TableBody>
                 </Table>
@@ -1337,4 +1341,4 @@ function RevenueReport() {
   );
 }
 
-export default RevenueReport;
+export default RefundReport;

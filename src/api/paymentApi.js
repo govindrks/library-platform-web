@@ -1,22 +1,35 @@
+import api from "./axios";
+
 const paymentApi = {
 
-  createOrder: async (payload) => {
-    const response = await api.post(
-      "/api/payments/order",
-      payload
-    );
+    // ============================================================
+    // CREATE PAYMENT / RAZORPAY ORDER
+    // ============================================================
 
-    return response.data;
-  },
+    createPayment: async (payload) => {
 
-  verifyPayment: async (payload) => {
-    const response = await api.post(
-      "/payments/verify",
-      payload
-    );
+        const response = await api.post(
+            "/api/payment/library/create",
+            payload
+        );
 
-    return response.data;
-  },
+        return response.data;
+    },
+
+
+    // ============================================================
+    // VERIFY RAZORPAY PAYMENT
+    // ============================================================
+
+    verifyPayment: async (payload) => {
+
+        const response = await api.post(
+            "/api/payment/library/verify",
+            payload
+        );
+
+        return response.data;
+    },
 
 };
 
