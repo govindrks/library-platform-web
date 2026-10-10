@@ -3,7 +3,22 @@ import api from "./axios";
 const paymentApi = {
 
     // ============================================================
-    // CREATE PAYMENT / RAZORPAY ORDER
+    // CREATE RAZORPAY ORDER
+    // ============================================================
+
+    createOrder: async (payload) => {
+
+        const response = await api.post(
+            "/api/payment/library/create",
+            payload
+        );
+
+        return response.data;
+    },
+
+
+    // ============================================================
+    // BACKWARD-COMPATIBLE ALIAS
     // ============================================================
 
     createPayment: async (payload) => {

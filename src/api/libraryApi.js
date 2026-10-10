@@ -1,19 +1,28 @@
 import api from "./axios";
 
+
 const libraryApi = {
+
 
     // =========================================================
     // LIBRARY
     // =========================================================
 
     getMyLibraries: async () => {
+
         const response =
-            await api.get("/api/libraries/my");
+            await api.get(
+                "/api/libraries/my"
+            );
 
         return response.data;
     },
 
-    getLibraryDetails: async (libraryId) => {
+
+    getLibraryDetails: async (
+        libraryId
+    ) => {
+
         const response =
             await api.get(
                 `/api/libraries/${libraryId}`
@@ -21,6 +30,7 @@ const libraryApi = {
 
         return response.data;
     },
+
 
     updateLibrary: async (
         libraryId,
@@ -35,6 +45,30 @@ const libraryApi = {
 
         return response.data;
     },
+
+    // =========================================================
+// UPDATE PUBLIC VISIBILITY
+// =========================================================
+
+setLibraryImageVisibility: async (
+    libraryId,
+    imageId,
+    publicVisible
+) => {
+
+    const response =
+        await api.patch(
+            `/api/libraries/${libraryId}/images/${imageId}/visibility`,
+            null,
+            {
+                params: {
+                    publicVisible,
+                },
+            }
+        );
+
+    return response.data;
+},
 
 
     // =========================================================
@@ -154,6 +188,242 @@ const libraryApi = {
             `/api/libraries/${libraryId}/custom-amenities/${customAmenityId}`
         );
     },
+
+
+    // =========================================================
+    // LIBRARY IMAGES
+    // =========================================================
+
+    getLibraryImages: async (
+        libraryId
+    ) => {
+
+        const response =
+            await api.get(
+                `/api/libraries/${libraryId}/images`
+            );
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // ADD IMAGE USING EXISTING URL
+    // =========================================================
+
+    addLibraryImage: async (
+        libraryId,
+        payload
+    ) => {
+
+        const response =
+            await api.post(
+                `/api/libraries/${libraryId}/images`,
+                payload
+            );
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // ADD MULTIPLE IMAGES USING URLS
+    // =========================================================
+
+    addLibraryImages: async (
+        libraryId,
+        payload
+    ) => {
+
+        const response =
+            await api.post(
+                `/api/libraries/${libraryId}/images/bulk`,
+                payload
+            );
+
+        return response.data;
+    },
+
+
+    // =========================================================
+// UPLOAD LIBRARY IMAGE
+// =========================================================
+
+uploadLibraryImage: async (
+    libraryId,
+    file,
+    imageType,
+    imageRole = "GALLERY"
+) => {
+
+    const formData =
+        new FormData();
+
+
+    formData.append(
+        "file",
+        file
+    );
+
+
+    formData.append(
+        "imageType",
+        imageType
+    );
+
+
+    formData.append(
+        "imageRole",
+        imageRole
+    );
+
+
+    const response =
+        await api.post(
+            `/api/libraries/${libraryId}/images/upload`,
+            formData,
+            {
+                /*
+                 * IMPORTANT:
+                 *
+                 * Do not send application/json here.
+                 *
+                 * Setting Content-Type to undefined allows
+                 * Axios/browser to generate:
+                 *
+                 * multipart/form-data; boundary=...
+                 */
+                headers: {
+                    "Content-Type":
+                        undefined,
+                },
+            }
+        );
+
+
+    return response.data;
+},
+
+
+    // =========================================================
+    // UPDATE IMAGE METADATA
+    // =========================================================
+
+    updateLibraryImage: async (
+        imageId,
+        payload
+    ) => {
+
+        const response =
+            await api.put(
+                `/api/libraries/images/${imageId}`,
+                payload
+            );
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // CHANGE IMAGE ROLE
+    // =========================================================
+
+    setLibraryImageRole: async (
+        libraryId,
+        imageId,
+        role
+    ) => {
+
+        const response =
+            await api.patch(
+                `/api/libraries/${libraryId}/images/${imageId}/role`,
+                null,
+                {
+                    params: {
+                        role,
+                    },
+                }
+            );
+
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // SET PROFILE IMAGE
+    // =========================================================
+
+    setProfileImage: async (
+        libraryId,
+        imageId
+    ) => {
+
+        const response =
+            await api.put(
+                `/api/libraries/${libraryId}/profile-image/${imageId}`
+            );
+
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // SET COVER IMAGE
+    // =========================================================
+
+    setCoverImage: async (
+        libraryId,
+        imageId
+    ) => {
+
+        const response =
+            await api.put(
+                `/api/libraries/${libraryId}/cover-image/${imageId}`
+            );
+
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // MOVE IMAGE TO GALLERY
+    // =========================================================
+
+    setGalleryImage: async (
+        libraryId,
+        imageId
+    ) => {
+
+        const response =
+            await api.put(
+                `/api/libraries/${libraryId}/images/${imageId}/gallery`
+            );
+
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // DELETE IMAGE
+    // =========================================================
+
+    deleteLibraryImage: async (
+        imageId
+    ) => {
+
+        const response =
+            await api.delete(
+                `/api/libraries/images/${imageId}`
+            );
+
+
+        return response.data;
+    },
 };
+
 
 export default libraryApi;
