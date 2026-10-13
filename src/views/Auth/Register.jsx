@@ -1,8 +1,11 @@
 import {
     ArrowBack,
     Email,
+    EmailOutlined,
     Lock,
+    LockOutlined,
     Person,
+    PersonOutlineOutlined,
     Visibility,
     VisibilityOff,
 } from "@mui/icons-material";
@@ -332,7 +335,7 @@ function Register() {
                                 InputProps={{
                                     startAdornment: (
                                         <InputAdornment position="start">
-                                            <PersonOutline
+                                            <PersonOutlineOutlined
                                                 color="action"
                                             />
                                         </InputAdornment>

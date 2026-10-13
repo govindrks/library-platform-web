@@ -1,111 +1,373 @@
 import api from "./axios";
 
+// ============================================================
+// INVOICE API
+// ============================================================
+//
+// Owner / tenant-scoped invoice routes:
+//
+// /api/libraries/{libraryId}/invoices
+//
+// General payment invoice routes:
+//
+// /api/payment/invoices
+//
+// IMPORTANT:
+//
+// PDF generation happens on the backend:
+//
+// PaymentInvoiceService
+//      ↓
+// PdfInvoiceGeneratorImpl
+//
+// The frontend only requests/downloads the generated PDF.
+// ============================================================
+
+// ============================================================
+// DOWNLOAD BLOB
+// ============================================================
+
+const downloadBlob = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = url;
+
+  link.download = filename || "invoice.pdf";
+
+  document.body.appendChild(link);
+
+  link.click();
+
+  link.remove();
+
+  window.URL.revokeObjectURL(url);
+};
+
+// ============================================================
+// EXTRACT FILENAME FROM RESPONSE HEADER
+// ============================================================
+
+const extractFilename = (contentDisposition, fallback) => {
+  if (!contentDisposition) {
+    return fallback;
+  }
+
+  /*
+   * Handles:
+   *
+   * filename*=UTF-8''INV-001.pdf
+   */
+  const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1].replace(/["']/g, "").trim());
+  }
+
+  /*
+   * Handles:
+   *
+   * filename="INV-001.pdf"
+   */
+  const normalMatch = contentDisposition.match(/filename="?([^"]+)"?/i);
+
+  if (normalMatch?.[1]) {
+    return normalMatch[1].trim();
+  }
+
+  return fallback;
+};
+
+// ============================================================
+// API
+// ============================================================
+
 const invoiceApi = {
+  // ==========================================================
+  // OWNER / LIBRARY INVOICES
+  // ==========================================================
 
-    // ============================================================
-    // GET LIBRARY INVOICES
-    // ============================================================
+  /**
+   * Get all invoices belonging to a library.
+   *
+   * Backend:
+   *
+   * GET
+   * /api/libraries/{libraryId}/invoices
+   *
+   * Controller:
+   * OwnerPaymentInvoiceController
+   */
+  getLibraryInvoices: async (libraryId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
 
-    getLibraryInvoices: async (libraryId) => {
+    const response = await api.get(`/api/libraries/${libraryId}/invoices`);
 
-        const response =
-            await api.get(
-                `/api/libraries/${libraryId}/invoices`
-            );
+    return response.data;
+  },
 
-        return response.data;
-    },
+  // ==========================================================
+  // GET OWNER-SCOPED INVOICE BY ID
+  // ==========================================================
 
+  /**
+   * Retrieves invoice details while enforcing
+   * library/tenant ownership.
+   *
+   * Backend:
+   *
+   * GET
+   * /api/libraries/{libraryId}/invoices/{invoiceId}
+   */
+  getInvoiceById: async (libraryId, invoiceId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
 
-    // ============================================================
-    // GET INVOICE DETAILS
-    // ============================================================
+    if (!invoiceId) {
+      throw new Error("Invoice ID is required.");
+    }
 
-    getInvoiceById: async (
-        libraryId,
-        invoiceId
-    ) => {
+    const response = await api.get(
+      `/api/libraries/${libraryId}/invoices/${invoiceId}`,
+    );
 
-        const response =
-            await api.get(
-                `/api/libraries/${libraryId}/invoices/${invoiceId}`
-            );
+    return response.data;
+  },
 
-        return response.data;
-    },
+  // ==========================================================
+  // DOWNLOAD LIBRARY-SCOPED PDF
+  // ==========================================================
 
+  /**
+   * Downloads an invoice PDF for the selected library.
+   *
+   * Backend:
+   *
+   * GET
+   * /api/libraries/{libraryId}/invoices/{invoiceId}/download
+   *
+   * Backend flow:
+   *
+   * OwnerPaymentInvoiceController
+   *      ↓
+   * PaymentInvoiceService.downloadForLibrary(...)
+   *      ↓
+   * existing stored PDF
+   *
+   * OR
+   *
+   * PdfInvoiceGeneratorImpl.generate(invoice)
+   *      ↓
+   * PDF bytes
+   */
+  downloadInvoice: async (libraryId, invoiceId, invoiceNumber) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
 
-    // ============================================================
-    // DOWNLOAD INVOICE PDF
-    // ============================================================
+    if (!invoiceId) {
+      throw new Error("Invoice ID is required.");
+    }
 
-    downloadInvoice: async (
-        libraryId,
-        invoiceId,
-        invoiceNumber
-    ) => {
+    const response = await api.get(
+      `/api/libraries/${libraryId}/invoices/${invoiceId}/download`,
+      {
+        responseType: "blob",
+      },
+    );
 
-        const response =
-            await api.get(
-                `/api/libraries/${libraryId}/invoices/${invoiceId}/download`,
-                {
-                    responseType:
-                        "blob",
-                }
-            );
+    const fallbackFilename = invoiceNumber
+      ? `${invoiceNumber}.pdf`
+      : `invoice-${invoiceId}.pdf`;
 
+    const filename = extractFilename(
+      response.headers?.["content-disposition"],
+      fallbackFilename,
+    );
 
-        const blob =
-            new Blob(
-                [response.data],
-                {
-                    type:
-                        "application/pdf",
-                }
-            );
+    downloadBlob(response.data, filename);
 
+    return true;
+  },
 
-        const url =
-            window.URL
-                .createObjectURL(
-                    blob
-                );
+  // ==========================================================
+  // GENERATE INVOICE
+  // ==========================================================
 
+  /**
+   * Generates an invoice for a successful payment transaction.
+   *
+   * Backend:
+   *
+   * POST
+   * /api/payment/invoices/generate/{paymentTransactionId}
+   *
+   * Backend flow:
+   *
+   * PaymentInvoiceController
+   *      ↓
+   * PaymentInvoiceService.generate(...)
+   *      ↓
+   * GST calculation
+   *      ↓
+   * PaymentInvoice saved
+   *      ↓
+   * PdfInvoiceGeneratorImpl.generate(invoice)
+   *      ↓
+   * PDF stored
+   *
+   *
+   * Use this when a successful transaction exists
+   * but an invoice has not yet been generated.
+   */
+  generateInvoice: async (paymentTransactionId) => {
+    if (!paymentTransactionId) {
+      throw new Error("Payment transaction ID is required.");
+    }
 
-        const link =
-            document
-                .createElement(
-                    "a"
-                );
+    const response = await api.post(
+      `/api/payment/invoices/generate/${paymentTransactionId}`,
+    );
 
+    return response.data;
+  },
 
-        link.href =
-            url;
+  // ==========================================================
+  // GET INVOICE BY GLOBAL ID
+  // ==========================================================
 
+  /**
+   * Backend:
+   *
+   * GET
+   * /api/payment/invoices/{invoiceId}
+   */
+  getById: async (invoiceId) => {
+    if (!invoiceId) {
+      throw new Error("Invoice ID is required.");
+    }
 
-        link.download =
-            invoiceNumber
-                ? `${invoiceNumber}.pdf`
-                : `invoice-${invoiceId}.pdf`;
+    const response = await api.get(`/api/payment/invoices/${invoiceId}`);
 
+    return response.data;
+  },
 
-        document.body
-            .appendChild(
-                link
-            );
+  // ==========================================================
+  // GET INVOICE BY NUMBER
+  // ==========================================================
 
+  /**
+   * Backend:
+   *
+   * GET
+   * /api/payment/invoices/number/{invoiceNumber}
+   */
+  getByInvoiceNumber: async (invoiceNumber) => {
+    if (!invoiceNumber) {
+      throw new Error("Invoice number is required.");
+    }
 
-        link.click();
+    const response = await api.get(
+      `/api/payment/invoices/number/${encodeURIComponent(invoiceNumber)}`,
+    );
 
+    return response.data;
+  },
 
-        link.remove();
+  // ==========================================================
+  // GET CUSTOMER INVOICES
+  // ==========================================================
 
+  /**
+   * Useful for student/member invoice history.
+   *
+   * Backend:
+   *
+   * GET
+   * /api/payment/invoices/customer/{customerId}
+   */
+  getCustomerInvoices: async (customerId) => {
+    if (!customerId) {
+      throw new Error("Customer ID is required.");
+    }
 
-        window.URL
-            .revokeObjectURL(
-                url
-            );
-    },
+    const response = await api.get(
+      `/api/payment/invoices/customer/${customerId}`,
+    );
+
+    return response.data;
+  },
+
+  // ==========================================================
+  // GET LIBRARY INVOICES - GENERAL CONTROLLER
+  // ==========================================================
+
+  /**
+   * General invoice endpoint.
+   *
+   * Backend:
+   *
+   * GET
+   * /api/payment/invoices/library/{libraryId}
+   *
+   * Prefer getLibraryInvoices() for owner-facing pages because
+   * that route uses @TenantRequired.
+   */
+  getLibraryInvoicesGlobal: async (libraryId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
+
+    const response = await api.get(
+      `/api/payment/invoices/library/${libraryId}`,
+    );
+
+    return response.data;
+  },
+
+  getMyInvoices: async () => {
+    const response = await api.get("/api/payment/invoices/my");
+
+    return response.data;
+  },
+
+  // ==========================================================
+  // DOWNLOAD GLOBAL INVOICE
+  // ==========================================================
+
+  /**
+   * Backend:
+   *
+   * GET
+   * /api/payment/invoices/{invoiceId}/download
+   *
+   * Normally owner-facing pages should use downloadInvoice()
+   * instead because it keeps the library/tenant boundary.
+   */
+  downloadGlobalInvoice: async (invoiceId, invoiceNumber) => {
+    if (!invoiceId) {
+      throw new Error("Invoice ID is required.");
+    }
+
+    const response = await api.get(
+      `/api/payment/invoices/${invoiceId}/download`,
+      {
+        responseType: "blob",
+      },
+    );
+
+    const filename = invoiceNumber
+      ? `${invoiceNumber}.pdf`
+      : `invoice-${invoiceId}.pdf`;
+
+    downloadBlob(response.data, filename);
+
+    return true;
+  },
 };
 
 export default invoiceApi;

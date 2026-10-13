@@ -56,8 +56,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import amenityApi from "../../api/amenityApi";
 import libraryRegistrationApi from "../../api/libraryRegistrationApi";
+import libraryApi from "../../api/libraryApi";
 import platformPlanApi from "../../api/platformPlanApi";
+import platformSubscriptionApi from "../../api/platformSubscriptionApi";
+import platformPaymentApi from "../../api/platformPaymentApi";
 import ownerDashboardApi from "../../api/ownerDashboardApi";
+import seatApi from "../../api/seatApi";
 import slotApi from "../../api/slotApi";
 import storage from "../../utility/browserStorage";
 
@@ -100,6 +104,107 @@ const STEP_INDEX = {
   REVIEW: 5,
 };
 
+const ONBOARDING_DRAFT_KEY = "libraryOnboardingDraft";
+
+const loadOnboardingDraft = () => {
+  try {
+    const raw = localStorage.getItem(ONBOARDING_DRAFT_KEY);
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch (error) {
+    console.warn("Unable to restore local onboarding draft:", error);
+    return null;
+  }
+};
+
+const saveOnboardingDraft = ({
+  formData,
+  createdSlots,
+  libraryId,
+  currentStep,
+  paymentResult,
+  paymentState,
+}) => {
+  try {
+    localStorage.setItem(
+      ONBOARDING_DRAFT_KEY,
+      JSON.stringify({
+        formData: {
+          ...formData,
+          password: "",
+          termsAccepted: false,
+        },
+        createdSlots,
+        libraryId: libraryId ?? null,
+        currentStep,
+
+        /*
+         * Persist only non-secret checkout metadata required to resume
+         * a pending Razorpay order after refresh / Save Draft & Exit.
+         *
+         * keyId is a public Razorpay key, not the key secret.
+         */
+        paymentResult: paymentResult
+          ? {
+              subscriptionId: paymentResult.subscriptionId ?? null,
+              platformPlanId: paymentResult.platformPlanId ?? null,
+              platformPlanName: paymentResult.platformPlanName ?? null,
+              paymentTransactionId:
+                paymentResult.paymentTransactionId ?? null,
+              gatewayOrderId: paymentResult.gatewayOrderId ?? null,
+              keyId: paymentResult.keyId ?? null,
+              amount: paymentResult.amount ?? null,
+              planAmount: paymentResult.planAmount ?? null,
+              gstAmount: paymentResult.gstAmount ?? null,
+              totalAmount: paymentResult.totalAmount ?? null,
+              currency: paymentResult.currency ?? null,
+              status: paymentResult.status ?? null,
+            }
+          : null,
+
+        paymentState: paymentState ?? "IDLE",
+
+        savedAt: new Date().toISOString(),
+      }),
+    );
+  } catch (error) {
+    console.warn("Unable to save local onboarding draft:", error);
+  }
+};
+
+const clearOnboardingDraft = () => {
+  localStorage.removeItem(ONBOARDING_DRAFT_KEY);
+};
+
+
+const normalizeCollection = (response, preferredKeys = []) => {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  for (const key of preferredKeys) {
+    if (Array.isArray(response?.[key])) {
+      return response[key];
+    }
+  }
+
+  if (Array.isArray(response?.content)) {
+    return response.content;
+  }
+
+  if (Array.isArray(response?.data)) {
+    return response.data;
+  }
+
+  return [];
+};
+
 // ============================================================
 // INITIAL STATE
 // ============================================================
@@ -120,6 +225,7 @@ const createInitialFormData = (selectedPlanId = "") => ({
   pincode: "",
   openingTime: "",
   closingTime: "",
+  open24Hours: false,
 
   // Amenities
   amenityIds: [],
@@ -360,6 +466,39 @@ const getSeatLayoutFromMatrix = (matrixResponse) => {
 };
 
 // ============================================================
+// RAZORPAY CHECKOUT SCRIPT
+// ============================================================
+
+const loadRazorpayScript = () =>
+  new Promise((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const existingScript = document.querySelector(
+      'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
+    );
+
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(true), {
+        once: true,
+      });
+      existingScript.addEventListener("error", () => resolve(false), {
+        once: true,
+      });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+
+// ============================================================
 // MAIN COMPONENT
 // ============================================================
 
@@ -377,11 +516,56 @@ const RegisterLibrary = () => {
 
   const [initializingOnboarding, setInitializingOnboarding] = useState(true);
 
-  const [formData, setFormData] = useState(() =>
-    createInitialFormData(incomingPlanId),
-  );
+  const [formData, setFormData] = useState(() => {
+    const base = createInitialFormData(incomingPlanId);
+    const draft = loadOnboardingDraft();
+
+    const restored = draft?.formData
+      ? {
+          ...base,
+          ...draft.formData,
+          password: "",
+          termsAccepted: false,
+        }
+      : base;
+
+    if (
+      incomingPlanId !== "" &&
+      incomingPlanId !== null &&
+      incomingPlanId !== undefined
+    ) {
+      restored.platformPlanId = Number(incomingPlanId);
+    }
+
+    return restored;
+  });
 
   const [error, setError] = useState("");
+
+  const [successMessage, setSuccessMessage] = useState("");
+
+  /*
+   * When the user edits a completed section from Review,
+   * remember that Review is the return destination.
+   *
+   * null = normal onboarding navigation
+   * 1/2/3 = editing that step from Review
+   */
+  const [reviewEditStep, setReviewEditStep] = useState(null);
+
+  /*
+   * Snapshot of UI values before entering an Edit flow from Review.
+   * Cancel Edit must truly restore the previous values instead of only
+   * navigating back to Review with unsaved changes still visible.
+   */
+  const [reviewEditSnapshot, setReviewEditSnapshot] = useState(null);
+
+  /*
+   * Persisted slots are not deleted immediately from the backend.
+   * Their IDs are queued and deleted only when the user saves the
+   * Seats & Slots section. This makes Cancel Edit safe.
+   */
+  const [removedSlotIds, setRemovedSlotIds] = useState([]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -419,11 +603,59 @@ const RegisterLibrary = () => {
 
   const [authenticatedOwner, setAuthenticatedOwner] = useState(null);
 
-  const [paymentResult, setPaymentResult] = useState(null);
+  const [paymentResult, setPaymentResult] = useState(() => {
+    const draft = loadOnboardingDraft();
+
+    return draft?.paymentResult && typeof draft.paymentResult === "object"
+      ? draft.paymentResult
+      : null;
+  });
+
+  const [paymentState, setPaymentState] = useState(() => {
+    const draft = loadOnboardingDraft();
+
+    return draft?.paymentState || "IDLE";
+  });
+
+  const [paymentMessage, setPaymentMessage] = useState("");
+
+  const [platformSubscriptionLoading, setPlatformSubscriptionLoading] =
+    useState(false);
+
+  const [platformSubscriptionError, setPlatformSubscriptionError] =
+    useState("");
+
+  /*
+   * If onboarding resumes after payment, payment metadata is sufficient
+   * to restore the selected plan even when the normal form draft was
+   * created by an older version of the registration screen.
+   */
+  useEffect(() => {
+    const paymentPlanId = paymentResult?.platformPlanId;
+
+    if (!paymentPlanId) {
+      return;
+    }
+
+    setFormData((previous) => {
+      if (Number(previous.platformPlanId) === Number(paymentPlanId)) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        platformPlanId: Number(paymentPlanId),
+      };
+    });
+  }, [paymentResult?.platformPlanId]);
 
   const [floorId, setFloorId] = useState(null);
 
-  const [createdSlots, setCreatedSlots] = useState([]);
+  const [createdSlots, setCreatedSlots] = useState(() => {
+    const draft = loadOnboardingDraft();
+
+    return Array.isArray(draft?.createdSlots) ? draft.createdSlots : [];
+  });
 
   const [persistedSeatCount, setPersistedSeatCount] = useState(0);
 
@@ -442,7 +674,13 @@ const RegisterLibrary = () => {
   // ==========================================================
 
   useEffect(() => {
-    if (!libraryId || currentStep !== 3) {
+    /*
+     * Seats/slots are also needed by the Plan and Review screens.
+     * Previously this restore only ran on Step 4, so a direct reload on
+     * Review displayed "rows × seats" and "No slots configured" even
+     * though the backend already contained the saved configuration.
+     */
+    if (!libraryId || currentStep < STEP_INDEX.SEATS_AND_SLOTS) {
       return undefined;
     }
 
@@ -466,47 +704,65 @@ const RegisterLibrary = () => {
           return;
         }
 
-        const floors = Array.isArray(floorsResponse)
-          ? floorsResponse
-          : Array.isArray(floorsResponse?.content)
-            ? floorsResponse.content
-            : [];
+        const floors = normalizeCollection(
+          floorsResponse,
+          ["floors"],
+        );
 
-        const slots = Array.isArray(slotsResponse)
-          ? slotsResponse
-          : Array.isArray(slotsResponse?.content)
-            ? slotsResponse.content
-            : [];
+        const slots = normalizeCollection(
+          slotsResponse,
+          ["slots", "bookingSlots"],
+        );
 
         // ========================================================
         // 2. RESTORE SLOTS
         // ========================================================
 
-        setCreatedSlots(
-          slots.map((slot) => {
-            const persistedSlotId = slot?.id ?? slot?.slotId;
+        if (slots.length > 0) {
+          setCreatedSlots(
+            slots.map((slot) => {
+              const persistedSlotId = slot?.id ?? slot?.slotId;
 
-            return {
-              id: persistedSlotId,
+              return {
+                id: persistedSlotId,
 
-              tempId: `persisted-${persistedSlotId}`,
+                tempId: `persisted-${persistedSlotId}`,
 
-              name: slot?.name ?? "",
+                name: slot?.name ?? "",
 
-              type: slot?.type ?? "FIXED",
+                type: slot?.type ?? "FIXED",
 
-              startTime: slot?.startTime ?? "",
+                startTime: slot?.startTime ?? "",
 
-              endTime: slot?.endTime ?? "",
+                endTime: slot?.endTime ?? "",
 
-              breakMinutes: Number(slot?.breakMinutes) || 0,
+                breakMinutes: Number(slot?.breakMinutes) || 0,
 
-              active: slot?.active !== false,
+                active: slot?.active !== false,
 
-              persisted: true,
-            };
-          }),
-        );
+                persisted: true,
+              };
+            }),
+          );
+        } else {
+          /*
+           * Do not destroy a locally restored slot immediately when an
+           * optional restore endpoint returns an empty wrapper/temporary
+           * response. The backend is still authoritative at save time.
+           */
+          const draft = loadOnboardingDraft();
+
+          if (
+            Array.isArray(draft?.createdSlots) &&
+            draft.createdSlots.length > 0
+          ) {
+            setCreatedSlots((previous) =>
+              previous.length > 0
+                ? previous
+                : draft.createdSlots.map((slot) => ({ ...slot })),
+            );
+          }
+        }
 
         // ========================================================
         // 3. NO EXISTING FLOOR
@@ -787,6 +1043,35 @@ const RegisterLibrary = () => {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // ==========================================================
+  // LOCAL DRAFT AUTO-SAVE
+  // ==========================================================
+  //
+  // Backend data remains the source of truth for completed steps.
+  // This local draft only protects unsaved UI changes when the owner
+  // uses Save Draft & Exit, refreshes, or accidentally closes the tab.
+  //
+  // Password and Terms acceptance are intentionally never persisted.
+  // ==========================================================
+
+  useEffect(() => {
+    saveOnboardingDraft({
+      formData,
+      createdSlots,
+      libraryId,
+      currentStep,
+      paymentResult,
+      paymentState,
+    });
+  }, [
+    formData,
+    createdSlots,
+    libraryId,
+    currentStep,
+    paymentResult,
+    paymentState,
+  ]);
+
+  // ==========================================================
   // LOAD AMENITIES
   // ==========================================================
 
@@ -966,10 +1251,21 @@ const RegisterLibrary = () => {
         // Load owner's libraries + this library's amenities
         // ------------------------------------------------------
 
-        const [librariesResponse, amenitiesResponse] = await Promise.all([
+        const [
+          librariesResponse,
+          amenitiesResponse,
+          libraryDetailsResponse,
+        ] = await Promise.all([
           libraryRegistrationApi.getMyLibraries(),
 
           libraryRegistrationApi.getLibraryAmenities(libraryId),
+
+          /*
+           * /my is primarily an owner-library listing. Use the detailed
+           * library response as the source of truth for editable fields
+           * such as 24-hour timing.
+           */
+          libraryApi.getLibraryDetails(libraryId),
         ]);
 
         if (!active) {
@@ -986,11 +1282,19 @@ const RegisterLibrary = () => {
             ? librariesResponse.content
             : [];
 
-        const persistedLibrary =
+        const listedLibrary =
           ownerLibraries.find(
             (library) =>
               Number(library?.id ?? library?.libraryId) === Number(libraryId),
           ) ?? null;
+
+        const persistedLibrary =
+          libraryDetailsResponse && typeof libraryDetailsResponse === "object"
+            ? {
+                ...(listedLibrary || {}),
+                ...libraryDetailsResponse,
+              }
+            : listedLibrary;
 
         // ------------------------------------------------------
         // Normalize amenities response
@@ -1050,7 +1354,10 @@ const RegisterLibrary = () => {
           closingTime: persistedLibrary?.closingTime ?? previous.closingTime,
 
           open24Hours:
-            persistedLibrary?.open24Hours ?? previous.open24Hours ?? false,
+            persistedLibrary?.open24Hours !== undefined &&
+            persistedLibrary?.open24Hours !== null
+              ? Boolean(persistedLibrary.open24Hours)
+              : Boolean(previous.open24Hours),
 
           // AMENITIES
 
@@ -1127,6 +1434,256 @@ const RegisterLibrary = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
+  // ==========================================================
+  // RESTORE PLATFORM SUBSCRIPTION / PAYMENT FROM BACKEND
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      !libraryId ||
+      currentStep < STEP_INDEX.PLATFORM_PLAN
+    ) {
+      return undefined;
+    }
+
+    let active = true;
+
+    const restorePlatformSubscription = async () => {
+      try {
+        setPlatformSubscriptionLoading(true);
+        setPlatformSubscriptionError("");
+
+        let subscriptions = [];
+
+        // ------------------------------------------------------
+        // 1. PRIMARY: subscription history
+        // ------------------------------------------------------
+
+        try {
+          const historyResponse =
+            await platformSubscriptionApi.getLibrarySubscriptions(
+              libraryId,
+            );
+
+          subscriptions = normalizeCollection(
+            historyResponse,
+            ["subscriptions", "items"],
+          );
+        } catch (historyError) {
+          console.warn(
+            "Unable to load platform subscription history:",
+            historyError,
+          );
+        }
+
+        if (!active) {
+          return;
+        }
+
+        // ------------------------------------------------------
+        // 2. FALLBACK: active subscription endpoint
+        // ------------------------------------------------------
+
+        if (subscriptions.length === 0) {
+          try {
+            const activeSubscription =
+              await platformSubscriptionApi.getActiveSubscription(
+                libraryId,
+              );
+
+            if (activeSubscription) {
+              subscriptions = [activeSubscription];
+            }
+          } catch (activeError) {
+            /*
+             * 404 here simply means there is no ACTIVE subscription.
+             * A PENDING_PAYMENT subscription should normally have been
+             * returned by the history endpoint above.
+             */
+            console.warn(
+              "No active platform subscription available:",
+              activeError,
+            );
+          }
+        }
+
+        if (!active) {
+          return;
+        }
+
+        if (subscriptions.length === 0) {
+          setPlatformSubscriptionError(
+            "No saved LibraryHub plan/payment was returned by the backend for this library.",
+          );
+          return;
+        }
+
+        const subscription =
+          subscriptions.find(
+            (item) => item?.status === "ACTIVE",
+          ) ??
+          subscriptions.find(
+            (item) => item?.status === "PENDING_PAYMENT",
+          ) ??
+          subscriptions[0];
+
+        if (!subscription) {
+          setPlatformSubscriptionError(
+            "Unable to resolve the saved LibraryHub subscription.",
+          );
+          return;
+        }
+
+        const planId = Number(subscription?.platformPlanId);
+
+        const matchedPlan = Number.isFinite(planId)
+          ? platformPlans.find(
+              (plan) =>
+                Number(plan?.id ?? plan?.planId) === planId,
+            )
+          : null;
+
+        const baseAmount = Number(
+          subscription?.planAmount ??
+            matchedPlan?.price ??
+            matchedPlan?.amount ??
+            0,
+        );
+
+        const totalAmount = Number(
+          subscription?.totalAmount ??
+            subscription?.amount ??
+            0,
+        );
+
+        const calculatedGst =
+          baseAmount > 0 && totalAmount > baseAmount
+            ? Number((totalAmount - baseAmount).toFixed(2))
+            : 0;
+
+        const restoredPayment = {
+          ...(paymentResult || {}),
+
+          subscriptionId:
+            subscription?.subscriptionId ??
+            subscription?.id ??
+            paymentResult?.subscriptionId ??
+            null,
+
+          platformPlanId:
+            subscription?.platformPlanId ??
+            matchedPlan?.id ??
+            matchedPlan?.planId ??
+            paymentResult?.platformPlanId ??
+            null,
+
+          platformPlanName:
+            subscription?.platformPlanName ??
+            matchedPlan?.name ??
+            paymentResult?.platformPlanName ??
+            null,
+
+          paymentTransactionId:
+            subscription?.paymentTransactionId ??
+            paymentResult?.paymentTransactionId ??
+            null,
+
+          gatewayOrderId:
+            subscription?.gatewayOrderId ??
+            paymentResult?.gatewayOrderId ??
+            null,
+
+          paymentUrl:
+            subscription?.paymentUrl ??
+            paymentResult?.paymentUrl ??
+            null,
+
+          planAmount:
+            subscription?.planAmount ??
+            (baseAmount > 0 ? baseAmount : null),
+
+          gstAmount:
+            subscription?.gstAmount ??
+            (calculatedGst > 0 ? calculatedGst : null),
+
+          totalAmount:
+            subscription?.totalAmount ??
+            (totalAmount > 0 ? totalAmount : null),
+
+          amount:
+            subscription?.amount ??
+            (totalAmount > 0 ? totalAmount : null) ??
+            paymentResult?.amount ??
+            null,
+
+          currency:
+            subscription?.currency ??
+            matchedPlan?.currency ??
+            paymentResult?.currency ??
+            "INR",
+
+          status:
+            subscription?.status ??
+            paymentResult?.status ??
+            null,
+        };
+
+        setPaymentResult(restoredPayment);
+
+        const restoredPlanId = Number(
+          restoredPayment.platformPlanId,
+        );
+
+        if (Number.isFinite(restoredPlanId)) {
+          setFormData((previous) => ({
+            ...previous,
+            platformPlanId: restoredPlanId,
+          }));
+        }
+
+        if (subscription?.status === "ACTIVE") {
+          setPaymentState("SUCCESS");
+        } else if (subscription?.status === "PENDING_PAYMENT") {
+          setPaymentState((previous) =>
+            previous === "FAILED" || previous === "CANCELLED"
+              ? previous
+              : "PENDING",
+          );
+        }
+      } catch (restoreError) {
+        console.error(
+          "Failed to restore platform subscription:",
+          restoreError,
+        );
+
+        if (active) {
+          setPlatformSubscriptionError(
+            getErrorMessage(
+              restoreError,
+              "Unable to restore the LibraryHub plan/payment.",
+            ),
+          );
+        }
+      } finally {
+        if (active) {
+          setPlatformSubscriptionLoading(false);
+        }
+      }
+    };
+
+    restorePlatformSubscription();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    libraryId,
+    currentStep,
+    platformPlans,
+  ]);
+
+
   const saveOwnerStep = async () => {
     const payload = {
       fullName: formData.ownerName.trim(),
@@ -1200,6 +1757,32 @@ const RegisterLibrary = () => {
       closingTime: formData.open24Hours ? null : formData.closingTime,
     };
 
+    /*
+     * CREATE only when this owner does not yet have a draft library.
+     *
+     * Once libraryId exists, every later visit to Library Details
+     * (Back navigation, Review -> Edit, resumed onboarding) must use
+     * the real update endpoint instead of calling POST again.
+     */
+    if (libraryId) {
+      const response = await libraryApi.updateLibrary(
+        libraryId,
+        payload,
+      );
+
+      const updatedLibraryId =
+        response?.id ?? response?.libraryId ?? libraryId;
+
+      setLibraryId(Number(updatedLibraryId));
+
+      localStorage.setItem(
+        "libraryOnboardingLibraryId",
+        String(updatedLibraryId),
+      );
+
+      return response;
+    }
+
     const response = await libraryRegistrationApi.saveLibraryDetails(payload);
 
     const createdLibraryId = response?.id ?? response?.libraryId;
@@ -1248,9 +1831,40 @@ const RegisterLibrary = () => {
   const selectedPlan = useMemo(
     () =>
       platformPlans.find(
-        (plan) => Number(plan.id) === Number(formData.platformPlanId),
+        (plan) =>
+          Number(plan?.id ?? plan?.planId) ===
+          Number(formData.platformPlanId),
       ) || null,
     [platformPlans, formData.platformPlanId],
+  );
+
+  const reviewPlanName =
+    selectedPlan?.name ??
+    paymentResult?.platformPlanName ??
+    "Not available";
+
+  const reviewPlanBaseAmount = Number(
+    paymentResult?.planAmount ??
+      selectedPlan?.price ??
+      selectedPlan?.amount ??
+      0,
+  );
+
+  const reviewGstAmount = Number(paymentResult?.gstAmount ?? 0);
+
+  const reviewTotalAmount = Number(
+    paymentResult?.totalAmount ??
+      paymentResult?.amount ??
+      reviewPlanBaseAmount,
+  );
+
+  const reviewCurrency =
+    paymentResult?.currency ?? selectedPlan?.currency ?? "INR";
+
+  const hasPaymentRecord = Boolean(
+    paymentResult?.paymentTransactionId ||
+      paymentResult?.gatewayOrderId ||
+      paymentState === "SUCCESS",
   );
 
   const selectedAmenities = useMemo(
@@ -1547,28 +2161,30 @@ const RegisterLibrary = () => {
     ]);
   };
 
-  const handleRemoveSlot = async (slot) => {
+  const handleRemoveSlot = (slot) => {
     setError("");
+    setSuccessMessage("");
 
-    try {
-      /*
-       * Draft slots only exist in React state.
-       * Persisted slots must also be deleted from the backend.
-       */
-      if (slot?.id && libraryId) {
-        await slotApi.deleteSlot(libraryId, slot.id);
-      }
+    /*
+     * Do not delete a persisted slot immediately.
+     *
+     * Review -> Edit -> Cancel must be reversible.
+     * Queue the backend ID and perform the actual deletion only when
+     * Seats & Slots is saved.
+     */
+    if (slot?.id) {
+      setRemovedSlotIds((previous) => {
+        const id = Number(slot.id);
 
-      setCreatedSlots((previous) =>
-        previous.filter((item) => item.tempId !== slot?.tempId),
-      );
-    } catch (removeError) {
-      console.error("Unable to remove booking slot:", removeError);
-
-      setError(
-        getErrorMessage(removeError, "Unable to remove the booking slot."),
-      );
+        return previous.includes(id)
+          ? previous
+          : [...previous, id];
+      });
     }
+
+    setCreatedSlots((previous) =>
+      previous.filter((item) => item.tempId !== slot?.tempId),
+    );
   };
 
   const saveSeatsStep = async () => {
@@ -1576,7 +2192,7 @@ const RegisterLibrary = () => {
     const requestedFloorNumber = Number(formData.floorNumber);
 
     // ==========================================================
-    // 1. LOAD FLOORS AND REUSE AN EXISTING FLOOR
+    // 1. LOAD / REUSE FLOOR
     // ==========================================================
 
     const floorsResponse = await libraryRegistrationApi.getFloors(id);
@@ -1593,9 +2209,6 @@ const RegisterLibrary = () => {
 
     let currentFloorId = existingFloor?.id ?? existingFloor?.floorId ?? null;
 
-    // Only reuse the component floorId when it still belongs to the
-    // floor number currently being configured. This prevents a stale
-    // floor ID from being used after the restored floor changes.
     if (!currentFloorId && floorId) {
       const floorForCurrentId = existingFloors.find(
         (floor) => Number(floor?.id ?? floor?.floorId) === Number(floorId),
@@ -1608,10 +2221,6 @@ const RegisterLibrary = () => {
         currentFloorId = Number(floorId);
       }
     }
-
-    // ==========================================================
-    // 2. CREATE FLOOR ONLY IF IT DOES NOT ALREADY EXIST
-    // ==========================================================
 
     if (!currentFloorId) {
       const createdFloor = await libraryRegistrationApi.createFloor(id, {
@@ -1627,13 +2236,14 @@ const RegisterLibrary = () => {
     }
 
     currentFloorId = Number(currentFloorId);
+
     setFloorId(currentFloorId);
 
     // ==========================================================
-    // 3. CHECK WHETHER THIS FLOOR ALREADY HAS A SEAT LAYOUT
+    // 2. LOAD CURRENT PERSISTED SEAT LAYOUT
     // ==========================================================
 
-    let finalLayout = null;
+    let existingSeatList = [];
 
     try {
       const existingMatrix = await libraryRegistrationApi.getSeatMatrix(
@@ -1641,33 +2251,130 @@ const RegisterLibrary = () => {
         currentFloorId,
       );
 
-      finalLayout = getSeatLayoutFromMatrix(existingMatrix);
+      existingSeatList = extractSeatList(existingMatrix).map((seat) => ({
+        ...seat,
+        id: seat?.id ?? seat?.seatId,
+        rowLabel: String(seat?.rowLabel ?? "").trim().toUpperCase(),
+        columnNumber: Number(seat?.columnNumber),
+      }));
     } catch (matrixError) {
-      console.warn("Unable to check existing seat layout:", matrixError);
+      console.warn("Unable to load current seat layout before save:", matrixError);
     }
 
     // ==========================================================
-    // 4. CREATE INITIAL LAYOUT ONLY WHEN FLOOR HAS NO SEATS
+    // 3. BUILD DESIRED LAYOUT
     // ==========================================================
 
-    if (!finalLayout?.totalSeats) {
-      const seats = generateSeatLayout(formData.rows, formData.seatsPerRow);
+    const generatedSeats = generateSeatLayout(
+      formData.rows,
+      formData.seatsPerRow,
+    );
 
-      if (seats.length === 0) {
-        throw new Error("At least one seat must be configured.");
-      }
+    if (generatedSeats.length === 0) {
+      throw new Error("At least one seat must be configured.");
+    }
 
-      await libraryRegistrationApi.saveSeatLayout(id, currentFloorId, {
-        seats,
-      });
+    /*
+     * Preserve the backend ID, physical status and seat type for
+     * seats that still occupy the same row/column.
+     *
+     * This turns "Save & Return to Review" into a true update
+     * instead of creating duplicate seats.
+     */
+    const existingByPosition = new Map(
+      existingSeatList.map((seat) => [
+        `${seat.rowLabel}:${Number(seat.columnNumber)}`,
+        seat,
+      ]),
+    );
 
-      const savedMatrix = await libraryRegistrationApi.getSeatMatrix(
-        id,
-        currentFloorId,
+    const seatsToSave = generatedSeats.map((seat) => {
+      const rowLabel = String(seat?.rowLabel ?? "").trim().toUpperCase();
+      const columnNumber = Number(seat?.columnNumber);
+
+      const existingSeat = existingByPosition.get(
+        `${rowLabel}:${columnNumber}`,
       );
 
-      finalLayout = getSeatLayoutFromMatrix(savedMatrix);
+      return {
+        ...seat,
+
+        id: existingSeat?.id ?? null,
+
+        seatNumber:
+          existingSeat?.seatNumber ??
+          seat?.seatNumber ??
+          `${rowLabel}${columnNumber}`,
+
+        rowLabel,
+
+        columnNumber,
+
+        seatType:
+          existingSeat?.seatType ??
+          seat?.seatType ??
+          "NORMAL",
+
+        status:
+          existingSeat?.status ??
+          seat?.status ??
+          "AVAILABLE",
+      };
+    });
+
+    // ==========================================================
+    // 4. EXPLICITLY REMOVE SEATS NO LONGER IN THE LAYOUT
+    // ==========================================================
+    //
+    // Backend saveLayout intentionally does not auto-delete seats,
+    // because persisted seats may contain booking/subscription
+    // history. During onboarding we therefore remove only the seats
+    // the owner explicitly removed from this draft layout.
+    //
+    // If the backend refuses deletion because history/assignment
+    // exists, we stop and show that backend message instead of
+    // silently leaving the UI and database out of sync.
+    // ==========================================================
+
+    const desiredPositions = new Set(
+      seatsToSave.map(
+        (seat) =>
+          `${String(seat.rowLabel).trim().toUpperCase()}:${Number(
+            seat.columnNumber,
+          )}`,
+      ),
+    );
+
+    const seatsToDelete = existingSeatList.filter((seat) => {
+      if (!seat?.id) {
+        return false;
+      }
+
+      const key = `${String(seat.rowLabel)
+        .trim()
+        .toUpperCase()}:${Number(seat.columnNumber)}`;
+
+      return !desiredPositions.has(key);
+    });
+
+    for (const seat of seatsToDelete) {
+      await seatApi.deleteSeat(id, seat.id);
     }
+
+    // ==========================================================
+    // 5. SAVE / UPDATE COMPLETE FLOOR LAYOUT
+    // ==========================================================
+
+    await libraryRegistrationApi.saveSeatLayout(id, currentFloorId, {
+      seats: seatsToSave,
+    });
+
+    const savedMatrix = await libraryRegistrationApi.getSeatMatrix(
+      id,
+      currentFloorId,
+    );
+
+    const finalLayout = getSeatLayoutFromMatrix(savedMatrix);
 
     if (!finalLayout?.totalSeats) {
       throw new Error("The seat layout was not returned after saving.");
@@ -1675,11 +2382,14 @@ const RegisterLibrary = () => {
 
     setPersistedSeatLayout(finalLayout);
 
-    // Count every persisted seat in the library so Step 5 and Review use
-    // backend data rather than rows × seatsPerRow from the current floor.
+    // ==========================================================
+    // 6. REFRESH TOTAL LIBRARY SEAT COUNT
+    // ==========================================================
+
     let totalPersistedSeats = 0;
 
-    const refreshedFloorsResponse = await libraryRegistrationApi.getFloors(id);
+    const refreshedFloorsResponse =
+      await libraryRegistrationApi.getFloors(id);
 
     const refreshedFloors = Array.isArray(refreshedFloorsResponse)
       ? refreshedFloorsResponse
@@ -1712,7 +2422,7 @@ const RegisterLibrary = () => {
     setPersistedSeatCount(totalPersistedSeats || finalLayout.totalSeats);
 
     // ==========================================================
-    // 5. REQUIRE AT LEAST ONE SLOT IN THE UI
+    // 7. REQUIRE AT LEAST ONE SLOT
     // ==========================================================
 
     if (createdSlots.length === 0) {
@@ -1720,38 +2430,86 @@ const RegisterLibrary = () => {
     }
 
     // ==========================================================
-    // 6. LOAD EXISTING SLOTS
+    // 8. APPLY CONFIRMED SLOT DELETIONS
+    // ==========================================================
+
+    for (const removedSlotId of removedSlotIds) {
+      await slotApi.deleteSlot(id, removedSlotId);
+    }
+
+    // Deletions are now persisted.
+    setRemovedSlotIds([]);
+
+    // ==========================================================
+    // 9. LOAD CURRENT SLOTS
     // ==========================================================
 
     const slotsResponse = await slotApi.getSlots(id);
 
     const persistedSlots = Array.isArray(slotsResponse)
       ? slotsResponse
-      : (slotsResponse?.content ?? []);
+      : Array.isArray(slotsResponse?.content)
+        ? slotsResponse.content
+        : [];
 
     const finalSlots = [];
 
     // ==========================================================
-    // 7. CREATE ONLY SLOTS THAT DO NOT ALREADY EXIST
+    // 10. SAVE SLOT CHANGES
+    // ==========================================================
+    //
+    // Persisted slots keep their backend identity. New slots are
+    // created. If updateSlot exists in the current API wrapper, use
+    // it; otherwise unchanged persisted slots are simply reused.
     // ==========================================================
 
     for (const slot of createdSlots) {
-      const existingSlot = persistedSlots.find(
-        (persisted) =>
-          persisted?.name?.trim().toLowerCase() ===
-          slot?.name?.trim().toLowerCase(),
-      );
+      if (slot?.id) {
+        const persisted = persistedSlots.find(
+          (item) => Number(item?.id ?? item?.slotId) === Number(slot.id),
+        );
 
-      if (existingSlot) {
-        const existingSlotId = existingSlot?.id ?? existingSlot?.slotId;
+        const payload = {
+          name: slot.name.trim(),
+          type: slot.type,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          breakMinutes: Number(slot.breakMinutes) || 0,
+          active: slot.active !== false,
+        };
 
-        finalSlots.push({
-          ...slot,
-          id: existingSlotId,
-          tempId: slot?.tempId ?? `persisted-${existingSlotId}`,
-          active: existingSlot?.active !== false,
-          persisted: true,
-        });
+        if (typeof slotApi.updateSlot === "function") {
+          const updatedSlot = await slotApi.updateSlot(
+            id,
+            slot.id,
+            payload,
+          );
+
+          const updatedSlotId =
+            updatedSlot?.id ?? updatedSlot?.slotId ?? slot.id;
+
+          finalSlots.push({
+            ...slot,
+            ...payload,
+            id: updatedSlotId,
+            tempId: slot?.tempId ?? `persisted-${updatedSlotId}`,
+            persisted: true,
+          });
+        } else {
+          /*
+           * No invented endpoint:
+           * if updateSlot is not exposed by the actual API wrapper,
+           * retain the persisted record rather than creating a duplicate.
+           */
+          finalSlots.push({
+            ...slot,
+            id: persisted?.id ?? persisted?.slotId ?? slot.id,
+            tempId:
+              slot?.tempId ??
+              `persisted-${persisted?.id ?? persisted?.slotId ?? slot.id}`,
+            persisted: true,
+          });
+        }
 
         continue;
       }
@@ -1767,6 +2525,10 @@ const RegisterLibrary = () => {
 
       const createdSlotId = createdSlot?.id ?? createdSlot?.slotId;
 
+      if (!createdSlotId) {
+        throw new Error("Booking slot ID was not returned by the server.");
+      }
+
       finalSlots.push({
         ...slot,
         id: createdSlotId,
@@ -1779,16 +2541,20 @@ const RegisterLibrary = () => {
     setCreatedSlots(finalSlots);
 
     // ==========================================================
-    // 8. VERIFY AT LEAST ONE ACTIVE SLOT EXISTS IN DATABASE
+    // 11. VERIFY ACTIVE SLOT
     // ==========================================================
 
     const slotsAfterSaveResponse = await slotApi.getSlots(id);
 
     const slotsAfterSave = Array.isArray(slotsAfterSaveResponse)
       ? slotsAfterSaveResponse
-      : (slotsAfterSaveResponse?.content ?? []);
+      : Array.isArray(slotsAfterSaveResponse?.content)
+        ? slotsAfterSaveResponse.content
+        : [];
 
-    const hasActiveSlot = slotsAfterSave.some((slot) => slot?.active !== false);
+    const hasActiveSlot = slotsAfterSave.some(
+      (slot) => slot?.active !== false,
+    );
 
     if (!hasActiveSlot) {
       throw new Error(
@@ -1797,7 +2563,7 @@ const RegisterLibrary = () => {
     }
 
     // ==========================================================
-    // 9. COMPLETE STEP 4
+    // 12. COMPLETE / CONFIRM SEAT SETUP
     // ==========================================================
 
     await libraryRegistrationApi.completeSeatSetup(id);
@@ -1816,9 +2582,314 @@ const RegisterLibrary = () => {
       false,
     );
 
+    if (!response) {
+      throw new Error("Platform subscription response was not returned.");
+    }
+
+    if (!response.paymentTransactionId) {
+      throw new Error("Payment transaction ID was not returned.");
+    }
+
+    if (!response.gatewayOrderId) {
+      throw new Error("Razorpay order ID was not returned.");
+    }
+
     setPaymentResult(response);
 
     return response;
+  };
+
+  // ==========================================================
+  // PLATFORM PAYMENT CHECKOUT
+  // ==========================================================
+
+  const canResumePayment = (payment) => {
+    if (!payment) {
+      return false;
+    }
+
+    const samePlan =
+      payment.platformPlanId == null ||
+      Number(payment.platformPlanId) === Number(formData.platformPlanId);
+
+    return Boolean(
+      samePlan &&
+        payment.paymentTransactionId &&
+        payment.gatewayOrderId &&
+        Number(payment.totalAmount ?? payment.amount ?? 0) > 0,
+    );
+  };
+
+  const openPlatformPaymentCheckout = async (payment) => {
+    const loaded = await loadRazorpayScript();
+
+    if (!loaded || !window.Razorpay) {
+      throw new Error(
+        "Unable to load Razorpay checkout. Please check your internet connection.",
+      );
+    }
+
+    const keyId = payment?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+
+    if (!keyId) {
+      throw new Error(
+        "Razorpay key ID is not configured. Set VITE_RAZORPAY_KEY_ID.",
+      );
+    }
+
+    const transactionId = payment?.paymentTransactionId;
+    const gatewayOrderId = payment?.gatewayOrderId;
+    const amount = Number(payment?.totalAmount ?? payment?.amount ?? 0);
+    const currency = payment?.currency || selectedPlan?.currency || "INR";
+
+    if (!transactionId) {
+      throw new Error("Payment transaction ID is missing.");
+    }
+
+    if (!gatewayOrderId) {
+      throw new Error("Payment order ID is missing.");
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Invalid platform subscription amount.");
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const options = {
+        key: keyId,
+        amount: Math.round(amount * 100),
+        currency,
+        name: "LibraryHub",
+        description: `${selectedPlan?.name || "Platform"} subscription`,
+        order_id: gatewayOrderId,
+
+        prefill: {
+          name: authenticatedOwner?.fullName || formData.ownerName || "",
+          email: authenticatedOwner?.email || formData.email || "",
+          contact: formData.phone || "",
+        },
+
+        notes: {
+          libraryId: String(libraryId || ""),
+          platformPlanId: String(formData.platformPlanId || ""),
+        },
+
+        theme: {
+          color: "#2563eb",
+        },
+
+        handler: async (razorpayResponse) => {
+          try {
+            const verification = await platformPaymentApi.verifyPayment({
+              transactionId,
+              gatewayOrderId: razorpayResponse.razorpay_order_id,
+              gatewayPaymentId: razorpayResponse.razorpay_payment_id,
+              gatewaySignature: razorpayResponse.razorpay_signature,
+            });
+
+            if (verification?.status !== "SUCCESS") {
+              throw new Error(
+                verification?.message || "Payment verification failed.",
+              );
+            }
+
+            settled = true;
+            resolve(verification);
+          } catch (verificationError) {
+            settled = true;
+            reject(verificationError);
+          }
+        },
+
+        modal: {
+          ondismiss: () => {
+            if (!settled) {
+              settled = true;
+
+              const cancellationError = new Error(
+                "Payment checkout was closed before completion.",
+              );
+
+              cancellationError.code = "PAYMENT_CANCELLED";
+
+              reject(cancellationError);
+            }
+          },
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+
+      razorpay.on("payment.failed", (response) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        const paymentError = new Error(
+          response?.error?.description || "Razorpay payment failed.",
+        );
+
+        paymentError.code = "PAYMENT_FAILED";
+
+        reject(paymentError);
+      });
+
+      razorpay.open();
+    });
+  };
+
+  // ==========================================================
+  // STEP 5 — CREATE + PAY + VERIFY
+  // ==========================================================
+
+  const handlePlatformPlanPayment = async () => {
+    setPaymentMessage("");
+
+    // ==========================================================
+    // 1. BACKEND CONTEXT IS THE SOURCE OF TRUTH
+    // ==========================================================
+    //
+    // If verification already succeeded in a previous tab/request
+    // but the browser did not reach the Review navigation step,
+    // do not open another checkout. Resume directly from backend
+    // onboarding state.
+    // ==========================================================
+
+    const contextBeforePayment = await ownerDashboardApi.getContext();
+
+    if (contextBeforePayment?.onboardingStep === "REVIEW") {
+      setAuthenticatedOwner((previous) => ({
+        ...(previous || {}),
+        id: contextBeforePayment?.ownerId ?? previous?.id,
+        fullName: contextBeforePayment?.ownerName ?? previous?.fullName,
+        email: contextBeforePayment?.email ?? previous?.email,
+        role: "LIBRARY_OWNER",
+        onboardingStep: "REVIEW",
+        onboardingCompleted: Boolean(
+          contextBeforePayment?.onboardingCompleted,
+        ),
+        libraryId: contextBeforePayment?.libraryId ?? libraryId,
+      }));
+
+      setPaymentState("SUCCESS");
+      setPaymentMessage("Payment already completed. Review your setup.");
+      setCurrentStep(STEP_INDEX.REVIEW);
+      scrollToTop();
+
+      return;
+    }
+
+    // ==========================================================
+    // 2. REUSE CURRENT PENDING ORDER WHEN POSSIBLE
+    // ==========================================================
+    //
+    // Razorpay checkout dismissal does not mean the order is invalid.
+    // Reusing the same transaction/order prevents duplicate pending
+    // subscriptions and duplicate Razorpay orders.
+    // ==========================================================
+
+    let payment = canResumePayment(paymentResult)
+      ? paymentResult
+      : null;
+
+    if (!payment) {
+      payment = await savePlatformPlanStep();
+    }
+
+    setPaymentResult(payment);
+    setPaymentState("PENDING");
+
+    try {
+      await openPlatformPaymentCheckout(payment);
+
+      // ========================================================
+      // 3. VERIFY BACKEND ADVANCED TO REVIEW
+      // ========================================================
+
+      const context = await ownerDashboardApi.getContext();
+
+      if (context?.onboardingStep !== "REVIEW") {
+        throw new Error(
+          "Payment was verified, but onboarding has not moved to Review yet. Refresh once before trying another payment.",
+        );
+      }
+
+      setAuthenticatedOwner((previous) => ({
+        ...(previous || {}),
+        id: context?.ownerId ?? previous?.id,
+        fullName: context?.ownerName ?? previous?.fullName,
+        email: context?.email ?? previous?.email,
+        role: "LIBRARY_OWNER",
+        onboardingStep: context?.onboardingStep,
+        onboardingCompleted: Boolean(context?.onboardingCompleted),
+        libraryId: context?.libraryId ?? libraryId,
+      }));
+
+      setPaymentState("SUCCESS");
+
+      setPaymentMessage(
+        "Payment completed successfully. Please review your library setup.",
+      );
+
+      const successfulPayment = {
+        ...(payment || {}),
+        ...(paymentResult || {}),
+        status: "SUCCESS",
+      };
+
+      setPaymentResult(successfulPayment);
+
+      /*
+       * Persist immediately before navigation so Review survives a
+       * refresh even if React has not yet completed the next autosave.
+       */
+      saveOnboardingDraft({
+        formData: {
+          ...formData,
+          platformPlanId:
+            successfulPayment?.platformPlanId ??
+            formData.platformPlanId,
+        },
+        createdSlots,
+        libraryId,
+        currentStep: STEP_INDEX.REVIEW,
+        paymentResult: successfulPayment,
+        paymentState: "SUCCESS",
+      });
+
+      setCurrentStep(STEP_INDEX.REVIEW);
+
+      scrollToTop();
+    } catch (paymentError) {
+      if (paymentError?.code === "PAYMENT_CANCELLED") {
+        setPaymentState("CANCELLED");
+
+        setPaymentMessage(
+          "Payment was not completed. Your selected plan and payment order are saved, so you can resume payment without starting the setup again.",
+        );
+
+        return;
+      }
+
+      if (paymentError?.code === "PAYMENT_FAILED") {
+        setPaymentState("FAILED");
+
+        setPaymentMessage(
+          paymentError?.message ||
+            "Payment failed. You can retry the same payment order.",
+        );
+
+        return;
+      }
+
+      setPaymentState("FAILED");
+
+      throw paymentError;
+    }
   };
 
   // ==========================================================
@@ -1834,12 +2905,21 @@ const RegisterLibrary = () => {
       setIsSubmitting(true);
       setError("");
 
+      if (currentStep !== STEP_INDEX.PLATFORM_PLAN) {
+        setPaymentMessage("");
+      }
+
       switch (currentStep) {
         // =========================================
         // STEP 1 — OWNER
         // =========================================
 
         case 0:
+          if (authenticatedOwner) {
+            setCurrentStep(STEP_INDEX.LIBRARY_DETAILS);
+            return;
+          }
+
           await saveOwnerStep();
           break;
 
@@ -1868,23 +2948,25 @@ const RegisterLibrary = () => {
           break;
 
         // =========================================
-        // STEP 5 — PLATFORM PLAN
+        // STEP 5 — PLATFORM PLAN + PAYMENT
         // =========================================
 
         case 4:
-          await savePlatformPlanStep();
-          break;
+          await handlePlatformPlanPayment();
+          return;
 
         default:
           return;
       }
 
+      if (reviewEditStep !== null) {
+        returnToReview("Changes saved successfully.");
+        return;
+      }
+
       setCurrentStep((previous) => Math.min(previous + 1, steps.length - 1));
 
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+      scrollToTop();
     } catch (requestError) {
       console.error(
         `Failed to save onboarding step ${currentStep}:`,
@@ -1902,27 +2984,149 @@ const RegisterLibrary = () => {
     }
   };
 
-  const handleBack = () => {
-    setError("");
-
-    setCurrentStep((previous) => Math.max(previous - 1, 0));
-
+  const scrollToTop = () => {
     window.scrollTo({
       top: 0,
       behavior: "smooth",
     });
   };
 
-  const goToStep = (step) => {
-    if (step < currentStep) {
-      setError("");
-      setCurrentStep(step);
+  const returnToReview = (message = "") => {
+    setReviewEditStep(null);
+    setReviewEditSnapshot(null);
+    setRemovedSlotIds([]);
+    setCurrentStep(STEP_INDEX.REVIEW);
+    setError("");
 
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
+    if (message) {
+      setSuccessMessage(message);
     }
+
+    scrollToTop();
+  };
+
+  const handleReviewEdit = (step) => {
+    /*
+     * Owner account details are already persisted after Step 1.
+     * Re-entering Step 1 would call registerOwner() again and can
+     * create a duplicate-registration error, so owner details are
+     * intentionally locked inside this onboarding wizard.
+     */
+    if (step === 0 && authenticatedOwner) {
+      setError(
+        "Owner account details are already created. You can update them from your profile after setup.",
+      );
+      return;
+    }
+
+    /*
+     * Once payment succeeded and Review is available, the paid plan
+     * must not silently create another payment order from the Review
+     * screen. Plan changes belong to subscription management.
+     */
+    if (step === STEP_INDEX.PLATFORM_PLAN && currentStep === STEP_INDEX.REVIEW) {
+      setError(
+        "The selected plan has already been paid. Complete setup first, then manage plan changes from Subscription & Billing.",
+      );
+      return;
+    }
+
+    setError("");
+    setSuccessMessage("");
+
+    setReviewEditSnapshot({
+      formData: {
+        ...formData,
+        amenityIds: [...formData.amenityIds],
+      },
+      createdSlots: createdSlots.map((slot) => ({ ...slot })),
+    });
+
+    setRemovedSlotIds([]);
+    setReviewEditStep(step);
+    setCurrentStep(step);
+    scrollToTop();
+  };
+
+  const handleBack = () => {
+    setError("");
+    setSuccessMessage("");
+
+    /*
+     * Back while editing from Review means cancel the edit and
+     * return to Review. It must not walk backward through the wizard.
+     */
+    if (reviewEditStep !== null) {
+      if (reviewEditSnapshot?.formData) {
+        setFormData({
+          ...reviewEditSnapshot.formData,
+          amenityIds: [
+            ...(reviewEditSnapshot.formData.amenityIds ?? []),
+          ],
+        });
+      }
+
+      if (Array.isArray(reviewEditSnapshot?.createdSlots)) {
+        setCreatedSlots(
+          reviewEditSnapshot.createdSlots.map((slot) => ({ ...slot })),
+        );
+      }
+
+      setRemovedSlotIds([]);
+      returnToReview();
+      return;
+    }
+
+    const minimumStep = authenticatedOwner ? STEP_INDEX.LIBRARY_DETAILS : 0;
+
+    setCurrentStep((previous) => Math.max(previous - 1, minimumStep));
+
+    scrollToTop();
+  };
+
+  const goToStep = (step) => {
+    if (step >= currentStep) {
+      return;
+    }
+
+    /*
+     * Never navigate an already-authenticated owner back to account
+     * creation. That screen is registration-only.
+     */
+    if (authenticatedOwner && step === 0) {
+      return;
+    }
+
+    /*
+     * From Review, previous-step navigation is edit mode so Save
+     * returns to Review instead of continuing through every later step.
+     */
+    if (currentStep === STEP_INDEX.REVIEW) {
+      handleReviewEdit(step);
+      return;
+    }
+
+    setError("");
+    setSuccessMessage("");
+    setCurrentStep(step);
+    scrollToTop();
+  };
+
+  const handleSaveAndExit = () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    saveOnboardingDraft({
+      formData,
+      createdSlots,
+      libraryId,
+      currentStep,
+      paymentResult,
+      paymentState,
+    });
+
+    navigate("/");
   };
 
   // ==========================================================
@@ -1952,6 +3156,12 @@ const RegisterLibrary = () => {
        * We no longer need the temporary draft ID.
        */
       localStorage.removeItem("libraryOnboardingLibraryId");
+      clearOnboardingDraft();
+      setReviewEditSnapshot(null);
+      setRemovedSlotIds([]);
+      setPaymentResult(null);
+      setPaymentState("IDLE");
+      setPaymentMessage("");
 
       window.scrollTo({
         top: 0,
@@ -2946,7 +4156,17 @@ const RegisterLibrary = () => {
                   variant="outlined"
                   onClick={() => {
                     if (!seatLimitExceeded) {
-                      updateField("platformPlanId", Number(plan.id));
+                      const nextPlanId = Number(plan.id);
+
+                      if (
+                        Number(formData.platformPlanId) !== nextPlanId
+                      ) {
+                        setPaymentResult(null);
+                        setPaymentState("IDLE");
+                        setPaymentMessage("");
+                      }
+
+                      updateField("platformPlanId", nextPlanId);
                     }
                   }}
                   sx={{
@@ -3079,19 +4299,28 @@ const RegisterLibrary = () => {
         <ReviewSection
           title="Owner Details"
           icon={<Person />}
-          onEdit={() => setCurrentStep(0)}
+          onEdit={null}
         >
           <ReviewValue label="Owner" value={formData.ownerName} />
 
           <ReviewValue label="Email" value={formData.email} />
 
           <ReviewValue label="Phone" value={formData.phone} />
+
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", mt: 1 }}
+          >
+            Owner account details are already created. They can be updated from
+            your profile after setup.
+          </Typography>
         </ReviewSection>
 
         <ReviewSection
           title="Library Details"
           icon={<LibraryBooks />}
-          onEdit={() => setCurrentStep(1)}
+          onEdit={() => handleReviewEdit(1)}
         >
           <ReviewValue label="Library" value={formData.libraryName} />
 
@@ -3102,14 +4331,22 @@ const RegisterLibrary = () => {
 
           <ReviewValue
             label="Timing"
-            value={`${formData.openingTime} - ${formData.closingTime}`}
+            value={
+              formData.open24Hours
+                ? "Open 24 Hours"
+                : formData.openingTime && formData.closingTime
+                  ? `${formatTime(formData.openingTime)} - ${formatTime(
+                      formData.closingTime,
+                    )}`
+                  : "Not configured"
+            }
           />
         </ReviewSection>
 
         <ReviewSection
           title="Amenities"
           icon={<Settings />}
-          onEdit={() => setCurrentStep(2)}
+          onEdit={() => handleReviewEdit(2)}
         >
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {selectedAmenities.map((amenity) => (
@@ -3121,7 +4358,7 @@ const RegisterLibrary = () => {
         <ReviewSection
           title="Seats & Slots"
           icon={<EventSeat />}
-          onEdit={() => setCurrentStep(3)}
+          onEdit={() => handleReviewEdit(3)}
         >
           <ReviewValue
             label="Floor"
@@ -3130,17 +4367,34 @@ const RegisterLibrary = () => {
 
           <ReviewValue
             label="Layout"
-            value={`${formData.rows} rows × ${formData.seatsPerRow} seats`}
+            value={
+              seatLayoutLoading
+                ? "Loading saved layout..."
+                : formData.rows && formData.seatsPerRow
+                  ? `${formData.rows} rows × ${formData.seatsPerRow} seats`
+                  : "Not restored"
+            }
           />
 
-          <ReviewValue label="Total Seats" value={generatedSeatCount} />
+          <ReviewValue
+            label="Total Seats"
+            value={
+              seatLayoutLoading
+                ? "Loading..."
+                : generatedSeatCount > 0
+                  ? generatedSeatCount
+                  : "Not restored"
+            }
+          />
 
           <ReviewValue
             label="Booking Slots"
             value={
-              createdSlots.length > 0
-                ? `${createdSlots.length} configured`
-                : "No slots configured"
+              seatLayoutLoading
+                ? "Loading saved slots..."
+                : createdSlots.length > 0
+                  ? `${createdSlots.length} configured`
+                  : "No saved slots returned"
             }
           />
 
@@ -3156,20 +4410,89 @@ const RegisterLibrary = () => {
         <ReviewSection
           title="LibraryHub Plan"
           icon={<WorkspacePremium />}
-          onEdit={() => setCurrentStep(4)}
+          onEdit={null}
         >
-          <ReviewValue label="Plan" value={selectedPlan?.name} />
-
           <ReviewValue
-            label="Price"
+            label="Plan"
             value={
-              selectedPlan
-                ? `₹${
-                    selectedPlan.price ?? selectedPlan.amount ?? 0
-                  } ${getBillingCycleLabel(selectedPlan.billingCycle)}`
-                : "-"
+              platformSubscriptionLoading
+                ? "Loading saved plan..."
+                : reviewPlanName
             }
           />
+
+          <ReviewValue
+            label="Plan Amount"
+            value={
+              platformSubscriptionLoading
+                ? "Loading..."
+                : reviewPlanBaseAmount > 0
+                  ? `${reviewCurrency === "INR" ? "₹" : `${reviewCurrency} `}${reviewPlanBaseAmount.toFixed(
+                      2,
+                    )}${
+                      selectedPlan?.billingCycle
+                        ? ` ${getBillingCycleLabel(selectedPlan.billingCycle)}`
+                        : ""
+                    }`
+                  : "Not restored"
+            }
+          />
+
+          {platformSubscriptionError && (
+            <Alert
+              severity="warning"
+              sx={{ mt: 1, borderRadius: 2 }}
+            >
+              {platformSubscriptionError}
+            </Alert>
+          )}
+
+          {reviewGstAmount > 0 && (
+            <ReviewValue
+              label="GST"
+              value={`${reviewCurrency === "INR" ? "₹" : `${reviewCurrency} `}${reviewGstAmount.toFixed(
+                2,
+              )}`}
+            />
+          )}
+
+          {reviewTotalAmount > 0 && (
+            <ReviewValue
+              label="Amount Paid"
+              value={`${reviewCurrency === "INR" ? "₹" : `${reviewCurrency} `}${reviewTotalAmount.toFixed(
+                2,
+              )}`}
+            />
+          )}
+
+          {paymentResult?.paymentTransactionId && (
+            <ReviewValue
+              label="Payment Transaction"
+              value={`#${paymentResult.paymentTransactionId}`}
+            />
+          )}
+
+          {hasPaymentRecord && (
+            <Chip
+              icon={<CheckCircle />}
+              label={
+                paymentState === "SUCCESS" ||
+                paymentResult?.status === "ACTIVE" ||
+                paymentResult?.status === "SUCCESS"
+                  ? "Payment completed"
+                  : "Payment recorded"
+              }
+              color={
+                paymentState === "SUCCESS" ||
+                paymentResult?.status === "ACTIVE" ||
+                paymentResult?.status === "SUCCESS"
+                  ? "success"
+                  : "primary"
+              }
+              size="small"
+              sx={{ mt: 1 }}
+            />
+          )}
         </ReviewSection>
 
         <Paper
@@ -3299,14 +4622,15 @@ const RegisterLibrary = () => {
               <Button
                 variant="outlined"
                 startIcon={<Save />}
-                onClick={() => navigate("/")}
+                onClick={handleSaveAndExit}
+                disabled={isSubmitting}
                 sx={{
                   textTransform: "none",
                   fontWeight: 700,
                   borderRadius: 2,
                 }}
               >
-                Save & Exit
+                {authenticatedOwner ? "Save Draft & Exit" : "Exit"}
               </Button>
             </Stack>
           </Stack>
@@ -3370,6 +4694,38 @@ const RegisterLibrary = () => {
             }}
           >
             {error}
+          </Alert>
+        )}
+
+        {successMessage && (
+          <Alert
+            severity="success"
+            onClose={() => setSuccessMessage("")}
+            sx={{
+              mt: 3,
+              borderRadius: 2,
+            }}
+          >
+            {successMessage}
+          </Alert>
+        )}
+
+        {paymentMessage && currentStep === STEP_INDEX.PLATFORM_PLAN && (
+          <Alert
+            severity={
+              paymentState === "FAILED"
+                ? "error"
+                : paymentState === "CANCELLED"
+                  ? "warning"
+                  : "info"
+            }
+            onClose={() => setPaymentMessage("")}
+            sx={{
+              mt: 3,
+              borderRadius: 2,
+            }}
+          >
+            {paymentMessage}
           </Alert>
         )}
 
@@ -3437,7 +4793,7 @@ const RegisterLibrary = () => {
                       fontWeight: 700,
                     }}
                   >
-                    Back
+                    {reviewEditStep !== null ? "Cancel Edit" : "Back"}
                   </Button>
                 )}
 
@@ -3456,9 +4812,16 @@ const RegisterLibrary = () => {
                   >
                     {isSubmitting
                       ? "Saving..."
-                      : currentStep === 4
-                        ? "Continue to Payment"
-                        : "Save & Continue"}
+                      : reviewEditStep !== null
+                        ? "Save & Return to Review"
+                        : currentStep === STEP_INDEX.PLATFORM_PLAN
+                          ? paymentState === "FAILED" ||
+                            paymentState === "CANCELLED"
+                            ? "Retry Payment"
+                            : canResumePayment(paymentResult)
+                              ? "Resume Payment"
+                              : "Continue to Payment"
+                          : "Save & Continue"}
                   </Button>
                 ) : (
                   <Button
@@ -4301,16 +5664,18 @@ const ReviewSection = ({ title, icon, onEdit, children }) => (
         </Typography>
       </Stack>
 
-      <Button
-        size="small"
-        startIcon={<Edit />}
-        onClick={onEdit}
-        sx={{
-          textTransform: "none",
-        }}
-      >
-        Edit
-      </Button>
+      {onEdit && (
+        <Button
+          size="small"
+          startIcon={<Edit />}
+          onClick={onEdit}
+          sx={{
+            textTransform: "none",
+          }}
+        >
+          Edit
+        </Button>
+      )}
     </Stack>
 
     {children}

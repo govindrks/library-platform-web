@@ -1,4 +1,3 @@
-import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
@@ -7,533 +6,513 @@ import {
   CardContent,
   CircularProgress,
   Divider,
-  IconButton,
   Stack,
-  TextField,
   Typography,
 } from "@mui/material";
 
-import CloseIcon from "@mui/icons-material/Close";
-import LocalOfferOutlinedIcon from "@mui/icons-material/LocalOfferOutlined";
-import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import {
+  ArrowBack,
+  CreditCard,
+  EventSeat,
+  Lock,
+  Schedule,
+} from "@mui/icons-material";
 
-import memberPricingApi from "../../../api/memberPricingApi";
-import couponApi from "../../../api/couponApi";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+
 import paymentApi from "../../../api/paymentApi";
 
-const MembershipPayment = ({
-  memberId,
-  libraryId,
-  membershipPlan,
-  selectedSeat,
-  onSuccess,
-}) => {
+// ============================================================
+// HELPERS
+// ============================================================
 
-  const [pricing, setPricing] = useState(null);
+const formatMoney = (value) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0));
+};
 
-  const [couponCode, setCouponCode] = useState("");
-  const [coupon, setCoupon] = useState(null);
+// ============================================================
+// COMPONENT
+// ============================================================
 
-  const [loadingPrice, setLoadingPrice] = useState(true);
-  const [applyingCoupon, setApplyingCoupon] = useState(false);
-  const [creatingOrder, setCreatingOrder] = useState(false);
+function MembershipPayment() {
+  const location = useLocation();
+  const navigate = useNavigate();
 
+  // ==========================================================
+  // NAVIGATION STATE
+  // ==========================================================
+
+  const booking = location.state?.booking ?? null;
+  const library = location.state?.library ?? null;
+  const selectedPlan = location.state?.selectedPlan ?? null;
+  const selectedSeat = location.state?.selectedSeat ?? null;
+  const selectedSlot = location.state?.selectedSlot ?? null;
+  const paymentType = location.state?.paymentType ?? null;
+
+  // ==========================================================
+  // BOOKING ID
+  // ==========================================================
+  //
+  // Support all currently possible navigation shapes:
+  //
+  // booking.bookingId
+  // booking.id
+  // location.state.bookingId
+  //
+  // Payment must reference the persisted Booking ID.
+  // ==========================================================
+
+  const bookingId =
+    booking?.bookingId ??
+    booking?.id ??
+    location.state?.bookingId ??
+    null;
+
+  // ==========================================================
+  // PAYMENT FLOW
+  // ==========================================================
+
+  const isBooking = Boolean(bookingId) || paymentType === "BOOKING";
+
+  // ==========================================================
+  // LOCAL STATE
+  // ==========================================================
+
+  const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    loadEffectivePrice();
-  }, [memberId, membershipPlan?.id]);
+  // ==========================================================
+  // DISPLAY AMOUNT
+  // ==========================================================
+  //
+  // The amount displayed by the frontend is informational.
+  // The backend independently resolves the trusted payable
+  // amount from Booking.amount.
+  // ==========================================================
 
-  const loadEffectivePrice = async () => {
+  const displayAmount = booking?.amount ?? selectedPlan?.price ?? 0;
 
-    if (!memberId || !membershipPlan?.id) {
-      return;
-    }
+  // ==========================================================
+  // LOAD RAZORPAY SCRIPT
+  // ==========================================================
 
-    try {
-      setLoadingPrice(true);
-      setError("");
-
-      const response =
-        await memberPricingApi.getEffectivePrice(
-          memberId,
-          membershipPlan.id
-        );
-
-      setPricing(response);
-
-    } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-        "Unable to load membership pricing."
-      );
-    } finally {
-      setLoadingPrice(false);
-    }
-  };
-
-  const regularPrice =
-    Number(
-      pricing?.regularPrice ??
-      membershipPlan?.price ??
-      0
-    );
-
-  const memberPrice =
-    Number(
-      pricing?.effectivePrice ??
-      regularPrice
-    );
-
-  const couponDiscount =
-    Number(
-      coupon?.discountAmount ?? 0
-    );
-
-  const finalAmount = useMemo(() => {
-
-    return Math.max(
-      0,
-      memberPrice - couponDiscount
-    );
-
-  }, [memberPrice, couponDiscount]);
-
-  const applyCoupon = async () => {
-
-    if (!couponCode.trim()) {
-      return;
-    }
-
-    try {
-
-      setApplyingCoupon(true);
-      setError("");
-
-      const response =
-        await couponApi.validateCoupon({
-          libraryId,
-          code: couponCode.trim(),
-          amount: memberPrice,
-        });
-
-      setCoupon(response);
-
-    } catch (err) {
-
-      setCoupon(null);
-
-      setError(
-        err?.response?.data?.message ||
-        "Unable to apply coupon."
-      );
-
-    } finally {
-      setApplyingCoupon(false);
-    }
-  };
-
-  const removeCoupon = () => {
-    setCoupon(null);
-    setCouponCode("");
-  };
-
-  const handlePayment = async () => {
-
-    try {
-
-      if (!selectedSeat?.id) {
-        setError("Please select a seat.");
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) {
+        resolve(true);
         return;
       }
 
-      setCreatingOrder(true);
-      setError("");
-
-      /*
-       * IMPORTANT:
-       * Do NOT send finalAmount as the trusted amount.
-       *
-       * Backend recalculates:
-       * regular price
-       * → member-specific price
-       * → coupon
-       * → final amount
-       */
-
-      const orderResponse =
-        await paymentApi.createOrder({
-
-          referenceId: membershipPlan.id,
-
-          referenceType: "MEMBERSHIP",
-
-          libraryId,
-
-          customerId: memberId,
-
-          customerName: undefined,
-
-          email: undefined,
-
-          mobile: undefined,
-
-          amount: finalAmount,
-
-          currency: "INR",
-
-          description:
-            `${membershipPlan.name} Membership`,
-
-          couponId:
-            coupon?.couponId ?? null,
-
-          seatId:
-            selectedSeat.id,
-
-        });
-
-      openRazorpayCheckout(orderResponse);
-
-    } catch (err) {
-
-      setError(
-        err?.response?.data?.message ||
-        "Unable to create payment order."
+      const existingScript = document.querySelector(
+        'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
       );
 
-      setCreatingOrder(false);
-    }
+      if (existingScript) {
+        existingScript.addEventListener("load", () => resolve(true), {
+          once: true,
+        });
+
+        existingScript.addEventListener("error", () => resolve(false), {
+          once: true,
+        });
+
+        return;
+      }
+
+      const script = document.createElement("script");
+
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+
+      document.body.appendChild(script);
+    });
   };
 
-  const openRazorpayCheckout = (orderResponse) => {
+  // ==========================================================
+  // OPEN RAZORPAY CHECKOUT
+  // ==========================================================
 
-    if (!window.Razorpay) {
-      setError("Razorpay checkout is not available.");
-      setCreatingOrder(false);
-      return;
+  const openRazorpayCheckout = async (orderResponse) => {
+    const loaded = await loadRazorpayScript();
+
+    if (!loaded || !window.Razorpay) {
+      throw new Error("Unable to load Razorpay checkout.");
     }
 
-    const options = {
+    const transactionId = orderResponse?.transactionId;
+    const gatewayOrderId = orderResponse?.gatewayOrderId;
 
-      key: orderResponse.keyId,
+    const keyId =
+      orderResponse?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
 
-      amount:
-        Number(orderResponse.amount) * 100,
+    const amount = Number(orderResponse?.amount ?? 0);
+    const currency = orderResponse?.currency || "INR";
 
-      currency:
-        orderResponse.currency || "INR",
+    if (!transactionId) {
+      throw new Error("Payment transaction ID was not returned.");
+    }
 
-      name:
-        "LibraryHub",
+    if (!gatewayOrderId) {
+      throw new Error("Gateway order ID was not returned.");
+    }
 
-      description:
-        `${membershipPlan.name} Membership`,
+    if (!keyId) {
+      throw new Error("Razorpay key ID is not configured.");
+    }
 
-      order_id:
-        orderResponse.orderId,
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Invalid payment amount.");
+    }
 
-      handler: async (response) => {
+    return new Promise((resolve, reject) => {
+      let settled = false;
 
-        try {
+      const options = {
+        key: keyId,
+        amount: Math.round(amount * 100),
+        currency,
+        name: "LibraryHub",
+        description: selectedSeat?.seatNumber
+          ? `Membership booking payment - Seat ${selectedSeat.seatNumber}`
+          : "Library membership booking payment",
+        order_id: gatewayOrderId,
 
-          const verificationResponse =
-            await paymentApi.verifyPayment({
-
-              transactionId:
-                orderResponse.transactionId,
-
-              razorpayOrderId:
-                response.razorpay_order_id,
-
-              razorpayPaymentId:
-                response.razorpay_payment_id,
-
-              razorpaySignature:
-                response.razorpay_signature,
-
+        handler: async (razorpayResponse) => {
+          try {
+            const verification = await paymentApi.verifyPayment({
+              transactionId,
+              gatewayOrderId: razorpayResponse.razorpay_order_id,
+              gatewayPaymentId: razorpayResponse.razorpay_payment_id,
+              gatewaySignature: razorpayResponse.razorpay_signature,
             });
 
-          onSuccess?.(verificationResponse);
+            if (verification?.status !== "SUCCESS") {
+              throw new Error(
+                verification?.message || "Payment verification failed.",
+              );
+            }
 
-        } catch (err) {
-
-          setError(
-            err?.response?.data?.message ||
-            "Payment verification failed."
-          );
-
-        } finally {
-
-          setCreatingOrder(false);
-
-        }
-      },
-
-      modal: {
-        ondismiss: () => {
-          setCreatingOrder(false);
+            settled = true;
+            resolve(verification);
+          } catch (verificationError) {
+            settled = true;
+            reject(verificationError);
+          }
         },
-      },
 
-      theme: {
-        color: "#1976d2",
-      },
-    };
+        modal: {
+          ondismiss: () => {
+            if (settled) {
+              return;
+            }
 
-    const razorpay =
-      new window.Razorpay(options);
+            settled = true;
 
-    razorpay.open();
+            const cancellationError = new Error(
+              "Payment was cancelled before completion.",
+            );
+
+            cancellationError.code = "PAYMENT_CANCELLED";
+
+            reject(cancellationError);
+          },
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+
+      razorpay.on("payment.failed", (response) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        const paymentError = new Error(
+          response?.error?.description || "Razorpay payment failed.",
+        );
+
+        paymentError.code = "PAYMENT_FAILED";
+
+        reject(paymentError);
+      });
+
+      razorpay.open();
+    });
   };
 
-  if (loadingPrice) {
+  // ==========================================================
+  // HANDLE PAYMENT
+  // ==========================================================
+
+  const handlePayment = async () => {
+    try {
+      setPaying(true);
+      setError("");
+
+      // ========================================================
+      // LIBRARY
+      // ========================================================
+
+      if (!library?.id) {
+        throw new Error("Library ID is missing.");
+      }
+
+      // ========================================================
+      // BOOKING
+      // ========================================================
+      //
+      // Membership purchase has already created a Booking with
+      // status PENDING_PAYMENT. Payment therefore references the
+      // persisted booking, never the membership plan ID.
+      // ========================================================
+
+      if (!bookingId) {
+        throw new Error(
+          "Booking ID is missing. Please restart the booking flow.",
+        );
+      }
+
+      // ========================================================
+      // CREATE PAYMENT REQUEST
+      // ========================================================
+
+      const payload = {
+        referenceId: Number(bookingId),
+        referenceType: "BOOKING",
+        libraryId: Number(library.id),
+        seatId: selectedSeat?.id ? Number(selectedSeat.id) : null,
+        currency: "INR",
+        description: selectedSeat?.seatNumber
+          ? `Membership booking payment - Seat ${selectedSeat.seatNumber}`
+          : "Library membership booking payment",
+      };
+
+      console.log("Creating student booking payment:", payload);
+
+      // ========================================================
+      // CREATE RAZORPAY ORDER
+      // ========================================================
+
+      const orderResponse = await paymentApi.createOrder(payload);
+
+      // ========================================================
+      // OPEN CHECKOUT + VERIFY PAYMENT
+      // ========================================================
+
+      const verification = await openRazorpayCheckout(orderResponse);
+
+      // ========================================================
+      // SUCCESS NAVIGATION
+      // ========================================================
+
+      navigate(`/student/bookings/${bookingId}`, {
+        replace: true,
+        state: {
+          paymentSuccess: true,
+          verification,
+        },
+      });
+    } catch (requestError) {
+      console.error("Student payment failed:", requestError);
+
+      setError(
+        requestError?.response?.data?.message ||
+          requestError?.response?.data?.error ||
+          requestError?.message ||
+          "Unable to complete payment.",
+      );
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  // ==========================================================
+  // INVALID NAVIGATION STATE
+  // ==========================================================
+
+  if (!bookingId) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        py={6}
-      >
-        <CircularProgress />
-      </Box>
+      <Alert severity="warning">
+        Booking information is missing. Please start the booking flow again.
+      </Alert>
     );
   }
 
+  // ==========================================================
+  // UI
+  // ==========================================================
+
   return (
-    <Box maxWidth={720} mx="auto" p={3}>
+    <Box
+      sx={{
+        maxWidth: 760,
+      }}
+    >
+      <Button
+        startIcon={<ArrowBack />}
+        onClick={() => navigate(-1)}
+        sx={{
+          mb: 2,
+        }}
+      >
+        Back
+      </Button>
+
+      <Typography variant="h4" fontWeight={800}>
+        {isBooking ? "Booking Payment" : "Membership Payment"}
+      </Typography>
 
       <Typography
-        variant="h5"
-        fontWeight={700}
-        mb={3}
+        color="text.secondary"
+        sx={{
+          mt: 0.5,
+          mb: 3,
+        }}
       >
-        Payment Summary
+        Review your payment details and continue securely through Razorpay.
       </Typography>
 
       {error && (
         <Alert
           severity="error"
-          sx={{ mb: 2 }}
+          onClose={() => setError("")}
+          sx={{
+            mb: 2,
+          }}
         >
           {error}
         </Alert>
       )}
 
-      <Card>
+      <Card
+        elevation={0}
+        sx={{
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 3,
+        }}
+      >
         <CardContent>
+          <Typography variant="h6" fontWeight={700}>
+            Payment Summary
+          </Typography>
 
-          <Stack spacing={2}>
+          <Divider sx={{ my: 2 }} />
 
-            <Box>
-              <Typography
-                variant="h6"
-                fontWeight={700}
-              >
-                {membershipPlan.name}
+          <Stack spacing={1.5}>
+            <Stack direction="row" justifyContent="space-between">
+              <Typography color="text.secondary">Library</Typography>
+
+              <Typography fontWeight={600}>
+                {library?.name || "-"}
               </Typography>
+            </Stack>
 
-              <Typography
-                variant="body2"
-                color="text.secondary"
-              >
-                {membershipPlan.durationDays} days
-              </Typography>
-            </Box>
+            {selectedPlan && (
+              <Stack direction="row" justifyContent="space-between">
+                <Typography color="text.secondary">Plan</Typography>
 
-            <Divider />
-
-            <PriceRow
-              label="Regular Amount"
-              value={regularPrice}
-            />
-
-            {memberPrice !== regularPrice && (
-              <PriceRow
-                label="Member Price"
-                value={-(
-                  regularPrice - memberPrice
-                )}
-                success
-              />
+                <Typography fontWeight={600}>
+                  {selectedPlan.name || "-"}
+                </Typography>
+              </Stack>
             )}
 
-            <PriceRow
-              label="Base Amount"
-              value={memberPrice}
-              bold
-            />
+            {selectedSeat && (
+              <Stack direction="row" justifyContent="space-between">
+                <Typography color="text.secondary">Seat</Typography>
 
-            <Divider />
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <EventSeat fontSize="small" />
 
-            <Box>
-
-              <Stack
-                direction="row"
-                alignItems="center"
-                spacing={1}
-                mb={1}
-              >
-                <LocalOfferOutlinedIcon />
-
-                <Typography
-                  fontWeight={600}
-                >
-                  Apply Coupon
-                  {" "}
-                  <Typography
-                    component="span"
-                    color="text.secondary"
-                  >
-                    (Optional)
+                  <Typography fontWeight={600}>
+                    {selectedSeat.seatNumber || "-"}
                   </Typography>
-                </Typography>
-
-              </Stack>
-
-              {!coupon ? (
-
-                <Stack
-                  direction="row"
-                  spacing={1}
-                >
-
-                  <TextField
-                    fullWidth
-                    size="small"
-                    placeholder="Enter coupon code"
-                    value={couponCode}
-                    onChange={(e) =>
-                      setCouponCode(
-                        e.target.value
-                      )
-                    }
-                  />
-
-                  <Button
-                    variant="contained"
-                    onClick={applyCoupon}
-                    disabled={
-                      applyingCoupon ||
-                      !couponCode.trim()
-                    }
-                  >
-                    {applyingCoupon
-                      ? "Applying..."
-                      : "Apply"}
-                  </Button>
-
                 </Stack>
+              </Stack>
+            )}
 
-              ) : (
+            {selectedSlot && (
+              <Stack direction="row" justifyContent="space-between">
+                <Typography color="text.secondary">Slot</Typography>
 
-                <Alert
-                  severity="success"
-                  action={
-                    <IconButton
-                      size="small"
-                      onClick={removeCoupon}
-                    >
-                      <CloseIcon />
-                    </IconButton>
-                  }
-                >
-                  <strong>
-                    {coupon.code}
-                  </strong>
-                  {" "}
-                  applied. You saved ₹
-                  {coupon.discountAmount}
-                </Alert>
+                <Stack direction="row" spacing={0.75} alignItems="center">
+                  <Schedule fontSize="small" />
 
-              )}
+                  <Typography fontWeight={600}>
+                    {selectedSlot.name || "-"}
+                  </Typography>
+                </Stack>
+              </Stack>
+            )}
 
-            </Box>
+            <Stack direction="row" justifyContent="space-between">
+              <Typography color="text.secondary">Booking ID</Typography>
 
-            <Divider />
-
-            <Box
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-            >
-              <Typography
-                variant="h6"
-                fontWeight={700}
-              >
-                Final Amount
-              </Typography>
-
-              <Typography
-                variant="h5"
-                fontWeight={800}
-              >
-                ₹{finalAmount.toFixed(2)}
-              </Typography>
-            </Box>
-
-            <Button
-              fullWidth
-              size="large"
-              variant="contained"
-              startIcon={
-                <LockOutlinedIcon />
-              }
-              onClick={handlePayment}
-              disabled={
-                creatingOrder ||
-                !selectedSeat?.id
-              }
-              sx={{
-                py: 1.5,
-                mt: 1,
-              }}
-            >
-              {creatingOrder
-                ? "Preparing Payment..."
-                : `Proceed to Pay ₹${finalAmount}`}
-            </Button>
-
+              <Typography fontWeight={600}>#{bookingId}</Typography>
+            </Stack>
           </Stack>
 
+          <Divider sx={{ my: 2 }} />
+
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="center"
+          >
+            <Typography variant="h6" fontWeight={700}>
+              Amount
+            </Typography>
+
+            <Typography variant="h5" fontWeight={800} color="primary.main">
+              {formatMoney(displayAmount)}
+            </Typography>
+          </Stack>
+
+          <Alert
+            severity="info"
+            icon={<Lock />}
+            sx={{
+              mt: 3,
+            }}
+          >
+            The backend calculates the trusted payable amount from the saved
+            booking before creating the payment order.
+          </Alert>
+
+          <Button
+            fullWidth
+            size="large"
+            variant="contained"
+            startIcon={
+              paying ? (
+                <CircularProgress size={18} color="inherit" />
+              ) : (
+                <CreditCard />
+              )
+            }
+            disabled={paying || Number(displayAmount) <= 0}
+            onClick={handlePayment}
+            sx={{
+              mt: 3,
+            }}
+          >
+            {paying ? "Opening Payment..." : `Pay ${formatMoney(displayAmount)}`}
+          </Button>
         </CardContent>
       </Card>
-
     </Box>
   );
-};
-
-const PriceRow = ({
-  label,
-  value,
-  success = false,
-  bold = false,
-}) => (
-
-  <Box
-    display="flex"
-    justifyContent="space-between"
-  >
-
-    <Typography
-      fontWeight={bold ? 600 : 400}
-      color="text.secondary"
-    >
-      {label}
-    </Typography>
-
-    <Typography
-      fontWeight={bold ? 700 : 500}
-      color={
-        success
-          ? "success.main"
-          : "text.primary"
-      }
-    >
-      {value < 0 ? "-₹" : "₹"}
-      {Math.abs(value).toFixed(2)}
-    </Typography>
-
-  </Box>
-);
+}
 
 export default MembershipPayment;

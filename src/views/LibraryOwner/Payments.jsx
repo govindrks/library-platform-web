@@ -1,25 +1,20 @@
-import React, {
-    useCallback,
-    useEffect,
-    useMemo,
-    useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
-    Alert,
-    Box,
-    Card,
-    CardContent,
-    Chip,
-    CircularProgress,
-    FormControl,
-    Grid,
-    InputLabel,
-    MenuItem,
-    Select,
-    Stack,
-    TextField,
-    Typography,
+  Alert,
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  FormControl,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
+  Typography,
 } from "@mui/material";
 
 import SearchIcon from "@mui/icons-material/Search";
@@ -27,16 +22,35 @@ import PaymentsIcon from "@mui/icons-material/Payments";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PendingActionsIcon from "@mui/icons-material/PendingActions";
 import ReplayIcon from "@mui/icons-material/Replay";
-
 import CancelIcon from "@mui/icons-material/Cancel";
-
 
 import libraryApi from "../../api/libraryApi";
 import ownerPaymentApi from "../../api/ownerPaymentApi";
+import invoiceApi from "../../api/invoiceApi";
+import platformSubscriptionApi from "../../api/platformSubscriptionApi";
 
-/* =========================================================
-   HELPERS
-========================================================= */
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+const OWNER_SELECTED_LIBRARY_KEY = "ownerSelectedLibraryId";
+
+const LIBRARY_REVENUE_REFERENCE_TYPES = new Set([
+  "MEMBERSHIP",
+  "BOOKING",
+  "SUBSCRIPTION_RENEWAL",
+  "SECURITY_DEPOSIT",
+  "LATE_FEE",
+  "OTHER",
+]);
+
+// Explicitly excluded from Owner -> Payments.
+// This is Library Owner -> LibraryHub SaaS billing.
+const PLATFORM_REFERENCE_TYPE = "PLATFORM_SUBSCRIPTION";
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 function getErrorMessage(error, fallback = "Something went wrong.") {
   return (
@@ -54,6 +68,10 @@ function normalizeListResponse(response) {
 
   if (Array.isArray(response?.content)) {
     return response.content;
+  }
+
+  if (Array.isArray(response?.data)) {
+    return response.data;
   }
 
   return [];
@@ -115,34 +133,191 @@ function getStatusColor(status) {
   }
 }
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+function getStoredLibraryId() {
+  const value = localStorage.getItem(OWNER_SELECTED_LIBRARY_KEY);
+
+  if (!value) {
+    return null;
+  }
+
+  const id = Number(value);
+
+  return Number.isFinite(id) ? id : null;
+}
+
+function storeLibraryId(libraryId) {
+  const id = Number(libraryId);
+
+  if (!Number.isFinite(id)) {
+    return;
+  }
+
+  localStorage.setItem(OWNER_SELECTED_LIBRARY_KEY, String(id));
+}
+
+function isLibraryRevenuePayment(payment) {
+  if (!payment) {
+    return false;
+  }
+
+  if (payment.referenceType === PLATFORM_REFERENCE_TYPE) {
+    return false;
+  }
+
+  return LIBRARY_REVENUE_REFERENCE_TYPES.has(payment.referenceType);
+}
+
+function isWithinRange(value, start, end) {
+  if (!value) {
+    return false;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  return date >= start && date <= end;
+}
+
+function buildSummaryFromPayments(payments) {
+  const now = new Date();
+
+  const todayStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+
+  const todayEnd = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    23,
+    59,
+    59,
+    999,
+  );
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+
+  const monthEnd = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+
+  const successful = payments.filter((payment) => payment.status === "SUCCESS");
+
+  return {
+    totalRevenue: successful.reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0,
+    ),
+
+    todayRevenue: successful
+      .filter((payment) =>
+        isWithinRange(payment.createdAt, todayStart, todayEnd),
+      )
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+
+    monthlyRevenue: successful
+      .filter((payment) =>
+        isWithinRange(payment.createdAt, monthStart, monthEnd),
+      )
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+
+    successfulPayments: successful.length,
+
+    pendingPayments: payments.filter(
+      (payment) => payment.status === "PENDING" || payment.status === "CREATED",
+    ).length,
+
+    failedPayments: payments.filter(
+      (payment) =>
+        payment.status === "FAILED" || payment.status === "CANCELLED",
+    ).length,
+
+    refundedAmount: payments.reduce(
+      (sum, payment) => sum + Number(payment.refundedAmount || 0),
+      0,
+    ),
+  };
+}
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 function Payments() {
   const [libraries, setLibraries] = useState([]);
-
   const [libraryId, setLibraryId] = useState("");
-
   const [loadingLibraries, setLoadingLibraries] = useState(true);
 
   const [payments, setPayments] = useState([]);
-
-  const [summary, setSummary] = useState(null);
-
   const [loadingPayments, setLoadingPayments] = useState(false);
 
   const [search, setSearch] = useState("");
-
   const [statusFilter, setStatusFilter] = useState("ALL");
-
   const [referenceTypeFilter, setReferenceTypeFilter] = useState("ALL");
 
   const [error, setError] = useState("");
 
-  /* =======================================================
-     LOAD LIBRARIES
-  ======================================================= */
+  const [downloadingInvoicePaymentId, setDownloadingInvoicePaymentId] =
+    useState(null);
+
+  // ==========================================================
+  // RESOLVE OWNER LIBRARY
+  // ==========================================================
+
+  const resolveInitialLibrary = useCallback(async (libraryList) => {
+    const storedLibraryId = getStoredLibraryId();
+
+    if (storedLibraryId !== null) {
+      const storedLibrary = libraryList.find(
+        (library) => Number(library?.id) === storedLibraryId,
+      );
+
+      if (storedLibrary) {
+        return storedLibrary;
+      }
+    }
+
+    /*
+     * Recovery for accounts that already contain duplicate
+     * empty DRAFT libraries.
+     *
+     * Prefer a library with an ACTIVE LibraryHub subscription
+     * because that is normally the configured tenant.
+     */
+    for (const library of libraryList) {
+      try {
+        const subscription =
+          await platformSubscriptionApi.getActiveSubscription(library.id);
+
+        if (subscription) {
+          return library;
+        }
+      } catch {
+        // No ACTIVE platform subscription for this library.
+      }
+    }
+
+    return libraryList[0];
+  }, []);
+
+  // ==========================================================
+  // LOAD LIBRARIES
+  // ==========================================================
 
   const loadLibraries = useCallback(async () => {
     try {
@@ -158,22 +333,16 @@ function Payments() {
       if (list.length === 0) {
         setLibraryId("");
         setPayments([]);
-        setSummary(null);
 
         return;
       }
 
-      setLibraryId((current) => {
-        const stillExists =
-          current &&
-          list.some((library) => String(library.id) === String(current));
+      const selectedLibrary = await resolveInitialLibrary(list);
 
-        if (stillExists) {
-          return String(current);
-        }
+      const selectedId = String(selectedLibrary.id);
 
-        return String(list[0].id);
-      });
+      setLibraryId(selectedId);
+      storeLibraryId(selectedId);
     } catch (err) {
       console.error("Failed to load libraries:", err);
 
@@ -184,17 +353,15 @@ function Payments() {
     } finally {
       setLoadingLibraries(false);
     }
-  }, []);
+  }, [resolveInitialLibrary]);
 
-  /* =======================================================
-     LOAD PAYMENTS
-  ======================================================= */
+  // ==========================================================
+  // LOAD MEMBER / LIBRARY PAYMENTS
+  // ==========================================================
 
   const loadPayments = useCallback(async () => {
     if (!libraryId) {
       setPayments([]);
-      setSummary(null);
-
       return;
     }
 
@@ -202,30 +369,115 @@ function Payments() {
       setLoadingPayments(true);
       setError("");
 
-      const [paymentResponse, summaryResponse] = await Promise.all([
-        ownerPaymentApi.getLibraryPayments(libraryId),
+      const response = await ownerPaymentApi.getLibraryPayments(libraryId);
 
-        ownerPaymentApi.getLibraryPaymentSummary(libraryId),
-      ]);
+      const allPayments = normalizeListResponse(response);
 
-      setPayments(normalizeListResponse(paymentResponse));
+      /*
+       * FRONTEND SAFETY BOUNDARY
+       *
+       * The backend should also exclude PLATFORM_SUBSCRIPTION
+       * inside OwnerPaymentServiceImpl.
+       *
+       * We still filter here so this page can never present
+       * LibraryHub SaaS charges as tenant revenue.
+       */
+      const libraryPayments = allPayments.filter(isLibraryRevenuePayment);
 
-      setSummary(summaryResponse ?? null);
+      setPayments(libraryPayments);
     } catch (err) {
       console.error("Failed to load payments:", err);
 
       setPayments([]);
-      setSummary(null);
 
-      setError(getErrorMessage(err, "Unable to load payments."));
+      setError(getErrorMessage(err, "Unable to load member payments."));
     } finally {
       setLoadingPayments(false);
     }
   }, [libraryId]);
 
-  /* =======================================================
-     EFFECTS
-  ======================================================= */
+  // ==========================================================
+  // MEMBER PAYMENT INVOICE PDF
+  // ==========================================================
+  //
+  // Successful member payments:
+  // 1. Look for an existing invoice for the payment transaction.
+  // 2. If no invoice exists, generate it through the backend.
+  // 3. Download the tenant-scoped PDF.
+  //
+  // PDF generation itself is performed by PdfInvoiceGeneratorImpl.
+  // ==========================================================
+
+  const handleDownloadMemberInvoice = async (payment) => {
+  if (!libraryId) {
+    setError("Library is not selected.");
+    return;
+  }
+
+  const paymentTransactionId =
+    Number(
+      payment?.paymentId ??
+        payment?.transactionId ??
+        payment?.id,
+    );
+
+  if (!Number.isFinite(paymentTransactionId)) {
+    setError(
+      "Payment transaction ID is unavailable.",
+    );
+    return;
+  }
+
+  if (payment?.status !== "SUCCESS") {
+    setError(
+      "Invoice PDF is available only for a successful payment.",
+    );
+    return;
+  }
+
+  try {
+    setDownloadingInvoicePaymentId(
+      paymentTransactionId,
+    );
+
+    setError("");
+
+    const invoice =
+      await invoiceApi.generateInvoice(
+        paymentTransactionId,
+      );
+
+    if (!invoice?.id) {
+      throw new Error(
+        `Invoice ID was not returned for payment #${paymentTransactionId}.`,
+      );
+    }
+
+    await invoiceApi.downloadInvoice(
+      Number(libraryId),
+      invoice.id,
+      invoice.invoiceNumber,
+    );
+  } catch (requestError) {
+    console.error(
+      "Failed to download member invoice:",
+      requestError,
+    );
+
+    setError(
+      getErrorMessage(
+        requestError,
+        "Unable to download the member invoice PDF.",
+      ),
+    );
+  } finally {
+    setDownloadingInvoicePaymentId(null);
+  }
+};
+
+  // ==========================================================
+  // EFFECTS
+  // ==========================================================
 
   useEffect(() => {
     loadLibraries();
@@ -237,9 +489,34 @@ function Payments() {
     }
   }, [libraryId, loadPayments]);
 
-  /* =======================================================
-     FILTERED PAYMENTS
-  ======================================================= */
+  // ==========================================================
+  // DERIVED SUMMARY
+  // ==========================================================
+
+  /*
+   * Deliberately calculated from already-filtered member/library
+   * payments so platform subscription charges can never inflate
+   * library revenue cards.
+   */
+  const summary = useMemo(() => buildSummaryFromPayments(payments), [payments]);
+
+  const totalRevenue = Number(summary.totalRevenue || 0);
+
+  const todayRevenue = Number(summary.todayRevenue || 0);
+
+  const monthlyRevenue = Number(summary.monthlyRevenue || 0);
+
+  const successfulPayments = Number(summary.successfulPayments || 0);
+
+  const pendingPayments = Number(summary.pendingPayments || 0);
+
+  const failedPayments = Number(summary.failedPayments || 0);
+
+  const refundedAmount = Number(summary.refundedAmount || 0);
+
+  // ==========================================================
+  // FILTERED PAYMENTS
+  // ==========================================================
 
   const filteredPayments = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -274,34 +551,17 @@ function Payments() {
     });
   }, [payments, search, statusFilter, referenceTypeFilter]);
 
-  /* =======================================================
-     SUMMARY
-  ======================================================= */
+  const selectedLibrary =
+    libraries.find((library) => String(library.id) === String(libraryId)) ??
+    null;
 
-  const totalRevenue = Number(summary?.totalRevenue ?? 0);
-
-  const todayRevenue = Number(summary?.todayRevenue ?? 0);
-
-  const monthlyRevenue = Number(summary?.monthlyRevenue ?? 0);
-
-  const successfulPayments = Number(summary?.successfulPayments ?? 0);
-
-  const pendingPayments = Number(summary?.pendingPayments ?? 0);
-
-  const failedPayments = Number(summary?.failedPayments ?? 0);
-
-  const refundedAmount = Number(summary?.refundedAmount ?? 0);
-
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <Box>
-      {/* ===================================================
-          HEADER
-      =================================================== */}
-
+      {/* HEADER */}
       <Stack
         direction={{
           xs: "column",
@@ -321,14 +581,15 @@ function Payments() {
           </Typography>
 
           <Typography variant="body2" color="text.secondary" mt={0.5}>
-            View and manage library payment transactions.
+            View payments received from members for memberships, bookings and
+            other library services.
           </Typography>
         </Box>
 
         <FormControl
           size="small"
           sx={{
-            minWidth: 220,
+            minWidth: 240,
           }}
         >
           <InputLabel>Library</InputLabel>
@@ -336,14 +597,25 @@ function Payments() {
           <Select
             value={libraryId}
             label="Library"
-            disabled={loadingLibraries}
+            disabled={loadingLibraries || libraries.length === 0}
             onChange={(event) => {
-              setLibraryId(String(event.target.value));
+              const nextLibraryId = String(event.target.value);
+
+              setLibraryId(nextLibraryId);
+
+              storeLibraryId(nextLibraryId);
 
               setSearch("");
               setStatusFilter("ALL");
-
               setReferenceTypeFilter("ALL");
+
+              window.dispatchEvent(
+                new CustomEvent("owner-library-changed", {
+                  detail: {
+                    libraryId: Number(nextLibraryId),
+                  },
+                }),
+              );
             }}
           >
             {libraries.map((library) => (
@@ -355,20 +627,22 @@ function Payments() {
         </FormControl>
       </Stack>
 
-      {/* ===================================================
-          ERROR
-      =================================================== */}
+      {selectedLibrary && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Showing member revenue for <strong>{selectedLibrary.name}</strong>.
+          LibraryHub platform subscription charges are shown separately under
+          Subscription & Billing.
+        </Typography>
+      )}
 
+      {/* ERROR */}
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
           {error}
         </Alert>
       )}
 
-      {/* ===================================================
-          SUMMARY CARDS
-      =================================================== */}
-
+      {/* SUMMARY */}
       {libraryId && (
         <Grid container spacing={2} mb={3}>
           <Grid
@@ -378,7 +652,7 @@ function Payments() {
               md: 3,
             }}
           >
-            <Card>
+            <Card sx={{ height: "100%" }}>
               <CardContent>
                 <Stack
                   direction="row"
@@ -408,7 +682,7 @@ function Payments() {
               md: 3,
             }}
           >
-            <Card>
+            <Card sx={{ height: "100%" }}>
               <CardContent>
                 <Typography variant="body2" color="text.secondary">
                   Today Revenue
@@ -428,7 +702,7 @@ function Payments() {
               md: 3,
             }}
           >
-            <Card>
+            <Card sx={{ height: "100%" }}>
               <CardContent>
                 <Typography variant="body2" color="text.secondary">
                   Monthly Revenue
@@ -448,7 +722,7 @@ function Payments() {
               md: 3,
             }}
           >
-            <Card>
+            <Card sx={{ height: "100%" }}>
               <CardContent>
                 <Typography variant="body2" color="text.secondary">
                   Refunded Amount
@@ -468,10 +742,7 @@ function Payments() {
         </Grid>
       )}
 
-      {/* ===================================================
-          STATUS CARDS
-      =================================================== */}
-
+      {/* STATUS */}
       {libraryId && (
         <Grid container spacing={2} mb={3}>
           <Grid
@@ -551,10 +822,7 @@ function Payments() {
         </Grid>
       )}
 
-      {/* ===================================================
-          FILTERS
-      =================================================== */}
-
+      {/* FILTERS */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Stack
@@ -616,23 +884,25 @@ function Payments() {
             <FormControl
               size="small"
               sx={{
-                minWidth: 190,
+                minWidth: 200,
               }}
             >
-              <InputLabel>Reference Type</InputLabel>
+              <InputLabel>Payment For</InputLabel>
 
               <Select
                 value={referenceTypeFilter}
-                label="Reference Type"
+                label="Payment For"
                 onChange={(event) => setReferenceTypeFilter(event.target.value)}
               >
-                <MenuItem value="ALL">All Types</MenuItem>
+                <MenuItem value="ALL">All Member Payments</MenuItem>
 
                 <MenuItem value="MEMBERSHIP">Membership</MenuItem>
 
                 <MenuItem value="BOOKING">Booking</MenuItem>
 
-                <MenuItem value="SUBSCRIPTION_RENEWAL">Renewal</MenuItem>
+                <MenuItem value="SUBSCRIPTION_RENEWAL">
+                  Membership Renewal
+                </MenuItem>
 
                 <MenuItem value="SECURITY_DEPOSIT">Security Deposit</MenuItem>
 
@@ -645,10 +915,7 @@ function Payments() {
         </CardContent>
       </Card>
 
-      {/* ===================================================
-          LOADING
-      =================================================== */}
-
+      {/* LOADING */}
       {(loadingLibraries || loadingPayments) && (
         <Card>
           <CardContent>
@@ -663,17 +930,14 @@ function Payments() {
               <CircularProgress />
 
               <Typography variant="body2" color="text.secondary">
-                Loading payments...
+                Loading member payments...
               </Typography>
             </Stack>
           </CardContent>
         </Card>
       )}
 
-      {/* ===================================================
-          TRANSACTIONS
-      =================================================== */}
-
+      {/* TRANSACTIONS */}
       {!loadingLibraries && !loadingPayments && libraryId && (
         <Stack spacing={2}>
           {filteredPayments.map((payment) => (
@@ -689,7 +953,7 @@ function Payments() {
                 >
                   <Box>
                     <Typography fontWeight={700}>
-                      {payment.customerName || "Unknown Customer"}
+                      {payment.customerName || "Member"}
                     </Typography>
 
                     <Typography variant="body2" color="text.secondary">
@@ -697,6 +961,12 @@ function Payments() {
                       {payment.referenceType && ` · ${payment.referenceType}`}
                       {payment.referenceId && ` #${payment.referenceId}`}
                     </Typography>
+
+                    {payment.customerEmail && (
+                      <Typography variant="caption" color="text.secondary">
+                        {payment.customerEmail}
+                      </Typography>
+                    )}
                   </Box>
 
                   <Chip
@@ -766,6 +1036,33 @@ function Payments() {
                   </Grid>
                 </Grid>
 
+                {payment.status === "SUCCESS" && (
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={
+                        downloadingInvoicePaymentId ===
+                        Number(
+                          payment.paymentId ??
+                            payment.transactionId ??
+                            payment.id,
+                        )
+                      }
+                      onClick={() => handleDownloadMemberInvoice(payment)}
+                    >
+                      {downloadingInvoicePaymentId ===
+                      Number(
+                        payment.paymentId ??
+                          payment.transactionId ??
+                          payment.id,
+                      )
+                        ? "Downloading Invoice..."
+                        : "Download Invoice PDF"}
+                    </Button>
+                  </Box>
+                )}
+
                 {(payment.receiptNumber || payment.gatewayPaymentId) && (
                   <Stack
                     direction={{
@@ -825,11 +1122,12 @@ function Payments() {
                   }}
                 >
                   <Typography variant="h6" fontWeight={700}>
-                    No payment transactions found
+                    No member payment transactions found
                   </Typography>
 
                   <Typography variant="body2" color="text.secondary" mt={0.5}>
-                    No payments match the selected filters.
+                    Platform subscription payments are shown under Subscription
+                    & Billing.
                   </Typography>
                 </Box>
               </CardContent>

@@ -1,87 +1,72 @@
-import { Navigate } from "react-router-dom";
-import { useSelector } from "react-redux";
+import {
+  Navigate,
+} from "react-router-dom";
 
-/**
- * Central dashboard dispatcher.
- *
- * Redirects authenticated users to the dashboard
- * that belongs to their role.
- */
+import {
+  useSelector,
+} from "react-redux";
+
+
 function DashboardRedirect() {
 
-    const user = useSelector(
-        (state) => state.auth.user
+  const user =
+    useSelector(
+      (state) =>
+        state.auth?.user
     );
 
-    const role = user?.role;
+
+  const role =
+    user?.role;
 
 
-    // =========================================================
-    // NOT AUTHENTICATED
-    // =========================================================
-
-    if (!role) {
-        return (
-            <Navigate
-                to="/login"
-                replace
-            />
-        );
-    }
-
-
-    // =========================================================
-    // LIBRARY OWNER
-    // =========================================================
-
-    if (role === "LIBRARY_OWNER") {
-        return (
-            <Navigate
-                to="/owner/dashboard"
-                replace
-            />
-        );
-    }
-
-
-    // =========================================================
-    // STUDENT / USER
-    // =========================================================
-
-    if (role === "USER") {
-        return (
-            <Navigate
-                to="/student/dashboard"
-                replace
-            />
-        );
-    }
-
-
-    // =========================================================
-    // PLATFORM ADMIN
-    // =========================================================
-
-    if (role === "ADMIN") {
-        return (
-            <Navigate
-                to="/admin/dashboard"
-                replace
-            />
-        );
-    }
-
-
-    // =========================================================
-    // UNKNOWN ROLE
-    // =========================================================
+  if (
+    role === "ADMIN"
+  ) {
 
     return (
-        <Navigate
-            to="/"
-            replace
-        />
+      <Navigate
+        to="/admin/dashboard"
+        replace
+      />
     );
+  }
+
+
+  if (
+    role ===
+    "LIBRARY_OWNER"
+  ) {
+
+    return (
+      <Navigate
+        to="/owner/dashboard"
+        replace
+      />
+    );
+  }
+
+
+  if (
+    role === "USER"
+  ) {
+
+    return (
+      <Navigate
+        to="/student/dashboard"
+        replace
+      />
+    );
+  }
+
+
+  return (
+    <Navigate
+      to="/"
+      replace
+    />
+  );
 }
+
 
 export default DashboardRedirect;

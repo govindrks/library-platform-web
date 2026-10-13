@@ -1,895 +1,2656 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
-    Alert,
-    Box,
-    Button,
-    Card,
-    CardContent,
-    Chip,
-    Divider,
-    Grid,
-    LinearProgress,
-    Stack,
-    Table,
-    TableBody,
-    TableCell,
-    TableContainer,
-    TableHead,
-    TableRow,
-    Typography,
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  LinearProgress,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
 } from "@mui/material";
 
 import {
-    ArrowForward,
-    CalendarMonth,
-    CheckCircle,
-    Download,
-    Groups,
-    History,
-    Payment,
-    TrendingUp,
-    WorkspacePremium,
+  ArrowForward,
+  CalendarMonth,
+  CheckCircle,
+  Groups,
+  History,
+  Payment,
+  TrendingUp,
+  WorkspacePremium,
+  Download as DownloadIcon,
+  ReceiptLong as ReceiptLongIcon,
 } from "@mui/icons-material";
 
 import { useNavigate } from "react-router-dom";
 
-import platformPlans from "../../utility/platformPlans";
+import libraryApi from "../../api/libraryApi";
+import libraryRegistrationApi from "../../api/libraryRegistrationApi";
+import dashboardApi from "../../api/dashboardApi";
+import platformPlanApi from "../../api/platformPlanApi";
+import platformSubscriptionApi from "../../api/platformSubscriptionApi";
+import platformPaymentApi from "../../api/platformPaymentApi";
+import invoiceApi from "../../api/invoiceApi";
 
+// ============================================================
+// CONSTANTS
+// ============================================================
 
-const currentPlanId = "GROWTH";
+const OWNER_SELECTED_LIBRARY_KEY = "ownerSelectedLibraryId";
 
-const currentMembers = 78;
+// ============================================================
+// HELPERS
+// ============================================================
 
-const billingDate = "15 October 2026";
+function getErrorMessage(error, fallback = "Something went wrong.") {
+  return (
+    error?.response?.data?.message ||
+    error?.response?.data?.error ||
+    error?.message ||
+    fallback
+  );
+}
 
-const paymentMethod = "Razorpay •••• 4242";
+function normalizeListResponse(response) {
+  if (Array.isArray(response)) {
+    return response;
+  }
 
+  if (Array.isArray(response?.content)) {
+    return response.content;
+  }
 
-const billingHistory = [
-    {
-        id: "INV-2026-09",
-        date: "15 September 2026",
-        description: "Growth Plan",
-        amount: 1499,
-        status: "PAID",
-    },
-    {
-        id: "INV-2026-08",
-        date: "15 August 2026",
-        description: "Growth Plan",
-        amount: 1499,
-        status: "PAID",
-    },
-    {
-        id: "INV-2026-07",
-        date: "15 July 2026",
-        description: "Growth Plan",
-        amount: 1499,
-        status: "PAID",
-    },
-    {
-        id: "INV-2026-06",
-        date: "15 June 2026",
-        description: "Growth Plan",
-        amount: 1499,
-        status: "PAID",
-    },
-];
+  if (Array.isArray(response?.data)) {
+    return response.data;
+  }
 
+  return [];
+}
 
-function SubscriptionBilling() {
-    const navigate = useNavigate();
+/*
+ * Normalize the seat-matrix response exactly for capacity checks.
+ *
+ * During registration the plan is validated against seats already
+ * persisted for every floor. Subscription & Billing must use the
+ * same persisted backend seat count instead of relying on a UI
+ * draft or dashboard approximation.
+ */
+function extractSeatList(matrixResponse) {
+  if (!matrixResponse) {
+    return [];
+  }
 
-    const [showAllInvoices, setShowAllInvoices] =
-        useState(false);
+  if (Array.isArray(matrixResponse)) {
+    const grouped = matrixResponse.some((item) => Array.isArray(item?.seats));
 
-    const currentPlan = useMemo(
-        () =>
-            platformPlans.find(
-                (plan) =>
-                    plan.id === currentPlanId
-            ),
-        []
+    if (grouped) {
+      return matrixResponse.flatMap((row) =>
+        Array.isArray(row?.seats) ? row.seats : [],
+      );
+    }
+
+    return matrixResponse;
+  }
+
+  if (Array.isArray(matrixResponse?.seats)) {
+    return matrixResponse.seats;
+  }
+
+  if (Array.isArray(matrixResponse?.seatMatrix)) {
+    const matrix = matrixResponse.seatMatrix;
+
+    const grouped = matrix.some((item) => Array.isArray(item?.seats));
+
+    if (grouped) {
+      return matrix.flatMap((row) =>
+        Array.isArray(row?.seats) ? row.seats : [],
+      );
+    }
+
+    return matrix;
+  }
+
+  if (Array.isArray(matrixResponse?.rows)) {
+    return matrixResponse.rows.flatMap((row) =>
+      Array.isArray(row?.seats) ? row.seats : [],
+    );
+  }
+
+  if (Array.isArray(matrixResponse?.content)) {
+    const content = matrixResponse.content;
+
+    const grouped = content.some((item) => Array.isArray(item?.seats));
+
+    if (grouped) {
+      return content.flatMap((row) =>
+        Array.isArray(row?.seats) ? row.seats : [],
+      );
+    }
+
+    return content;
+  }
+
+  return [];
+}
+
+function getStoredLibraryId() {
+  const value = localStorage.getItem(OWNER_SELECTED_LIBRARY_KEY);
+
+  if (!value) {
+    return null;
+  }
+
+  const id = Number(value);
+
+  return Number.isFinite(id) ? id : null;
+}
+
+function storeLibraryId(libraryId) {
+  const id = Number(libraryId);
+
+  if (!Number.isFinite(id)) {
+    return;
+  }
+
+  localStorage.setItem(OWNER_SELECTED_LIBRARY_KEY, String(id));
+}
+
+function formatCurrency(value, currency = "INR") {
+  const amount = Number(value) || 0;
+
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currency || "INR",
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `₹${amount.toLocaleString("en-IN")}`;
+  }
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function getBillingCycleLabel(billingCycle) {
+  switch (billingCycle) {
+    case "MONTHLY":
+      return "month";
+
+    case "QUARTERLY":
+      return "quarter";
+
+    case "HALF_YEARLY":
+      return "6 months";
+
+    case "YEARLY":
+    case "ANNUAL":
+      return "year";
+
+    default:
+      return billingCycle
+        ? billingCycle.replaceAll("_", " ").toLowerCase()
+        : "";
+  }
+}
+
+function getSubscriptionStatusColor(status) {
+  switch (status) {
+    case "ACTIVE":
+      return "success";
+
+    case "PENDING_PAYMENT":
+      return "warning";
+
+    case "FAILED":
+    case "CANCELLED":
+    case "EXPIRED":
+    case "SUSPENDED":
+      return "error";
+
+    default:
+      return "default";
+  }
+}
+
+// ============================================================
+// RAZORPAY CHECKOUT
+// ============================================================
+
+const loadRazorpayScript = () =>
+  new Promise((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const existingScript = document.querySelector(
+      'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
     );
 
-    const usagePercentage = currentPlan?.maxMembers
-        ? Math.min(
-              (currentMembers /
-                  currentPlan.maxMembers) *
-                  100,
-              100
-          )
-        : 0;
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(true), {
+        once: true,
+      });
 
-    const remainingMembers = currentPlan?.maxMembers
-        ? Math.max(
-              currentPlan.maxMembers -
-                  currentMembers,
-              0
-          )
-        : null;
+      existingScript.addEventListener("error", () => resolve(false), {
+        once: true,
+      });
 
-    const displayedInvoices = showAllInvoices
-        ? billingHistory
-        : billingHistory.slice(0, 3);
+      return;
+    }
 
+    const script = document.createElement("script");
+
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+
+    script.async = true;
+
+    script.onload = () => resolve(true);
+
+    script.onerror = () => resolve(false);
+
+    document.body.appendChild(script);
+  });
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
+function SubscriptionBilling() {
+  const navigate = useNavigate();
+
+  const [libraries, setLibraries] = useState([]);
+
+  const [libraryId, setLibraryId] = useState("");
+
+  const [library, setLibrary] = useState(null);
+
+  const [subscriptions, setSubscriptions] = useState([]);
+
+  const [activeSubscription, setActiveSubscription] = useState(null);
+
+  const [plans, setPlans] = useState([]);
+
+  const [dashboardData, setDashboardData] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState("");
+
+  const [showAllHistory, setShowAllHistory] = useState(false);
+
+  const [planDialogMode, setPlanDialogMode] = useState(null);
+
+  const [selectedChangePlanId, setSelectedChangePlanId] = useState(null);
+
+  const [librarySeatCount, setLibrarySeatCount] = useState(0);
+
+  const [librarySeatCountLoading, setLibrarySeatCountLoading] = useState(false);
+
+  const [librarySeatCountError, setLibrarySeatCountError] = useState("");
+
+  const [planPaymentLoading, setPlanPaymentLoading] = useState(false);
+
+  const [planPaymentMessage, setPlanPaymentMessage] = useState("");
+
+  // ==========================================================
+  // PLATFORM INVOICE VIEWER
+  // ==========================================================
+
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+
+  const [invoiceDialogLoading, setInvoiceDialogLoading] = useState(false);
+
+  const [selectedBillingItem, setSelectedBillingItem] = useState(null);
+
+  const [selectedPlatformInvoice, setSelectedPlatformInvoice] = useState(null);
+
+  const [invoiceDownloadLoading, setInvoiceDownloadLoading] = useState(false);
+
+  const [invoiceDialogError, setInvoiceDialogError] = useState("");
+
+  // ==========================================================
+  // LOAD OWNER LIBRARIES
+  // ==========================================================
+
+  const loadLibraries = useCallback(async () => {
+    const response = await libraryApi.getMyLibraries();
+
+    const list = normalizeListResponse(response);
+
+    setLibraries(list);
+
+    if (list.length === 0) {
+      setLibraryId("");
+      setLibrary(null);
+
+      return null;
+    }
+
+    const storedLibraryId = getStoredLibraryId();
+
+    if (storedLibraryId !== null) {
+      const storedLibrary = list.find(
+        (item) => Number(item?.id) === storedLibraryId,
+      );
+
+      if (storedLibrary) {
+        setLibraryId(String(storedLibrary.id));
+
+        setLibrary(storedLibrary);
+
+        return storedLibrary;
+      }
+    }
+
+    /*
+     * Recovery for older accounts with duplicate empty DRAFT
+     * libraries: prefer one with an ACTIVE platform subscription.
+     */
+    for (const item of list) {
+      try {
+        const active = await platformSubscriptionApi.getActiveSubscription(
+          item.id,
+        );
+
+        if (active) {
+          setLibraryId(String(item.id));
+
+          setLibrary(item);
+
+          storeLibraryId(item.id);
+
+          return item;
+        }
+      } catch {
+        // Continue to next library.
+      }
+    }
+
+    const fallback = list[0];
+
+    setLibraryId(String(fallback.id));
+
+    setLibrary(fallback);
+
+    storeLibraryId(fallback.id);
+
+    return fallback;
+  }, []);
+
+  // ==========================================================
+  // LOAD PERSISTED LIBRARY SEAT COUNT
+  // ==========================================================
+  //
+  // This mirrors the registration plan-validation rule:
+  //
+  //   persisted library seats <= platformPlan.maxSeats
+  //
+  // Seats are counted from every persisted floor / seat matrix,
+  // so changing a plan cannot accidentally move an existing
+  // library onto a plan that supports fewer seats than it already
+  // contains.
+  // ==========================================================
+
+  const loadLibrarySeatCount = useCallback(async (selectedLibraryId) => {
+    if (!selectedLibraryId) {
+      setLibrarySeatCount(0);
+      setLibrarySeatCountError("");
+      return 0;
+    }
+
+    try {
+      setLibrarySeatCountLoading(true);
+
+      setLibrarySeatCountError("");
+
+      const floorsResponse =
+        await libraryRegistrationApi.getFloors(selectedLibraryId);
+
+      const floors = normalizeListResponse(floorsResponse);
+
+      let totalSeats = 0;
+
+      for (const floor of floors) {
+        const floorId = floor?.id ?? floor?.floorId;
+
+        if (!floorId) {
+          continue;
+        }
+
+        try {
+          const matrix = await libraryRegistrationApi.getSeatMatrix(
+            selectedLibraryId,
+            floorId,
+          );
+
+          totalSeats += extractSeatList(matrix).length;
+        } catch (matrixError) {
+          console.warn(
+            `Unable to load seat matrix for floor ${floorId}:`,
+            matrixError,
+          );
+        }
+      }
+
+      setLibrarySeatCount(totalSeats);
+
+      return totalSeats;
+    } catch (requestError) {
+      console.error("Unable to load library seat count:", requestError);
+
+      setLibrarySeatCount(0);
+
+      setLibrarySeatCountError(
+        getErrorMessage(
+          requestError,
+          "Unable to verify the library seat count against plan limits.",
+        ),
+      );
+
+      return 0;
+    } finally {
+      setLibrarySeatCountLoading(false);
+    }
+  }, []);
+
+  // ==========================================================
+  // LOAD SUBSCRIPTION DATA
+  // ==========================================================
+
+  const loadSubscriptionData = useCallback(async (selectedLibraryId) => {
+    if (!selectedLibraryId) {
+      setSubscriptions([]);
+      setActiveSubscription(null);
+      setDashboardData(null);
+
+      return;
+    }
+
+    const [subscriptionResponse, planResponse, dashboardResponse] =
+      await Promise.all([
+        platformSubscriptionApi.getLibrarySubscriptions(selectedLibraryId),
+
+        platformPlanApi.getActivePlans(),
+
+        dashboardApi.getDashboard(selectedLibraryId).catch((requestError) => {
+          console.warn("Unable to load dashboard usage:", requestError);
+
+          return null;
+        }),
+      ]);
+
+    const subscriptionList = normalizeListResponse(subscriptionResponse);
+
+    const active =
+      subscriptionList.find(
+        (subscription) => subscription?.status === "ACTIVE",
+      ) ?? null;
+
+    setSubscriptions(subscriptionList);
+
+    setActiveSubscription(active);
+
+    setPlans(normalizeListResponse(planResponse));
+
+    setDashboardData(dashboardResponse);
+  }, []);
+
+  // ==========================================================
+  // INITIAL LOAD
+  // ==========================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const selectedLibrary = await loadLibraries();
+
+        if (mounted && selectedLibrary?.id) {
+          await loadSubscriptionData(selectedLibrary.id);
+        }
+      } catch (requestError) {
+        console.error("Failed to load subscription & billing:", requestError);
+
+        if (mounted) {
+          setError(
+            getErrorMessage(
+              requestError,
+              "Unable to load subscription and billing.",
+            ),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      mounted = false;
+    };
+  }, [loadLibraries, loadSubscriptionData]);
+
+  // ==========================================================
+  // RELOAD WHEN LIBRARY CHANGES
+  // ==========================================================
+
+  useEffect(() => {
+    const handleLibraryChanged = async (event) => {
+      const nextLibraryId = Number(event?.detail?.libraryId);
+
+      if (!Number.isFinite(nextLibraryId)) {
+        return;
+      }
+
+      const nextLibrary = libraries.find(
+        (item) => Number(item.id) === nextLibraryId,
+      );
+
+      setLibraryId(String(nextLibraryId));
+
+      setLibrary(nextLibrary ?? null);
+
+      storeLibraryId(nextLibraryId);
+
+      try {
+        setLoading(true);
+        setError("");
+
+        await loadSubscriptionData(nextLibraryId);
+      } catch (requestError) {
+        setError(
+          getErrorMessage(
+            requestError,
+            "Unable to load subscription and billing.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    window.addEventListener("owner-library-changed", handleLibraryChanged);
+
+    return () =>
+      window.removeEventListener("owner-library-changed", handleLibraryChanged);
+  }, [libraries, loadSubscriptionData]);
+
+  // ==========================================================
+  // CURRENT PLAN
+  // ==========================================================
+
+  const currentPlan = useMemo(() => {
+    if (!activeSubscription) {
+      return null;
+    }
 
     return (
+      plans.find(
+        (plan) =>
+          Number(plan?.id ?? plan?.planId) ===
+          Number(activeSubscription?.platformPlanId),
+      ) ?? null
+    );
+  }, [plans, activeSubscription]);
+
+  const planName =
+    activeSubscription?.platformPlanName ?? currentPlan?.name ?? "-";
+
+  const planPrice = Number(
+    currentPlan?.price ??
+      activeSubscription?.planAmount ??
+      activeSubscription?.amount ??
+      0,
+  );
+
+  const currency =
+    activeSubscription?.currency ?? currentPlan?.currency ?? "INR";
+
+  const billingCycle = currentPlan?.billingCycle ?? null;
+
+  const maxMembers = Number(
+    currentPlan?.maxStudents ?? currentPlan?.maxMembers ?? 0,
+  );
+
+  const statistics = dashboardData?.overview?.statistics ?? null;
+
+  const currentMembers = Number(
+    statistics?.activeStudents ?? statistics?.activeSubscriptions ?? 0,
+  );
+
+  const usagePercentage =
+    maxMembers > 0 ? Math.min((currentMembers / maxMembers) * 100, 100) : 0;
+
+  const remainingMembers =
+    maxMembers > 0 ? Math.max(maxMembers - currentMembers, 0) : null;
+
+  const usageSeverity =
+    usagePercentage >= 100
+      ? "error"
+      : usagePercentage >= 80
+        ? "warning"
+        : "success";
+
+  const nextBillingDate = activeSubscription?.endDate ?? "-";
+
+  // ==========================================================
+  // HISTORY
+  // ==========================================================
+
+  const billingHistory = useMemo(
+    () =>
+      subscriptions
+        .filter((subscription) => subscription?.paymentTransactionId != null)
+        .map((subscription) => ({
+          id: subscription.subscriptionId,
+          date: subscription.startDate ?? subscription.endDate,
+          description: subscription.platformPlanName ?? "LibraryHub Plan",
+          amount: Number(subscription.amount ?? 0),
+          currency: subscription.currency ?? "INR",
+          status: subscription.status,
+          paymentTransactionId: subscription.paymentTransactionId,
+        })),
+    [subscriptions],
+  );
+
+  const displayedHistory = showAllHistory
+    ? billingHistory
+    : billingHistory.slice(0, 5);
+
+  // ==========================================================
+  // RESTORE SEAT CAPACITY FOR PLAN VALIDATION
+  // ==========================================================
+
+  useEffect(() => {
+    if (!libraryId) {
+      setLibrarySeatCount(0);
+      return;
+    }
+
+    loadLibrarySeatCount(Number(libraryId));
+  }, [libraryId, loadLibrarySeatCount]);
+
+  // ==========================================================
+  // AVAILABLE PLATFORM PLANS
+  // ==========================================================
+  //
+  // These are the SAME active plan records configured by the
+  // platform admin and used during library registration.
+  //
+  // Subscription & Billing reuses those records directly rather
+  // than opening the admin PlatformPlans screen.
+  // ==========================================================
+
+  const availablePlans = useMemo(
+    () => plans.filter((plan) => plan?.active !== false),
+    [plans],
+  );
+
+  const selectedChangePlan = useMemo(
+    () =>
+      availablePlans.find(
+        (plan) =>
+          Number(plan?.id ?? plan?.planId) === Number(selectedChangePlanId),
+      ) ?? null,
+    [availablePlans, selectedChangePlanId],
+  );
+
+  const openPlanDialog = (mode) => {
+    setPlanDialogMode(mode);
+
+    setSelectedChangePlanId(null);
+  };
+
+  const closePlanDialog = () => {
+    setPlanDialogMode(null);
+
+    setSelectedChangePlanId(null);
+  };
+
+  const getPlanId = (plan) => Number(plan?.id ?? plan?.planId);
+
+  const isCurrentPlan = (plan) =>
+    getPlanId(plan) ===
+    Number(
+      activeSubscription?.platformPlanId ??
+        currentPlan?.id ??
+        currentPlan?.planId,
+    );
+
+  const getPlanSeatLimit = (plan) => {
+    const rawLimit = plan?.maxSeats;
+
+    if (rawLimit === null || rawLimit === undefined || rawLimit === "") {
+      return null;
+    }
+
+    const limit = Number(rawLimit);
+
+    return Number.isFinite(limit) ? limit : null;
+  };
+
+  const getPlanSeatEligibility = (plan) => {
+    const maxSeats = getPlanSeatLimit(plan);
+
+    /*
+     * null means the backend plan does not define a seat cap.
+     */
+    if (maxSeats === null) {
+      return {
+        eligible: true,
+        maxSeats: null,
+        usedSeats: librarySeatCount,
+        remainingSeats: null,
+      };
+    }
+
+    const usedSeats = Number(librarySeatCount) || 0;
+
+    return {
+      eligible: usedSeats <= maxSeats,
+
+      maxSeats,
+
+      usedSeats,
+
+      remainingSeats: maxSeats - usedSeats,
+    };
+  };
+
+  const getPlanActionLabel = (plan) => {
+    if (isCurrentPlan(plan)) {
+      return "Current Plan";
+    }
+
+    const currentPrice = Number(
+      currentPlan?.price ?? activeSubscription?.amount ?? 0,
+    );
+
+    const nextPrice = Number(plan?.price ?? 0);
+
+    if (nextPrice > currentPrice) {
+      return `Upgrade to ${plan?.name ?? "Plan"}`;
+    }
+
+    if (nextPrice < currentPrice) {
+      return `Change to ${plan?.name ?? "Plan"}`;
+    }
+
+    return `Select ${plan?.name ?? "Plan"}`;
+  };
+
+  const handlePreparePlanChange = (plan) => {
+    if (isCurrentPlan(plan)) {
+      return;
+    }
+
+    const seatEligibility = getPlanSeatEligibility(plan);
+
+    if (!seatEligibility.eligible) {
+      setError(
+        `${plan?.name ?? "This plan"} supports a maximum of ` +
+          `${seatEligibility.maxSeats} seats, but this library currently has ` +
+          `${seatEligibility.usedSeats} persisted seats. ` +
+          "Choose a plan with a higher seat limit or reduce the library seat count first.",
+      );
+
+      return;
+    }
+
+    setError("");
+
+    setSelectedChangePlanId(getPlanId(plan));
+
+    setPlanDialogMode("change");
+  };
+
+  // ==========================================================
+  // OPEN RAZORPAY FOR PLAN CHANGE
+  // ==========================================================
+
+  const openPlanChangeCheckout = async (payment, targetPlan) => {
+    const loaded = await loadRazorpayScript();
+
+    if (!loaded || !window.Razorpay) {
+      throw new Error(
+        "Unable to load Razorpay checkout. Please check your internet connection.",
+      );
+    }
+
+    const keyId = payment?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+
+    if (!keyId) {
+      throw new Error("Razorpay key ID is not configured.");
+    }
+
+    const transactionId =
+      payment?.paymentTransactionId ?? payment?.transactionId;
+
+    const gatewayOrderId = payment?.gatewayOrderId;
+
+    const amount = Number(
+      payment?.totalAmount ?? payment?.amount ?? targetPlan?.price ?? 0,
+    );
+
+    const currency = payment?.currency ?? targetPlan?.currency ?? "INR";
+
+    if (!transactionId) {
+      throw new Error("Payment transaction ID was not returned.");
+    }
+
+    if (!gatewayOrderId) {
+      throw new Error("Razorpay order ID was not returned.");
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Invalid platform subscription amount.");
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const options = {
+        key: keyId,
+
+        amount: Math.round(amount * 100),
+
+        currency,
+
+        name: "LibraryHub",
+
+        description: `${targetPlan?.name ?? "LibraryHub"} plan subscription`,
+
+        order_id: gatewayOrderId,
+
+        notes: {
+          libraryId: String(libraryId ?? ""),
+
+          platformPlanId: String(getPlanId(targetPlan) ?? ""),
+
+          previousSubscriptionId: String(
+            activeSubscription?.subscriptionId ?? "",
+          ),
+        },
+
+        handler: async (razorpayResponse) => {
+          try {
+            const verification = await platformPaymentApi.verifyPayment({
+              transactionId,
+
+              gatewayOrderId: razorpayResponse.razorpay_order_id,
+
+              gatewayPaymentId: razorpayResponse.razorpay_payment_id,
+
+              gatewaySignature: razorpayResponse.razorpay_signature,
+            });
+
+            if (verification?.status !== "SUCCESS") {
+              throw new Error(
+                verification?.message || "Payment verification failed.",
+              );
+            }
+
+            settled = true;
+
+            resolve(verification);
+          } catch (verificationError) {
+            settled = true;
+
+            reject(verificationError);
+          }
+        },
+
+        modal: {
+          ondismiss: () => {
+            if (settled) {
+              return;
+            }
+
+            settled = true;
+
+            const error = new Error("Payment was cancelled before completion.");
+
+            error.code = "PAYMENT_CANCELLED";
+
+            reject(error);
+          },
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+
+      razorpay.on("payment.failed", (response) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        const error = new Error(
+          response?.error?.description || "Razorpay payment failed.",
+        );
+
+        error.code = "PAYMENT_FAILED";
+
+        reject(error);
+      });
+
+      razorpay.open();
+    });
+  };
+
+  // ==========================================================
+  // CONTINUE TO PAYMENT
+  // ==========================================================
+
+  const handleContinuePlanPayment = async () => {
+    if (!activeSubscription?.subscriptionId) {
+      setError("Current active subscription is unavailable.");
+
+      return;
+    }
+
+    if (!selectedChangePlan) {
+      setError("Please select a new LibraryHub plan.");
+
+      return;
+    }
+
+    const seatEligibility = getPlanSeatEligibility(selectedChangePlan);
+
+    if (!seatEligibility.eligible) {
+      setError(
+        `${selectedChangePlan.name} supports a maximum of ` +
+          `${seatEligibility.maxSeats} seats, but this library currently has ` +
+          `${seatEligibility.usedSeats} seats.`,
+      );
+
+      return;
+    }
+
+    try {
+      setPlanPaymentLoading(true);
+
+      setError("");
+
+      setPlanPaymentMessage("Creating payment order...");
+
+      /*
+       * Create a new PENDING_PAYMENT subscription/order for
+       * the selected plan. The existing ACTIVE subscription
+       * must remain active until this payment succeeds.
+       */
+      const payment = await platformSubscriptionApi.changePlan(
+        activeSubscription.subscriptionId,
+        {
+          platformPlanId: getPlanId(selectedChangePlan),
+
+          autoRenew: true,
+        },
+      );
+
+      if (!payment) {
+        throw new Error("Plan-change payment response was not returned.");
+      }
+
+      setPlanPaymentMessage("Complete payment in Razorpay.");
+
+      await openPlanChangeCheckout(payment, selectedChangePlan);
+
+      setPlanPaymentMessage(
+        "Payment successful. Refreshing your subscription...",
+      );
+
+      /*
+       * PaymentCompletionProcessor activates the new platform
+       * subscription after successful verification.
+       *
+       * Reload from backend rather than mutating current plan
+       * locally.
+       */
+      await loadSubscriptionData(Number(libraryId));
+
+      closePlanDialog();
+
+      setPlanPaymentMessage("Plan changed successfully.");
+    } catch (requestError) {
+      console.error("Plan change payment failed:", requestError);
+
+      if (requestError?.code === "PAYMENT_CANCELLED") {
+        setPlanPaymentMessage(
+          "Payment was cancelled. Your existing plan remains unchanged.",
+        );
+      } else {
+        setError(
+          getErrorMessage(
+            requestError,
+            "Unable to complete the plan change payment.",
+          ),
+        );
+
+        setPlanPaymentMessage("");
+      }
+    } finally {
+      setPlanPaymentLoading(false);
+    }
+  };
+
+  // ==========================================================
+  // PLATFORM BILLING INVOICE VIEWER
+  // ==========================================================
+  //
+  // View Invoice:
+  //
+  // 1. Load library invoices.
+  // 2. Match invoice by paymentTransactionId.
+  // 3. If a successful historical payment has no invoice yet,
+  //    request backend invoice generation.
+  // 4. Display invoice details in this page.
+  //
+  // Download:
+  //
+  // invoiceApi.downloadInvoice(...)
+  //      ->
+  // OwnerPaymentInvoiceController
+  //      ->
+  // PaymentInvoiceService.downloadForLibrary(...)
+  //      ->
+  // PdfInvoiceGeneratorImpl when regeneration is required.
+  // ==========================================================
+
+  const findPlatformInvoiceByPayment = useCallback(
+    async (paymentTransactionId, allowGenerate = true) => {
+      if (!libraryId) {
+        throw new Error("Library is not selected.");
+      }
+
+      const transactionId = Number(paymentTransactionId);
+
+      if (!Number.isFinite(transactionId)) {
+        throw new Error("Payment transaction ID is unavailable.");
+      }
+
+      let invoiceList = normalizeListResponse(
+        await invoiceApi.getLibraryInvoices(Number(libraryId)),
+      );
+
+      let invoice =
+        invoiceList.find(
+          (candidate) =>
+            Number(candidate?.paymentTransactionId) === transactionId,
+        ) ?? null;
+
+      /*
+       * Older successful platform payments may predate automatic
+       * invoice generation. Generate once, then reload.
+       *
+       * If the payment is not SUCCESS, backend validation will
+       * reject generation and the caller will show the error.
+       */
+      if (!invoice && allowGenerate) {
+        await invoiceApi.generateInvoice(transactionId);
+
+        invoiceList = normalizeListResponse(
+          await invoiceApi.getLibraryInvoices(Number(libraryId)),
+        );
+
+        invoice =
+          invoiceList.find(
+            (candidate) =>
+              Number(candidate?.paymentTransactionId) === transactionId,
+          ) ?? null;
+      }
+
+      return invoice;
+    },
+    [libraryId],
+  );
+
+  const handleViewPlatformInvoice = async (item) => {
+    if (!item?.paymentTransactionId) {
+      setError("This subscription does not have a payment transaction.");
+
+      return;
+    }
+
+    try {
+      setSelectedBillingItem(item);
+
+      setSelectedPlatformInvoice(null);
+
+      setInvoiceDialogError("");
+
+      setInvoiceDialogOpen(true);
+
+      setInvoiceDialogLoading(true);
+
+      const invoice = await findPlatformInvoiceByPayment(
+        item.paymentTransactionId,
+        true,
+      );
+
+      if (!invoice) {
+        throw new Error(
+          `Invoice was not found for payment #${item.paymentTransactionId}.`,
+        );
+      }
+
+      /*
+       * Load owner-scoped invoice details so the dialog displays
+       * the server's latest invoice record.
+       */
+      const details = await invoiceApi.getInvoiceById(
+        Number(libraryId),
+        invoice.id,
+      );
+
+      setSelectedPlatformInvoice(details ?? invoice);
+    } catch (requestError) {
+      console.error("Failed to load platform invoice:", requestError);
+
+      setInvoiceDialogError(
+        getErrorMessage(requestError, "Unable to load this platform invoice."),
+      );
+    } finally {
+      setInvoiceDialogLoading(false);
+    }
+  };
+
+  const handleDownloadPlatformInvoice = async () => {
+    const invoice = selectedPlatformInvoice;
+
+    if (!invoice?.id) {
+      setInvoiceDialogError("Invoice is unavailable for download.");
+
+      return;
+    }
+
+    try {
+      setInvoiceDownloadLoading(true);
+
+      setInvoiceDialogError("");
+
+      await invoiceApi.downloadInvoice(
+        Number(libraryId),
+        invoice.id,
+        invoice.invoiceNumber,
+      );
+    } catch (requestError) {
+      console.error("Failed to download platform invoice PDF:", requestError);
+
+      setInvoiceDialogError(
+        getErrorMessage(requestError, "Unable to download the invoice PDF."),
+      );
+    } finally {
+      setInvoiceDownloadLoading(false);
+    }
+  };
+
+  const closeInvoiceDialog = () => {
+    if (invoiceDownloadLoading) {
+      return;
+    }
+
+    setInvoiceDialogOpen(false);
+
+    setSelectedBillingItem(null);
+
+    setSelectedPlatformInvoice(null);
+
+    setInvoiceDialogError("");
+  };
+
+  // ==========================================================
+  // LOADING
+  // ==========================================================
+
+  if (loading) {
+    return (
+      <Stack
+        alignItems="center"
+        justifyContent="center"
+        spacing={2}
+        sx={{
+          minHeight: 420,
+        }}
+      >
+        <CircularProgress />
+
+        <Typography color="text.secondary">
+          Loading subscription and usage...
+        </Typography>
+      </Stack>
+    );
+  }
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
+  return (
+    <Box>
+      {/* HEADER */}
+      <Stack
+        direction={{
+          xs: "column",
+          md: "row",
+        }}
+        justifyContent="space-between"
+        alignItems={{
+          xs: "flex-start",
+          md: "center",
+        }}
+        spacing={2}
+        mb={4}
+      >
         <Box>
-            {/* =====================================================
-                PAGE HEADER
-            ====================================================== */}
+          <Typography variant="h4" fontWeight={800}>
+            Subscription & Usage
+          </Typography>
 
-            <Stack
-                direction={{
-                    xs: "column",
-                    md: "row",
-                }}
-                justifyContent="space-between"
-                alignItems={{
-                    xs: "flex-start",
-                    md: "center",
-                }}
-                spacing={2}
-                mb={4}
+          <Typography variant="body1" color="text.secondary" mt={0.5}>
+            Manage your LibraryHub plan, view usage and upgrade when needed.
+          </Typography>
+
+          {library && (
+            <Typography variant="body2" color="text.secondary" mt={0.5}>
+              Library: <strong>{library.name}</strong>
+            </Typography>
+          )}
+        </Box>
+
+        <Button
+          variant="outlined"
+          startIcon={<History />}
+          onClick={() => setShowAllHistory((previous) => !previous)}
+        >
+          {showAllHistory ? "Show Recent" : "Billing History"}
+        </Button>
+      </Stack>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
+
+      {!activeSubscription && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 3 }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => navigate("/platform-plans")}
             >
-                <Box>
-                    <Typography
-                        variant="h4"
-                        fontWeight={800}
+              View Plans
+            </Button>
+          }
+        >
+          No active LibraryHub platform subscription was found for this library.
+        </Alert>
+      )}
+
+      {activeSubscription && (
+        <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 3 }}>
+          Your LibraryHub subscription is active.
+          {nextBillingDate !== "-" && (
+            <>
+              {" "}
+              Current plan period ends on{" "}
+              <strong>{formatDate(nextBillingDate)}</strong>.
+            </>
+          )}
+        </Alert>
+      )}
+
+      {/* CURRENT PLAN + USAGE */}
+      <Grid container spacing={3} mb={3}>
+        <Grid
+          size={{
+            xs: 12,
+            md: 7,
+          }}
+        >
+          <Card
+            sx={{
+              height: "100%",
+              border: "1px solid",
+              borderColor: activeSubscription ? "primary.main" : "divider",
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Stack spacing={3}>
+                <Stack
+                  direction={{
+                    xs: "column",
+                    sm: "row",
+                  }}
+                  justifyContent="space-between"
+                  alignItems={{
+                    xs: "flex-start",
+                    sm: "center",
+                  }}
+                  spacing={2}
+                >
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Box
+                      sx={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "primary.light",
+                        color: "primary.main",
+                      }}
                     >
-                        Subscription & Billing
+                      <WorkspacePremium />
+                    </Box>
+
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Current LibraryHub Plan
+                      </Typography>
+
+                      <Typography variant="h5" fontWeight={800}>
+                        {planName}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Chip
+                    label={activeSubscription?.status ?? "NO ACTIVE PLAN"}
+                    color={getSubscriptionStatusColor(
+                      activeSubscription?.status,
+                    )}
+                    size="small"
+                  />
+                </Stack>
+
+                <Divider />
+
+                <Grid container spacing={2}>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      sm: 4,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Member Capacity
+                    </Typography>
+
+                    <Typography variant="h6" fontWeight={700}>
+                      {maxMembers > 0
+                        ? `1 - ${maxMembers.toLocaleString("en-IN")}`
+                        : "-"}
+                    </Typography>
+                  </Grid>
+
+                  <Grid
+                    size={{
+                      xs: 12,
+                      sm: 4,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Plan Price
                     </Typography>
 
                     <Typography
-                        variant="body1"
-                        color="text.secondary"
-                        mt={0.5}
+                      variant="h6"
+                      fontWeight={700}
+                      color="primary.main"
                     >
-                        Manage your LibraryHub subscription,
-                        billing and member capacity.
+                      {formatCurrency(planPrice, currency)}
+                      {billingCycle &&
+                        ` / ${getBillingCycleLabel(billingCycle)}`}
                     </Typography>
+                  </Grid>
+
+                  <Grid
+                    size={{
+                      xs: 12,
+                      sm: 4,
+                    }}
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      Current Period End
+                    </Typography>
+
+                    <Typography variant="h6" fontWeight={700}>
+                      {formatDate(nextBillingDate)}
+                    </Typography>
+                  </Grid>
+                </Grid>
+
+                <Stack
+                  direction={{
+                    xs: "column",
+                    sm: "row",
+                  }}
+                  spacing={2}
+                >
+                  <Button
+                    variant="contained"
+                    startIcon={<TrendingUp />}
+                    endIcon={<ArrowForward />}
+                    disabled={!libraryId || !activeSubscription}
+                    onClick={() => openPlanDialog("change")}
+                  >
+                    Change / Upgrade Plan
+                  </Button>
+
+                  <Button
+                    variant="outlined"
+                    disabled={!libraryId}
+                    onClick={() => openPlanDialog("compare")}
+                  >
+                    Compare Plans
+                  </Button>
+                </Stack>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid
+          size={{
+            xs: 12,
+            md: 5,
+          }}
+        >
+          <Card
+            sx={{
+              height: "100%",
+            }}
+          >
+            <CardContent sx={{ p: 3 }}>
+              <Stack spacing={2.5}>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Groups color="primary" />
+
+                    <Typography variant="h6" fontWeight={700}>
+                      Member Usage
+                    </Typography>
+                  </Stack>
+
+                  <Button
+                    size="small"
+                    endIcon={<ArrowForward />}
+                    onClick={() => navigate("/owner/members")}
+                  >
+                    View Members
+                  </Button>
+                </Stack>
+
+                <Typography variant="h4" fontWeight={800}>
+                  {currentMembers}
+                  {maxMembers > 0 ? ` / ${maxMembers}` : ""}
+                  <Typography
+                    component="span"
+                    variant="body1"
+                    sx={{
+                      ml: 1,
+                      fontWeight: 600,
+                    }}
+                  >
+                    Members
+                  </Typography>
+                </Typography>
+
+                <Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={usagePercentage}
+                    color={
+                      usageSeverity === "error"
+                        ? "error"
+                        : usageSeverity === "warning"
+                          ? "warning"
+                          : "success"
+                    }
+                    sx={{
+                      height: 12,
+                      borderRadius: 6,
+                    }}
+                  />
+
+                  <Stack direction="row" justifyContent="space-between" mt={1}>
+                    <Typography variant="caption" color="text.secondary">
+                      {Math.round(usagePercentage)}% used
+                    </Typography>
+
+                    <Typography variant="caption" color="text.secondary">
+                      {remainingMembers != null
+                        ? `${remainingMembers} member slots remaining`
+                        : "Capacity unavailable"}
+                    </Typography>
+                  </Stack>
                 </Box>
 
-                <Button
-                    variant="outlined"
-                    startIcon={<History />}
-                    onClick={() =>
-                        setShowAllInvoices(
-                            (previous) => !previous
-                        )
-                    }
-                >
-                    Billing History
-                </Button>
-            </Stack>
+                <Alert severity={usageSeverity}>
+                  {usagePercentage >= 100
+                    ? "Member capacity reached. Upgrade the plan or reduce active memberships."
+                    : usagePercentage >= 80
+                      ? `You're using ${Math.round(
+                          usagePercentage,
+                        )}% of your member capacity.`
+                      : remainingMembers != null
+                        ? `You can add ${remainingMembers} more active members on your current plan.`
+                        : "Member capacity information is unavailable for this plan."}
+                </Alert>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
-
-            {/* =====================================================
-                SUBSCRIPTION STATUS
-            ====================================================== */}
-
-            <Alert
-                severity="success"
-                icon={<CheckCircle />}
-                sx={{ mb: 3 }}
+      {/* USAGE STATUS */}
+      {maxMembers > 0 && (
+        <Grid container spacing={2} mb={3}>
+          <Grid
+            size={{
+              xs: 12,
+              md: 4,
+            }}
+          >
+            <Card
+              sx={{
+                height: "100%",
+                border: "1px solid",
+                borderColor: usagePercentage < 80 ? "success.light" : "divider",
+              }}
             >
-                Your LibraryHub subscription is active.
-                Your next billing date is{" "}
-                <strong>{billingDate}</strong>.
-            </Alert>
+              <CardContent>
+                <Stack spacing={1.5}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CheckCircle color="success" />
 
+                    <Typography fontWeight={700}>Normal Usage</Typography>
+                  </Stack>
 
-            {/* =====================================================
-                CURRENT PLAN + USAGE
-            ====================================================== */}
+                  <Typography variant="h5" fontWeight={800}>
+                    {currentMembers} / {maxMembers}
+                  </Typography>
 
-            <Grid
-                container
-                spacing={3}
-                mb={3}
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(usagePercentage, 79)}
+                    color="success"
+                    sx={{
+                      height: 9,
+                      borderRadius: 5,
+                    }}
+                  />
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid
+            size={{
+              xs: 12,
+              md: 4,
+            }}
+          >
+            <Card
+              sx={{
+                height: "100%",
+                border: "1px solid",
+                borderColor:
+                  usagePercentage >= 80 && usagePercentage < 100
+                    ? "warning.main"
+                    : "divider",
+              }}
             >
+              <CardContent>
+                <Stack spacing={1.5}>
+                  <Typography fontWeight={700} color="warning.main">
+                    80% Usage Warning
+                  </Typography>
 
-                {/* Current Plan */}
+                  <Typography variant="h5" fontWeight={800}>
+                    {currentMembers} / {maxMembers}
+                  </Typography>
 
-                <Grid
-                    item
-                    xs={12}
-                    md={7}
-                >
-                    <Card
-                        sx={{
-                            height: "100%",
-                            border: "1px solid",
-                            borderColor:
-                                "primary.main",
-                        }}
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(usagePercentage, 100)}
+                    color="warning"
+                    sx={{
+                      height: 9,
+                      borderRadius: 5,
+                    }}
+                  />
+
+                  {usagePercentage >= 80 && usagePercentage < 100 && (
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      onClick={() => openPlanDialog("change")}
                     >
-                        <CardContent sx={{ p: 3 }}>
+                      Upgrade Plan
+                    </Button>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
 
-                            <Stack spacing={3}>
-
-                                <Stack
-                                    direction={{
-                                        xs: "column",
-                                        sm: "row",
-                                    }}
-                                    justifyContent="space-between"
-                                    alignItems={{
-                                        xs: "flex-start",
-                                        sm: "center",
-                                    }}
-                                    spacing={2}
-                                >
-                                    <Stack
-                                        direction="row"
-                                        spacing={1.5}
-                                        alignItems="center"
-                                    >
-                                        <Box
-                                            sx={{
-                                                width: 48,
-                                                height: 48,
-                                                borderRadius: 2,
-                                                display: "flex",
-                                                alignItems:
-                                                    "center",
-                                                justifyContent:
-                                                    "center",
-                                                backgroundColor:
-                                                    "primary.light",
-                                                color:
-                                                    "primary.main",
-                                            }}
-                                        >
-                                            <WorkspacePremium />
-                                        </Box>
-
-                                        <Box>
-                                            <Typography
-                                                variant="caption"
-                                                color="text.secondary"
-                                            >
-                                                Current
-                                                LibraryHub Plan
-                                            </Typography>
-
-                                            <Typography
-                                                variant="h5"
-                                                fontWeight={800}
-                                            >
-                                                {
-                                                    currentPlan?.name
-                                                }
-                                            </Typography>
-                                        </Box>
-                                    </Stack>
-
-                                    <Chip
-                                        label="ACTIVE"
-                                        color="success"
-                                        size="small"
-                                    />
-                                </Stack>
-
-                                <Divider />
-
-                                <Grid
-                                    container
-                                    spacing={2}
-                                >
-                                    <Grid
-                                        item
-                                        xs={12}
-                                        sm={4}
-                                    >
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Member Capacity
-                                        </Typography>
-
-                                        <Typography
-                                            variant="h6"
-                                            fontWeight={700}
-                                        >
-                                            1–
-                                            {currentPlan?.maxMembers?.toLocaleString(
-                                                "en-IN"
-                                            )}
-                                        </Typography>
-                                    </Grid>
-
-                                    <Grid
-                                        item
-                                        xs={12}
-                                        sm={4}
-                                    >
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Monthly Price
-                                        </Typography>
-
-                                        <Typography
-                                            variant="h6"
-                                            fontWeight={700}
-                                            color="primary.main"
-                                        >
-                                            ₹
-                                            {currentPlan?.price?.toLocaleString(
-                                                "en-IN"
-                                            )}
-                                        </Typography>
-                                    </Grid>
-
-                                    <Grid
-                                        item
-                                        xs={12}
-                                        sm={4}
-                                    >
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            Next Billing
-                                        </Typography>
-
-                                        <Typography
-                                            variant="h6"
-                                            fontWeight={700}
-                                        >
-                                            {billingDate}
-                                        </Typography>
-                                    </Grid>
-                                </Grid>
-
-                                <Stack
-                                    direction={{
-                                        xs: "column",
-                                        sm: "row",
-                                    }}
-                                    spacing={2}
-                                >
-                                    <Button
-                                        variant="contained"
-                                        startIcon={
-                                            <TrendingUp />
-                                        }
-                                        endIcon={
-                                            <ArrowForward />
-                                        }
-                                        onClick={() =>
-                                            navigate(
-                                                "/platform-plans"
-                                            )
-                                        }
-                                    >
-                                        Upgrade Plan
-                                    </Button>
-
-                                    <Button
-                                        variant="outlined"
-                                        onClick={() =>
-                                            navigate(
-                                                "/platform-plans"
-                                            )
-                                        }
-                                    >
-                                        Compare Plans
-                                    </Button>
-                                </Stack>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-
-                {/* Member Usage */}
-
-                <Grid
-                    item
-                    xs={12}
-                    md={5}
-                >
-                    <Card sx={{ height: "100%" }}>
-                        <CardContent sx={{ p: 3 }}>
-
-                            <Stack spacing={2.5}>
-
-                                <Stack
-                                    direction="row"
-                                    justifyContent="space-between"
-                                    alignItems="center"
-                                >
-                                    <Stack
-                                        direction="row"
-                                        spacing={1}
-                                        alignItems="center"
-                                    >
-                                        <Groups color="primary" />
-
-                                        <Typography
-                                            variant="h6"
-                                            fontWeight={700}
-                                        >
-                                            Member Usage
-                                        </Typography>
-                                    </Stack>
-
-                                    <Typography
-                                        fontWeight={700}
-                                        color="primary.main"
-                                    >
-                                        {currentMembers}/
-                                        {
-                                            currentPlan?.maxMembers
-                                        }
-                                    </Typography>
-                                </Stack>
-
-                                <Box>
-                                    <LinearProgress
-                                        variant="determinate"
-                                        value={
-                                            usagePercentage
-                                        }
-                                        sx={{
-                                            height: 10,
-                                            borderRadius: 5,
-                                        }}
-                                    />
-
-                                    <Stack
-                                        direction="row"
-                                        justifyContent="space-between"
-                                        mt={1}
-                                    >
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            {Math.round(
-                                                usagePercentage
-                                            )}
-                                            % used
-                                        </Typography>
-
-                                        <Typography
-                                            variant="caption"
-                                            color="text.secondary"
-                                        >
-                                            {
-                                                remainingMembers
-                                            }{" "}
-                                            seats remaining
-                                        </Typography>
-                                    </Stack>
-                                </Box>
-
-                                <Alert
-                                    severity={
-                                        usagePercentage >=
-                                        90
-                                            ? "warning"
-                                            : "info"
-                                    }
-                                >
-                                    {usagePercentage >=
-                                    90
-                                        ? "Your library is close to the member capacity limit. Consider upgrading your plan."
-                                        : `You can add ${remainingMembers} more active members on your current plan.`}
-                                </Alert>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
-            </Grid>
-
-
-            {/* =====================================================
-                QUICK BILLING INFORMATION
-            ====================================================== */}
-
-            <Grid
-                container
-                spacing={3}
-                mb={3}
+          <Grid
+            size={{
+              xs: 12,
+              md: 4,
+            }}
+          >
+            <Card
+              sx={{
+                height: "100%",
+                border: "1px solid",
+                borderColor: usagePercentage >= 100 ? "error.main" : "divider",
+              }}
             >
+              <CardContent>
+                <Stack spacing={1.5}>
+                  <Typography fontWeight={700} color="error.main">
+                    Capacity Reached
+                  </Typography>
 
+                  <Typography variant="h5" fontWeight={800}>
+                    {currentMembers} / {maxMembers}
+                  </Typography>
+
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(usagePercentage, 100)}
+                    color="error"
+                    sx={{
+                      height: 9,
+                      borderRadius: 5,
+                    }}
+                  />
+
+                  {usagePercentage >= 100 && (
+                    <Button
+                      variant="contained"
+                      color="error"
+                      onClick={() => navigate("/platform-plans")}
+                    >
+                      Upgrade Plan
+                    </Button>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* QUICK BILLING INFO */}
+      <Grid container spacing={3} mb={3}>
+        <Grid
+          size={{
+            xs: 12,
+            sm: 4,
+          }}
+        >
+          <Card sx={{ height: "100%" }}>
+            <CardContent>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Payment color="primary" />
+
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Platform Plan Billing
+                  </Typography>
+
+                  <Typography variant="h6" fontWeight={700}>
+                    {formatCurrency(planPrice, currency)}
+                  </Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid
+          size={{
+            xs: 12,
+            sm: 4,
+          }}
+        >
+          <Card sx={{ height: "100%" }}>
+            <CardContent>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <CalendarMonth color="primary" />
+
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Current Period End
+                  </Typography>
+
+                  <Typography variant="h6" fontWeight={700}>
+                    {formatDate(nextBillingDate)}
+                  </Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid
+          size={{
+            xs: 12,
+            sm: 4,
+          }}
+        >
+          <Card sx={{ height: "100%" }}>
+            <CardContent>
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Payment color="primary" />
+
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Payment Gateway
+                  </Typography>
+
+                  <Typography variant="body1" fontWeight={700}>
+                    Razorpay
+                  </Typography>
+                </Box>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* PLAN FEATURES / LIMITS */}
+      {currentPlan && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight={700} mb={0.5}>
+              Included in your {currentPlan.name} plan
+            </Typography>
+
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Current LibraryHub platform limits and enabled features.
+            </Typography>
+
+            <Divider sx={{ mb: 2 }} />
+
+            <Grid container spacing={2}>
+              <Grid
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  Max Libraries
+                </Typography>
+
+                <Typography fontWeight={700}>
+                  {currentPlan.maxLibraries ?? "-"}
+                </Typography>
+              </Grid>
+
+              <Grid
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  Max Members
+                </Typography>
+
+                <Typography fontWeight={700}>
+                  {currentPlan.maxStudents ?? currentPlan.maxMembers ?? "-"}
+                </Typography>
+              </Grid>
+
+              <Grid
+                size={{
+                  xs: 12,
+                  sm: 6,
+                  md: 4,
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  Max Seats
+                </Typography>
+
+                <Typography fontWeight={700}>
+                  {currentPlan.maxSeats ?? "-"}
+                </Typography>
+              </Grid>
+
+              {[
+                ["Analytics", currentPlan.analyticsEnabled],
+                ["Reports", currentPlan.reportsEnabled],
+                ["API Access", currentPlan.apiAccess],
+                ["Custom Branding", currentPlan.customBranding],
+                ["Priority Support", currentPlan.prioritySupport],
+              ].map(([label, enabled]) => (
                 <Grid
-                    item
-                    xs={12}
-                    sm={4}
+                  key={label}
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                    md: 4,
+                  }}
                 >
-                    <Card sx={{ height: "100%" }}>
-                        <CardContent>
-                            <Stack
-                                direction="row"
-                                spacing={2}
-                                alignItems="center"
-                            >
-                                <Box
-                                    sx={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 2,
-                                        display: "flex",
-                                        alignItems:
-                                            "center",
-                                        justifyContent:
-                                            "center",
-                                        backgroundColor:
-                                            "primary.light",
-                                        color:
-                                            "primary.main",
-                                    }}
-                                >
-                                    <Payment />
-                                </Box>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CheckCircle
+                      sx={{
+                        fontSize: 19,
+                        color: enabled ? "success.main" : "text.disabled",
+                      }}
+                    />
 
-                                <Box>
-                                    <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                    >
-                                        Monthly Billing
-                                    </Typography>
-
-                                    <Typography
-                                        variant="h6"
-                                        fontWeight={700}
-                                    >
-                                        ₹
-                                        {currentPlan?.price?.toLocaleString(
-                                            "en-IN"
-                                        )}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </CardContent>
-                    </Card>
+                    <Typography variant="body2">
+                      {label}: {enabled ? "Enabled" : "Not included"}
+                    </Typography>
+                  </Stack>
                 </Grid>
-
-
-                <Grid
-                    item
-                    xs={12}
-                    sm={4}
-                >
-                    <Card sx={{ height: "100%" }}>
-                        <CardContent>
-                            <Stack
-                                direction="row"
-                                spacing={2}
-                                alignItems="center"
-                            >
-                                <Box
-                                    sx={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 2,
-                                        display: "flex",
-                                        alignItems:
-                                            "center",
-                                        justifyContent:
-                                            "center",
-                                        backgroundColor:
-                                            "primary.light",
-                                        color:
-                                            "primary.main",
-                                    }}
-                                >
-                                    <CalendarMonth />
-                                </Box>
-
-                                <Box>
-                                    <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                    >
-                                        Next Billing Date
-                                    </Typography>
-
-                                    <Typography
-                                        variant="h6"
-                                        fontWeight={700}
-                                    >
-                                        {billingDate}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-
-                <Grid
-                    item
-                    xs={12}
-                    sm={4}
-                >
-                    <Card sx={{ height: "100%" }}>
-                        <CardContent>
-                            <Stack
-                                direction="row"
-                                spacing={2}
-                                alignItems="center"
-                            >
-                                <Box
-                                    sx={{
-                                        width: 44,
-                                        height: 44,
-                                        borderRadius: 2,
-                                        display: "flex",
-                                        alignItems:
-                                            "center",
-                                        justifyContent:
-                                            "center",
-                                        backgroundColor:
-                                            "primary.light",
-                                        color:
-                                            "primary.main",
-                                    }}
-                                >
-                                    <Payment />
-                                </Box>
-
-                                <Box>
-                                    <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                    >
-                                        Payment Method
-                                    </Typography>
-
-                                    <Typography
-                                        variant="body1"
-                                        fontWeight={700}
-                                    >
-                                        {paymentMethod}
-                                    </Typography>
-                                </Box>
-                            </Stack>
-                        </CardContent>
-                    </Card>
-                </Grid>
+              ))}
             </Grid>
+          </CardContent>
+        </Card>
+      )}
 
+      {/* BILLING HISTORY */}
+      <Card>
+        <CardContent sx={{ p: 3 }}>
+          <Stack
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
+            justifyContent="space-between"
+            alignItems={{
+              xs: "flex-start",
+              sm: "center",
+            }}
+            spacing={2}
+            mb={2}
+          >
+            <Box>
+              <Typography variant="h6" fontWeight={700}>
+                Platform Billing History
+              </Typography>
 
-            {/* =====================================================
-                PLAN FEATURES
-            ====================================================== */}
+              <Typography variant="body2" color="text.secondary">
+                LibraryHub platform subscription transactions only.
+                Student/member payments are shown in Payments.
+              </Typography>
+            </Box>
 
-            <Card sx={{ mb: 3 }}>
-                <CardContent sx={{ p: 3 }}>
+            <Button
+              size="small"
+              onClick={() => setShowAllHistory((previous) => !previous)}
+            >
+              {showAllHistory ? "Show Less" : "View All"}
+            </Button>
+          </Stack>
 
-                    <Stack spacing={2.5}>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Subscription</TableCell>
 
-                        <Box>
-                            <Typography
-                                variant="h6"
-                                fontWeight={700}
-                            >
-                                Included in your{" "}
-                                {currentPlan?.name} plan
+                  <TableCell>Date</TableCell>
+
+                  <TableCell>Plan</TableCell>
+
+                  <TableCell>Payment</TableCell>
+
+                  <TableCell align="right">Amount</TableCell>
+
+                  <TableCell>Status</TableCell>
+
+                  <TableCell align="right">Invoice</TableCell>
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {displayedHistory.map((item) => (
+                  <TableRow key={item.id} hover>
+                    <TableCell>#{item.id}</TableCell>
+
+                    <TableCell>{formatDate(item.date)}</TableCell>
+
+                    <TableCell>{item.description}</TableCell>
+
+                    <TableCell>
+                      {item.paymentTransactionId
+                        ? `#${item.paymentTransactionId}`
+                        : "-"}
+                    </TableCell>
+
+                    <TableCell align="right">
+                      {formatCurrency(item.amount, item.currency)}
+                    </TableCell>
+
+                    <TableCell>
+                      <Chip
+                        label={item.status ?? "UNKNOWN"}
+                        color={getSubscriptionStatusColor(item.status)}
+                        size="small"
+                      />
+                    </TableCell>
+
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        startIcon={<ReceiptLongIcon />}
+                        disabled={!item.paymentTransactionId}
+                        onClick={() => handleViewPlatformInvoice(item)}
+                      >
+                        View Invoice
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {displayedHistory.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      align="center"
+                      sx={{
+                        py: 5,
+                      }}
+                    >
+                      <Typography color="text.secondary">
+                        No platform billing history found.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+
+      {/* =====================================================
+          COMPARE / CHANGE PLAN DIALOG
+
+          Uses the same active platform plan records that are
+          configured by the platform admin and shown during
+          library registration.
+         ===================================================== */}
+      <Dialog
+        open={planDialogMode !== null}
+        onClose={closePlanDialog}
+        fullWidth
+        maxWidth="lg"
+      >
+        <DialogTitle>
+          {planDialogMode === "compare"
+            ? "Compare LibraryHub Plans"
+            : "Change / Upgrade LibraryHub Plan"}
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Typography variant="body2" color="text.secondary" mb={3}>
+            {planDialogMode === "compare"
+              ? "Compare all active plans currently offered by LibraryHub. Your existing subscription will not change until you explicitly choose another plan."
+              : "Choose another active LibraryHub plan. Your current plan is highlighted below."}
+          </Typography>
+
+          {librarySeatCountLoading ? (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Verifying the current library seat count before allowing a plan
+              change...
+            </Alert>
+          ) : librarySeatCountError ? (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {librarySeatCountError}
+            </Alert>
+          ) : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              This library currently has <strong>{librarySeatCount}</strong>{" "}
+              persisted seat
+              {librarySeatCount === 1 ? "" : "s"}. A plan can be selected only
+              when its seat limit is at least this amount.
+            </Alert>
+          )}
+
+          <Grid container spacing={2}>
+            {availablePlans.map((plan) => {
+              const current = isCurrentPlan(plan);
+
+              const selected = Number(selectedChangePlanId) === getPlanId(plan);
+
+              const seatEligibility = getPlanSeatEligibility(plan);
+
+              return (
+                <Grid
+                  key={getPlanId(plan)}
+                  size={{
+                    xs: 12,
+                    md: 6,
+                    lg: 4,
+                  }}
+                >
+                  <Card
+                    elevation={0}
+                    sx={{
+                      height: "100%",
+                      border: "2px solid",
+                      borderColor: current
+                        ? "primary.main"
+                        : selected
+                          ? "success.main"
+                          : "divider",
+                      borderRadius: 3,
+                    }}
+                  >
+                    <CardContent
+                      sx={{
+                        p: 2.5,
+                      }}
+                    >
+                      <Stack spacing={2}>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="flex-start"
+                          spacing={1}
+                        >
+                          <Box>
+                            <Typography variant="h6" fontWeight={800}>
+                              {plan?.name ?? "LibraryHub Plan"}
                             </Typography>
 
-                            <Typography
+                            {plan?.description && (
+                              <Typography
                                 variant="body2"
                                 color="text.secondary"
                                 mt={0.5}
-                            >
-                                Features currently available
-                                to your library.
-                            </Typography>
+                              >
+                                {plan.description}
+                              </Typography>
+                            )}
+                          </Box>
+
+                          {current && (
+                            <Chip
+                              label="CURRENT"
+                              color="primary"
+                              size="small"
+                            />
+                          )}
+                        </Stack>
+
+                        <Box>
+                          <Typography
+                            variant="h5"
+                            fontWeight={800}
+                            color="primary.main"
+                          >
+                            {formatCurrency(
+                              plan?.price,
+                              plan?.currency ?? "INR",
+                            )}
+                          </Typography>
+
+                          <Typography variant="caption" color="text.secondary">
+                            {plan?.billingCycle
+                              ? `/${getBillingCycleLabel(plan.billingCycle)}`
+                              : ""}
+                          </Typography>
                         </Box>
 
                         <Divider />
 
-                        <Grid
-                            container
-                            spacing={1.5}
-                        >
-                            {currentPlan?.features.map(
-                                (feature) => (
-                                    <Grid
-                                        item
-                                        xs={12}
-                                        sm={6}
-                                        md={4}
-                                        key={feature}
-                                    >
-                                        <Stack
-                                            direction="row"
-                                            spacing={1}
-                                            alignItems="center"
-                                        >
-                                            <CheckCircle
-                                                sx={{
-                                                    fontSize: 19,
-                                                    color:
-                                                        "success.main",
-                                                }}
-                                            />
+                        <Grid container spacing={1.5}>
+                          <Grid
+                            size={{
+                              xs: 6,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Members
+                            </Typography>
 
-                                            <Typography variant="body2">
-                                                {feature}
-                                            </Typography>
-                                        </Stack>
-                                    </Grid>
-                                )
-                            )}
+                            <Typography fontWeight={700}>
+                              {plan?.maxStudents ?? "-"}
+                            </Typography>
+                          </Grid>
+
+                          <Grid
+                            size={{
+                              xs: 6,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Seats
+                            </Typography>
+
+                            <Typography fontWeight={700}>
+                              {plan?.maxSeats ?? "-"}
+                            </Typography>
+                          </Grid>
+
+                          <Grid
+                            size={{
+                              xs: 6,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Libraries
+                            </Typography>
+
+                            <Typography fontWeight={700}>
+                              {plan?.maxLibraries ?? "-"}
+                            </Typography>
+                          </Grid>
+
+                          <Grid
+                            size={{
+                              xs: 6,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Branches
+                            </Typography>
+
+                            <Typography fontWeight={700}>
+                              {plan?.maxBranches ?? "-"}
+                            </Typography>
+                          </Grid>
                         </Grid>
-                    </Stack>
-                </CardContent>
-            </Card>
 
+                        <Alert
+                          severity={
+                            seatEligibility.eligible ? "success" : "error"
+                          }
+                          variant="outlined"
+                          sx={{
+                            py: 0.25,
+                          }}
+                        >
+                          {seatEligibility.maxSeats === null
+                            ? `Current library: ${seatEligibility.usedSeats} seats. No seat limit is configured for this plan.`
+                            : seatEligibility.eligible
+                              ? `Seat capacity verified: ${seatEligibility.usedSeats} / ${seatEligibility.maxSeats} seats used.`
+                              : `Not eligible: library has ${seatEligibility.usedSeats} seats but this plan supports only ${seatEligibility.maxSeats}.`}
+                        </Alert>
 
-            {/* =====================================================
-                BILLING HISTORY
-            ====================================================== */}
+                        <Divider />
 
-            <Card>
-                <CardContent sx={{ p: 3 }}>
-
-                    <Stack
-                        direction={{
-                            xs: "column",
-                            sm: "row",
-                        }}
-                        justifyContent="space-between"
-                        alignItems={{
-                            xs: "flex-start",
-                            sm: "center",
-                        }}
-                        spacing={2}
-                        mb={2}
-                    >
-                        <Box>
-                            <Typography
-                                variant="h6"
-                                fontWeight={700}
+                        <Stack spacing={0.7}>
+                          {[
+                            ["Analytics", plan?.analyticsEnabled],
+                            ["Reports", plan?.reportsEnabled],
+                            ["API Access", plan?.apiAccess],
+                            ["Custom Branding", plan?.customBranding],
+                            ["Priority Support", plan?.prioritySupport],
+                          ].map(([label, enabled]) => (
+                            <Stack
+                              key={label}
+                              direction="row"
+                              spacing={1}
+                              alignItems="center"
                             >
-                                Billing History
-                            </Typography>
+                              <CheckCircle
+                                sx={{
+                                  fontSize: 18,
+                                  color: enabled
+                                    ? "success.main"
+                                    : "text.disabled",
+                                }}
+                              />
 
-                            <Typography
+                              <Typography
                                 variant="body2"
-                                color="text.secondary"
-                            >
-                                Your recent LibraryHub
-                                subscription invoices.
-                            </Typography>
-                        </Box>
+                                color={
+                                  enabled ? "text.primary" : "text.disabled"
+                                }
+                              >
+                                {label}
+                              </Typography>
+                            </Stack>
+                          ))}
+                        </Stack>
 
                         <Button
-                            size="small"
-                            onClick={() =>
-                                setShowAllInvoices(
-                                    (previous) =>
-                                        !previous
-                                )
-                            }
+                          fullWidth
+                          variant={
+                            current
+                              ? "outlined"
+                              : selected
+                                ? "contained"
+                                : "outlined"
+                          }
+                          disabled={
+                            current ||
+                            librarySeatCountLoading ||
+                            !seatEligibility.eligible
+                          }
+                          onClick={() => handlePreparePlanChange(plan)}
                         >
-                            {showAllInvoices
-                                ? "Show Less"
-                                : "View All"}
+                          {current
+                            ? "Current Plan"
+                            : !seatEligibility.eligible
+                              ? `Requires ${seatEligibility.usedSeats} Seat Capacity`
+                              : getPlanActionLabel(plan)}
                         </Button>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+
+          {availablePlans.length === 0 && (
+            <Alert severity="info">
+              No active LibraryHub plans are currently available.
+            </Alert>
+          )}
+
+          {selectedChangePlan && planDialogMode === "change" && (
+            <Alert severity="info" sx={{ mt: 3 }}>
+              Selected <strong>{selectedChangePlan.name}</strong>. Seat capacity
+              verified: <strong>{librarySeatCount}</strong> current seats within
+              the plan limit of{" "}
+              <strong>
+                {getPlanSeatLimit(selectedChangePlan) ?? "Unlimited"}
+              </strong>
+              . The selected plan is now ready for the existing
+              platform-subscription change/payment flow.
+            </Alert>
+          )}
+
+          {planPaymentMessage && (
+            <Alert
+              severity={
+                planPaymentMessage.toLowerCase().includes("successful")
+                  ? "success"
+                  : "info"
+              }
+              sx={{ mt: 2 }}
+            >
+              {planPaymentMessage}
+            </Alert>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={closePlanDialog}>Close</Button>
+
+          {planDialogMode === "compare" && selectedChangePlan && (
+            <Button
+              variant="contained"
+              onClick={() => setPlanDialogMode("change")}
+            >
+              Continue with Selected Plan
+            </Button>
+          )}
+
+          {planDialogMode === "change" && selectedChangePlan && (
+            <Button
+              variant="contained"
+              disabled={
+                planPaymentLoading ||
+                librarySeatCountLoading ||
+                !getPlanSeatEligibility(selectedChangePlan).eligible
+              }
+              onClick={handleContinuePlanPayment}
+            >
+              {planPaymentLoading ? "Processing..." : "Continue to Payment"}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* =====================================================
+          PLATFORM SUBSCRIPTION INVOICE VIEWER
+         ===================================================== */}
+      <Dialog
+        open={invoiceDialogOpen}
+        onClose={closeInvoiceDialog}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>Platform Billing Invoice</DialogTitle>
+
+        <DialogContent dividers>
+          {invoiceDialogLoading ? (
+            <Stack
+              alignItems="center"
+              justifyContent="center"
+              spacing={2}
+              sx={{
+                minHeight: 220,
+              }}
+            >
+              <CircularProgress />
+
+              <Typography variant="body2" color="text.secondary">
+                Loading invoice...
+              </Typography>
+            </Stack>
+          ) : (
+            <Stack spacing={2}>
+              {invoiceDialogError && (
+                <Alert severity="error">{invoiceDialogError}</Alert>
+              )}
+
+              {selectedBillingItem && (
+                <Card
+                  elevation={0}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                  }}
+                >
+                  <CardContent>
+                    <Typography variant="caption" color="text.secondary">
+                      Subscription Payment
+                    </Typography>
+
+                    <Stack
+                      direction={{
+                        xs: "column",
+                        sm: "row",
+                      }}
+                      justifyContent="space-between"
+                      spacing={1}
+                      mt={0.5}
+                    >
+                      <Box>
+                        <Typography fontWeight={700}>
+                          {selectedBillingItem.description}
+                        </Typography>
+
+                        <Typography variant="body2" color="text.secondary">
+                          Subscription #{selectedBillingItem.id}
+                          {" · "}
+                          Payment #{selectedBillingItem.paymentTransactionId}
+                        </Typography>
+                      </Box>
+
+                      <Typography fontWeight={800}>
+                        {formatCurrency(
+                          selectedBillingItem.amount,
+                          selectedBillingItem.currency,
+                        )}
+                      </Typography>
                     </Stack>
+                  </CardContent>
+                </Card>
+              )}
 
-                    <TableContainer>
-                        <Table>
+              {selectedPlatformInvoice && (
+                <>
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Invoice Number
+                      </Typography>
 
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell>
-                                        Invoice
-                                    </TableCell>
+                      <Typography variant="h6" fontWeight={800}>
+                        {selectedPlatformInvoice.invoiceNumber ||
+                          `Invoice #${selectedPlatformInvoice.id}`}
+                      </Typography>
+                    </Box>
 
-                                    <TableCell>
-                                        Date
-                                    </TableCell>
+                    <Chip
+                      label={selectedPlatformInvoice.status ?? "GENERATED"}
+                      color="success"
+                      size="small"
+                    />
+                  </Stack>
 
-                                    <TableCell>
-                                        Description
-                                    </TableCell>
+                  <Divider />
 
-                                    <TableCell align="right">
-                                        Amount
-                                    </TableCell>
+                  <Grid container spacing={2}>
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Invoice Date
+                      </Typography>
 
-                                    <TableCell>
-                                        Status
-                                    </TableCell>
+                      <Typography fontWeight={600}>
+                        {formatDate(selectedPlatformInvoice.invoiceDate)}
+                      </Typography>
+                    </Grid>
 
-                                    <TableCell align="right">
-                                        Invoice
-                                    </TableCell>
-                                </TableRow>
-                            </TableHead>
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Payment Transaction
+                      </Typography>
 
-                            <TableBody>
-                                {displayedInvoices.map(
-                                    (invoice) => (
-                                        <TableRow
-                                            key={
-                                                invoice.id
-                                            }
-                                            hover
-                                        >
-                                            <TableCell>
-                                                <Typography
-                                                    fontWeight={
-                                                        600
-                                                    }
-                                                >
-                                                    {
-                                                        invoice.id
-                                                    }
-                                                </Typography>
-                                            </TableCell>
+                      <Typography fontWeight={600}>
+                        #{selectedPlatformInvoice.paymentTransactionId ?? "-"}
+                      </Typography>
+                    </Grid>
 
-                                            <TableCell>
-                                                {
-                                                    invoice.date
-                                                }
-                                            </TableCell>
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Taxable Amount
+                      </Typography>
 
-                                            <TableCell>
-                                                {
-                                                    invoice.description
-                                                }
-                                            </TableCell>
+                      <Typography fontWeight={600}>
+                        {formatCurrency(
+                          selectedPlatformInvoice.taxableAmount,
+                          selectedPlatformInvoice.currency,
+                        )}
+                      </Typography>
+                    </Grid>
 
-                                            <TableCell align="right">
-                                                ₹
-                                                {invoice.amount.toLocaleString(
-                                                    "en-IN"
-                                                )}
-                                            </TableCell>
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        GST
+                      </Typography>
 
-                                            <TableCell>
-                                                <Chip
-                                                    label={
-                                                        invoice.status
-                                                    }
-                                                    color="success"
-                                                    size="small"
-                                                />
-                                            </TableCell>
+                      <Typography fontWeight={600}>
+                        {selectedPlatformInvoice.gstPercentage ?? 0}%
+                      </Typography>
+                    </Grid>
 
-                                            <TableCell align="right">
-                                                <Button
-                                                    size="small"
-                                                    startIcon={
-                                                        <Download />
-                                                    }
-                                                    onClick={() =>
-                                                        console.log(
-                                                            "Download invoice:",
-                                                            invoice.id
-                                                        )
-                                                    }
-                                                >
-                                                    Download
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    )
-                                )}
-                            </TableBody>
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        CGST
+                      </Typography>
 
-                        </Table>
-                    </TableContainer>
+                      <Typography fontWeight={600}>
+                        {formatCurrency(
+                          selectedPlatformInvoice.cgst,
+                          selectedPlatformInvoice.currency,
+                        )}
+                      </Typography>
+                    </Grid>
 
-                </CardContent>
-            </Card>
-        </Box>
-    );
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        SGST
+                      </Typography>
+
+                      <Typography fontWeight={600}>
+                        {formatCurrency(
+                          selectedPlatformInvoice.sgst,
+                          selectedPlatformInvoice.currency,
+                        )}
+                      </Typography>
+                    </Grid>
+
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        IGST
+                      </Typography>
+
+                      <Typography fontWeight={600}>
+                        {formatCurrency(
+                          selectedPlatformInvoice.igst,
+                          selectedPlatformInvoice.currency,
+                        )}
+                      </Typography>
+                    </Grid>
+
+                    <Grid
+                      size={{
+                        xs: 6,
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Total Amount
+                      </Typography>
+
+                      <Typography
+                        variant="h6"
+                        fontWeight={800}
+                        color="primary.main"
+                      >
+                        {formatCurrency(
+                          selectedPlatformInvoice.totalAmount,
+                          selectedPlatformInvoice.currency,
+                        )}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </>
+              )}
+
+              {!selectedPlatformInvoice && !invoiceDialogError && (
+                <Alert severity="info">
+                  No invoice is available for this payment yet.
+                </Alert>
+              )}
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions>
+          <Button
+            onClick={closeInvoiceDialog}
+            disabled={invoiceDownloadLoading}
+          >
+            Close
+          </Button>
+
+          <Button
+            variant="contained"
+            startIcon={
+              invoiceDownloadLoading ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <DownloadIcon />
+              )
+            }
+            disabled={
+              invoiceDialogLoading ||
+              !selectedPlatformInvoice?.id ||
+              invoiceDownloadLoading
+            }
+            onClick={handleDownloadPlatformInvoice}
+          >
+            {invoiceDownloadLoading ? "Downloading..." : "Download Invoice PDF"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
 }
 
 export default SubscriptionBilling;

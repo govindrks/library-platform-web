@@ -1,607 +1,559 @@
 import {
-    ExpandMore,
-    Help,
-    Logout,
-    Menu,
-    NotificationsNone,
-    Person,
-    Search,
-    Settings,
+  ExpandMore,
+  Help,
+  Logout,
+  Menu,
+  NotificationsNone,
+  Person,
+  Search,
+  Settings,
 } from "@mui/icons-material";
 
 import {
-    AppBar,
-    Avatar,
-    Badge,
-    Box,
-    IconButton,
-    InputBase,
-    MenuItem,
-    Paper,
-    Select,
-    Toolbar,
-    Tooltip,
-    Typography,
-    Menu as MuiMenu,
+  AppBar,
+  Avatar,
+  Badge,
+  Box,
+  IconButton,
+  InputBase,
+  MenuItem,
+  Paper,
+  Select,
+  Toolbar,
+  Tooltip,
+  Typography,
+  Menu as MuiMenu,
 } from "@mui/material";
 
 import { useMemo, useState } from "react";
 
-import {
-    useDispatch,
-    useSelector,
-} from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 
 import { useNavigate } from "react-router-dom";
 
 import { logout } from "../../../redux/reducer/authReducer";
 
-
 const drawerWidth = 250;
-
 
 // ============================================================
 // HELPERS
 // ============================================================
 
 const getInitials = (name) => {
+  if (!name) {
+    return "U";
+  }
 
-    if (!name) {
-        return "U";
-    }
-
-    return name
-        .trim()
-        .split(/\s+/)
-        .slice(0, 2)
-        .map(
-            (part) =>
-                part.charAt(0).toUpperCase()
-        )
-        .join("");
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
 };
-
 
 const formatRole = (role) => {
+  if (!role) {
+    return "User";
+  }
 
-    if (!role) {
-        return "User";
-    }
+  switch (role) {
+    case "ADMIN":
+      return "Admin";
 
-    switch (role) {
+    case "LIBRARY_OWNER":
+      return "Library Owner";
 
-        case "ADMIN":
-            return "Admin";
+    case "USER":
+      return "Member";
 
-        case "LIBRARY_OWNER":
-            return "Library Owner";
-
-        case "USER":
-            return "Member";
-
-        default:
-            return role
-                .toLowerCase()
-                .replace(/_/g, " ")
-                .replace(
-                    /\b\w/g,
-                    (char) =>
-                        char.toUpperCase()
-                );
-    }
+    default:
+      return role
+        .toLowerCase()
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
 };
-
 
 // ============================================================
 // COMPONENT
 // ============================================================
 
 function Header({ onMenuClick }) {
+  const [anchorEl, setAnchorEl] = useState(null);
 
-    const [anchorEl, setAnchorEl] =
-        useState(null);
+  const dispatch = useDispatch();
 
-    const dispatch = useDispatch();
+  const navigate = useNavigate();
 
-    const navigate = useNavigate();
+  // ========================================================
+  // LOGGED-IN USER
+  // ========================================================
 
+  const user = useSelector((state) => state.auth?.user);
 
-    // ========================================================
-    // LOGGED-IN USER
-    // ========================================================
+  // ========================================================
+  // DERIVED USER DATA
+  // ========================================================
 
-    const user = useSelector(
-        (state) =>
-            state.auth?.user
-    );
+  const userName = user?.fullName?.trim() || "User";
 
+  const userRole = user?.role || "USER";
 
-    // ========================================================
-    // DERIVED USER DATA
-    // ========================================================
+  const isAdmin = userRole === "ADMIN";
 
-    const userName =
-        user?.fullName?.trim() ||
-        "User";
+  const isLibraryOwner = userRole === "LIBRARY_OWNER";
 
-    const userRole =
-        user?.role ||
-        "USER";
+  const isUser = userRole === "USER";
 
-    const userInitials =
-        useMemo(
-            () =>
-                getInitials(
-                    userName
-                ),
-            [userName]
-        );
+  const userInitials = useMemo(() => getInitials(userName), [userName]);
 
+  const userRoleLabel = useMemo(() => formatRole(userRole), [userRole]);
 
-    const userRoleLabel =
-        useMemo(
-            () =>
-                formatRole(
-                    userRole
-                ),
-            [userRole]
-        );
+  const userMenuOpen = Boolean(anchorEl);
 
+  // ========================================================
+  // USER MENU
+  // ========================================================
 
-    const userMenuOpen =
-        Boolean(anchorEl);
+  const handleUserMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
 
+  const handleUserMenuClose = () => {
+    setAnchorEl(null);
+  };
 
-    // ========================================================
-    // USER MENU
-    // ========================================================
+  // ========================================================
+  // ROLE-SPECIFIC SETTINGS
+  // ========================================================
 
-    const handleUserMenuOpen = (
-        event
-    ) => {
+  const handleSettingsNavigation = () => {
+    handleUserMenuClose();
 
-        setAnchorEl(
-            event.currentTarget
-        );
-    };
+    if (isAdmin) {
+      navigate("/admin/settings");
 
+      return;
+    }
 
-    const handleUserMenuClose = () => {
+    if (isLibraryOwner) {
+      navigate("/owner/settings");
 
-        setAnchorEl(null);
-    };
+      return;
+    }
 
+    navigate("/settings");
+  };
 
-    // ========================================================
-    // LOGOUT
-    // ========================================================
+  // ========================================================
+  // PROFILE
+  // ========================================================
 
-    const handleLogout = () => {
+  const handleProfileNavigation = () => {
+    handleUserMenuClose();
 
-        dispatch(logout());
+    /*
+     * Keep existing profile route.
+     *
+     * If separate Admin / Owner profile pages are
+     * introduced later, this method can dispatch
+     * by role in the same way as settings.
+     */
 
-        handleUserMenuClose();
+    navigate("/profile");
+  };
 
-        navigate("/login", {
-            replace: true,
-        });
-    };
+  // ========================================================
+  // LOGOUT
+  // ========================================================
 
+  const handleLogout = () => {
+    dispatch(logout());
 
-    // ========================================================
-    // RENDER
-    // ========================================================
+    handleUserMenuClose();
 
-    return (
-        <AppBar
-            position="fixed"
-            elevation={0}
-            sx={{
-                width: {
-                    xs: "100%",
-                    md: `calc(100% - ${drawerWidth}px)`,
-                },
+    navigate("/login", {
+      replace: true,
+    });
+  };
 
-                ml: {
-                    xs: 0,
-                    md: `${drawerWidth}px`,
-                },
+  // ========================================================
+  // RENDER
+  // ========================================================
 
-                backgroundColor:
-                    "background.paper",
+  return (
+    <AppBar
+      position="fixed"
+      elevation={0}
+      sx={{
+        width: {
+          xs: "100%",
 
-                color:
-                    "text.primary",
+          md: `calc(100% - ${drawerWidth}px)`,
+        },
 
-                borderBottom:
-                    "1px solid",
+        ml: {
+          xs: 0,
 
-                borderColor:
-                    "divider",
+          md: `${drawerWidth}px`,
+        },
 
-                zIndex:
-                    (theme) =>
-                        theme.zIndex.drawer + 1,
-            }}
-        >
+        backgroundColor: "background.paper",
 
-            <Toolbar
-                sx={{
-                    minHeight:
-                        "72px !important",
+        color: "text.primary",
 
-                    px: {
-                        xs: 2,
-                        md: 3,
-                    },
+        borderBottom: "1px solid",
 
-                    gap: 2,
-                }}
-            >
+        borderColor: "divider",
 
-                {/* =================================================
+        zIndex: (theme) => theme.zIndex.drawer + 1,
+      }}
+    >
+      <Toolbar
+        sx={{
+          minHeight: "72px !important",
+
+          px: {
+            xs: 2,
+
+            md: 3,
+          },
+
+          gap: 2,
+        }}
+      >
+        {/* =================================================
                     MOBILE MENU
                 ================================================= */}
 
-                <IconButton
-                    onClick={
-                        onMenuClick
-                    }
-                    sx={{
-                        display: {
-                            xs: "flex",
-                            md: "none",
-                        },
-                    }}
-                >
-                    <Menu />
-                </IconButton>
+        <IconButton
+          onClick={onMenuClick}
+          sx={{
+            display: {
+              xs: "flex",
 
+              md: "none",
+            },
+          }}
+        >
+          <Menu />
+        </IconButton>
 
-                {/* =================================================
-                    LIBRARY SELECTOR
-                    -------------------------------------------------
-                    Still using the current mock library selector.
-                    We will connect this to the owner's real
-                    libraries separately.
+        {/* =================================================
+                    ADMIN PLATFORM CONTEXT
                 ================================================= */}
 
-                <Select
-                    value="main-library"
-                    variant="standard"
-                    disableUnderline
-                    IconComponent={
-                        ExpandMore
-                    }
-                    sx={{
-                        minWidth: 180,
+        {isAdmin && (
+          <Box
+            sx={{
+              minWidth: {
+                xs: "auto",
 
-                        "& .MuiSelect-select":
-                            {
-                                py: 0.5,
-                                fontWeight: 600,
-                            },
-                    }}
-                >
+                sm: 190,
+              },
+            }}
+          >
+            <Typography variant="body1" fontWeight={700}>
+              Platform Administration
+            </Typography>
 
-                    <MenuItem value="main-library">
-                        Main Library
-                    </MenuItem>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: {
+                  xs: "none",
 
-                    <MenuItem value="city-library">
-                        City Library
-                    </MenuItem>
+                  sm: "block",
+                },
+              }}
+            >
+              LibraryHub
+            </Typography>
+          </Box>
+        )}
 
-                </Select>
+        {/* =================================================
+                    LIBRARY OWNER SELECTOR
+                =================================================
+                    Owner-only for now.
 
+                    Currently this is still the existing mock
+                    selector. Later it can be connected to the
+                    actual selected library.
+                ================================================= */}
 
-                {/* =================================================
+        {isLibraryOwner && (
+          <Select
+            value="main-library"
+            variant="standard"
+            disableUnderline
+            IconComponent={ExpandMore}
+            sx={{
+              minWidth: 180,
+
+              "& .MuiSelect-select": {
+                py: 0.5,
+
+                fontWeight: 600,
+              },
+            }}
+          >
+            <MenuItem value="main-library">Main Library</MenuItem>
+
+            <MenuItem value="city-library">City Library</MenuItem>
+          </Select>
+        )}
+
+        {/* =================================================
+                    MEMBER CONTEXT
+                ================================================= */}
+
+        {isUser && (
+          <Box
+            sx={{
+              minWidth: {
+                xs: "auto",
+
+                sm: 150,
+              },
+            }}
+          >
+            <Typography variant="body1" fontWeight={700}>
+              Member Portal
+            </Typography>
+          </Box>
+        )}
+
+        {/* =================================================
                     SEARCH
                 ================================================= */}
 
-                <Paper
-                    component="form"
-                    elevation={0}
-                    sx={{
-                        display: {
-                            xs: "none",
-                            sm: "flex",
-                        },
+        <Paper
+          component="form"
+          elevation={0}
+          onSubmit={(event) => event.preventDefault()}
+          sx={{
+            display: {
+              xs: "none",
 
-                        alignItems:
-                            "center",
+              sm: "flex",
+            },
 
-                        width: {
-                            sm: 240,
-                            lg: 340,
-                        },
+            alignItems: "center",
 
-                        height: 40,
+            width: {
+              sm: 240,
 
-                        px: 1.5,
+              lg: 340,
+            },
 
-                        backgroundColor:
-                            "background.default",
+            height: 40,
 
-                        border:
-                            "1px solid",
+            px: 1.5,
 
-                        borderColor:
-                            "divider",
+            backgroundColor: "background.default",
 
-                        borderRadius: 2,
-                    }}
-                >
+            border: "1px solid",
 
-                    <Search
-                        fontSize="small"
-                        sx={{
-                            color:
-                                "text.secondary",
+            borderColor: "divider",
 
-                            mr: 1,
-                        }}
-                    />
+            borderRadius: 2,
+          }}
+        >
+          <Search
+            fontSize="small"
+            sx={{
+              color: "text.secondary",
 
-                    <InputBase
-                        placeholder="Search..."
-                        sx={{
-                            flex: 1,
-                            fontSize:
-                                "0.875rem",
-                        }}
-                    />
+              mr: 1,
+            }}
+          />
 
-                </Paper>
+          <InputBase
+            placeholder={isAdmin ? "Search platform..." : "Search..."}
+            sx={{
+              flex: 1,
 
+              fontSize: "0.875rem",
+            }}
+          />
+        </Paper>
 
-                {/* =================================================
+        {/* =================================================
                     SPACER
                 ================================================= */}
 
-                <Box
-                    sx={{
-                        flex: 1,
-                    }}
-                />
+        <Box
+          sx={{
+            flex: 1,
+          }}
+        />
 
-
-                {/* =================================================
+        {/* =================================================
                     HELP
                 ================================================= */}
 
-                <Tooltip
-                    title="Help & Documentation"
-                >
-                    <IconButton>
-                        <Help />
-                    </IconButton>
-                </Tooltip>
+        <Tooltip title="Help & Documentation">
+          <IconButton>
+            <Help />
+          </IconButton>
+        </Tooltip>
 
-
-                {/* =================================================
+        {/* =================================================
                     NOTIFICATIONS
                 ================================================= */}
 
-                <Tooltip
-                    title="Notifications"
-                >
-                    <IconButton>
-                        <Badge
-                            badgeContent={4}
-                            color="error"
-                        >
-                            <NotificationsNone />
-                        </Badge>
-                    </IconButton>
-                </Tooltip>
+        <Tooltip title="Notifications">
+          <IconButton>
+            <Badge badgeContent={4} color="error">
+              <NotificationsNone />
+            </Badge>
+          </IconButton>
+        </Tooltip>
 
-
-                {/* =================================================
+        {/* =================================================
                     USER PROFILE
                 ================================================= */}
 
-                <Box>
+        <Box>
+          <Box
+            onClick={handleUserMenuOpen}
+            sx={{
+              display: "flex",
 
-                    <Box
-                        onClick={
-                            handleUserMenuOpen
-                        }
-                        sx={{
-                            display:
-                                "flex",
+              alignItems: "center",
 
-                            alignItems:
-                                "center",
+              gap: 1,
 
-                            gap: 1,
+              ml: 1,
 
-                            ml: 1,
+              cursor: "pointer",
 
-                            cursor:
-                                "pointer",
+              borderRadius: 2,
 
-                            borderRadius: 2,
+              px: 1,
 
-                            px: 1,
+              py: 0.5,
 
-                            py: 0.5,
+              "&:hover": {
+                backgroundColor: "background.default",
+              },
+            }}
+          >
+            {/* AVATAR */}
 
-                            "&:hover": {
-                                backgroundColor:
-                                    "background.default",
-                            },
-                        }}
-                    >
+            <Avatar
+              sx={{
+                width: 36,
 
-                        {/* Avatar */}
+                height: 36,
 
-                        <Avatar
-                            sx={{
-                                width: 36,
-                                height: 36,
+                backgroundColor: "primary.main",
 
-                                backgroundColor:
-                                    "primary.main",
+                fontSize: 14,
 
-                                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              {userInitials}
+            </Avatar>
 
-                                fontWeight: 600,
-                            }}
-                        >
-                            {userInitials}
-                        </Avatar>
+            {/* USER DETAILS */}
 
+            <Box
+              sx={{
+                display: {
+                  xs: "none",
 
-                        {/* User Details */}
+                  sm: "block",
+                },
+              }}
+            >
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
 
-                        <Box
-                            sx={{
-                                display: {
-                                    xs: "none",
-                                    sm: "block",
-                                },
-                            }}
-                        >
+                  lineHeight: 1.2,
+                }}
+              >
+                {userName}
+              </Typography>
 
-                            <Typography
-                                variant="body2"
-                                sx={{
-                                    fontWeight:
-                                        600,
+              <Typography variant="caption" color="text.secondary">
+                {userRoleLabel}
+              </Typography>
+            </Box>
 
-                                    lineHeight:
-                                        1.2,
-                                }}
-                            >
-                                {userName}
-                            </Typography>
+            <ExpandMore
+              fontSize="small"
+              sx={{
+                color: "text.secondary",
 
+                display: {
+                  xs: "none",
 
-                            <Typography
-                                variant="caption"
-                                color="text.secondary"
-                            >
-                                {userRoleLabel}
-                            </Typography>
+                  sm: "block",
+                },
+              }}
+            />
+          </Box>
 
-                        </Box>
-
-
-                        <ExpandMore
-                            fontSize="small"
-                            sx={{
-                                color:
-                                    "text.secondary",
-
-                                display: {
-                                    xs: "none",
-                                    sm: "block",
-                                },
-                            }}
-                        />
-
-                    </Box>
-
-
-                    {/* =================================================
+          {/* =================================================
                         USER MENU
                     ================================================= */}
 
-                    <MuiMenu
-                        anchorEl={anchorEl}
-                        open={userMenuOpen}
-                        onClose={
-                            handleUserMenuClose
-                        }
+          <MuiMenu
+            anchorEl={anchorEl}
+            open={userMenuOpen}
+            onClose={handleUserMenuClose}
+            anchorOrigin={{
+              vertical: "bottom",
 
-                        anchorOrigin={{
-                            vertical:
-                                "bottom",
-                            horizontal:
-                                "right",
-                        }}
+              horizontal: "right",
+            }}
+            transformOrigin={{
+              vertical: "top",
 
-                        transformOrigin={{
-                            vertical:
-                                "top",
-                            horizontal:
-                                "right",
-                        }}
-                    >
+              horizontal: "right",
+            }}
+          >
+            <MenuItem onClick={handleProfileNavigation}>
+              <Person
+                fontSize="small"
+                sx={{
+                  mr: 1.5,
+                }}
+              />
+              My Profile
+            </MenuItem>
 
-                        <MenuItem
-                            onClick={() => {
+            <MenuItem onClick={handleSettingsNavigation}>
+              <Settings
+                fontSize="small"
+                sx={{
+                  mr: 1.5,
+                }}
+              />
+              Settings
+            </MenuItem>
 
-                                handleUserMenuClose();
-
-                                navigate(
-                                    "/profile"
-                                );
-                            }}
-                        >
-
-                            <Person
-                                fontSize="small"
-                                sx={{
-                                    mr: 1.5,
-                                }}
-                            />
-
-                            My Profile
-
-                        </MenuItem>
-
-
-                        <MenuItem
-                            onClick={() => {
-
-                                handleUserMenuClose();
-
-                                navigate(
-                                    "/settings"
-                                );
-                            }}
-                        >
-
-                            <Settings
-                                fontSize="small"
-                                sx={{
-                                    mr: 1.5,
-                                }}
-                            />
-
-                            Settings
-
-                        </MenuItem>
-
-
-                        <MenuItem
-                            onClick={
-                                handleLogout
-                            }
-                        >
-
-                            <Logout
-                                fontSize="small"
-                                sx={{
-                                    mr: 1.5,
-                                }}
-                            />
-
-                            Logout
-
-                        </MenuItem>
-
-                    </MuiMenu>
-
-                </Box>
-
-            </Toolbar>
-
-        </AppBar>
-    );
+            <MenuItem onClick={handleLogout}>
+              <Logout
+                fontSize="small"
+                sx={{
+                  mr: 1.5,
+                }}
+              />
+              Logout
+            </MenuItem>
+          </MuiMenu>
+        </Box>
+      </Toolbar>
+    </AppBar>
+  );
 }
-
 
 export default Header;
