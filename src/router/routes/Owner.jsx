@@ -1,230 +1,163 @@
 import OwnerDashboard from "../../views/LibraryOwner/OwnerDashboard";
+
 import LibraryProfile from "../../views/LibraryOwner/LibraryProfile";
+
 import Amenities from "../../views/LibraryOwner/Amenities";
+
 import MembershipPlans from "../../views/LibraryOwner/MembershipPlans";
+
 import SlotManagement from "../../views/LibraryOwner/SlotManagement";
+
 import SeatMapping from "../../views/LibraryOwner/SeatMapping";
+
 import SeatAvailability from "../../views/LibraryOwner/SeatAvailability";
+
 import Bookings from "../../views/LibraryOwner/Bookings";
+
 import Members from "../../views/LibraryOwner/Members";
+
 import Payments from "../../views/LibraryOwner/Payments";
+
 import Refunds from "../../views/LibraryOwner/Refunds";
+
 import Invoices from "../../views/LibraryOwner/Invoices";
+
 import Coupons from "../../views/LibraryOwner/Coupons";
+
 import Revenue from "../../views/LibraryOwner/Revenue";
+
 import Occupancy from "../../views/LibraryOwner/Occupancy";
 
-
-// ============================================================
-// REPORTS
-// ============================================================
-import BookingReport from "../../views/Reports/BookingReport";
-import RevenueReport from "../../views/Reports/RevenueReport";
-import OccupancyReport from "../../views/Reports/OccupancyReport";
-import PaymentReport from "../../views/Reports/PaymentReport";
-import RefundReport from "../../views/Reports/RefundReport";
-// import MembershipReport from "../../views/Reports/MembershipReport";
 import Reports from "../../views/Reports/Reports";
-import MembershipReport from "../../views/Reports/MembershipReport";
 
+// ============================================================
+// CORE LIBRARY OWNER ROUTES
+// ============================================================
 
-
-
-/**
- * Core Library Owner routes.
- *
- * These routes are mounted inside:
- *
- * ProtectedRoute
- *      ↓
- * VerticalLayout
- *      ↓
- * RoleRoute [LIBRARY_OWNER]
- *
- * in AppRouter.
- *
- * IMPORTANT:
- * Do not check onboardingCompleted here.
- *
- * A LIBRARY_OWNER is allowed to access owner pages even when
- * the library is still being configured or is in DRAFT state.
- */
 const ownerRoutes = [
+  // ==========================================================
+  // OWNER DASHBOARD
+  // ==========================================================
 
-    // =========================================================
-    // OWNER DASHBOARD
-    // =========================================================
+  {
+    path: "/owner/dashboard",
 
-    {
-        path: "/owner/dashboard",
-        element: <OwnerDashboard />,
-    },
+    element: <OwnerDashboard />,
+  },
 
+  // ==========================================================
+  // LIBRARY
+  // ==========================================================
 
-    // =========================================================
-    // LIBRARY
-    // =========================================================
+  {
+    path: "/owner/library",
 
-    {
-        path: "/owner/library",
-        element: <LibraryProfile />,
-    },
+    element: <LibraryProfile />,
+  },
 
-    {
-        path: "/owner/amenities",
-        element: <Amenities />,
-    },
+  {
+    path: "/owner/amenities",
 
-    {
-        path: "/owner/membership-plans",
-        element: <MembershipPlans />,
-    },
+    element: <Amenities />,
+  },
 
+  {
+    path: "/owner/membership-plans",
 
-    // =========================================================
-    // SEATS
-    // =========================================================
+    element: <MembershipPlans />,
+  },
 
-    {
-        path: "/owner/slots",
-        element: <SlotManagement />,
-    },
+  // ==========================================================
+  // SEATS
+  // ==========================================================
 
-    {
-        path: "/owner/seat-mapping",
-        element: <SeatMapping />,
-    },
+  {
+    path: "/owner/slots",
 
-    {
-        path: "/owner/seat-availability",
-        element: <SeatAvailability />,
-    },
+    element: <SlotManagement />,
+  },
 
+  {
+    path: "/owner/seat-mapping",
 
-    // =========================================================
-    // BOOKINGS
-    // =========================================================
+    element: <SeatMapping />,
+  },
 
-    {
-        path: "/owner/bookings",
-        element: <Bookings />,
-    },
+  {
+    path: "/owner/seat-availability",
 
-    {
-        path: "/owner/members",
-        element: <Members />,
-    },
+    element: <SeatAvailability />,
+  },
 
+  // ==========================================================
+  // BOOKINGS
+  // ==========================================================
 
-    // =========================================================
-    // FINANCE
-    // =========================================================
+  {
+    path: "/owner/bookings",
 
-    {
-        path: "/owner/payments",
-        element: <Payments />,
-    },
+    element: <Bookings />,
+  },
 
-    {
-        path: "/owner/refunds",
-        element: <Refunds />,
-    },
+  {
+    path: "/owner/members",
 
-    {
-        path: "/owner/invoices",
-        element: <Invoices />,
-    },
+    element: <Members />,
+  },
 
-    {
-        path: "/owner/coupons",
-        element: <Coupons />,
-    },
+  // ==========================================================
+  // FINANCE
+  // ==========================================================
 
+  {
+    path: "/owner/payments",
 
-    // =========================================================
-    // INSIGHTS
-    // =========================================================
+    element: <Payments />,
+  },
 
-    {
-        path: "/owner/revenue",
-        element: <Revenue />,
-    },
+  {
+    path: "/owner/refunds",
 
-    {
-        path: "/owner/occupancy",
-        element: <Occupancy />,
-    },
+    element: <Refunds />,
+  },
 
+  {
+    path: "/owner/invoices",
 
-    // =========================================================
-    // REPORTS LANDING PAGE
-    // =========================================================
+    element: <Invoices />,
+  },
 
-    {
-        path: "/owner/reports",
-        element: <Reports />,
-    },
+  {
+    path: "/owner/coupons",
 
+    element: <Coupons />,
+  },
 
-    // =========================================================
-    // BOOKING REPORT
-    // =========================================================
+  // ==========================================================
+  // INSIGHTS
+  // ==========================================================
 
-    {
-        path: "/owner/reports/bookings",
-        element: <BookingReport />,
-    },
+  {
+    path: "/owner/revenue",
 
+    element: <Revenue />,
+  },
 
-    // =========================================================
-    // REVENUE REPORT
-    // =========================================================
+  {
+    path: "/owner/occupancy",
 
-    {
-        path: "/owner/reports/revenue",
-        element: <RevenueReport />,
-    },
+    element: <Occupancy />,
+  },
 
+  // ==========================================================
+  // REPORTS LANDING PAGE
+  // ==========================================================
 
-    // =========================================================
-    // OCCUPANCY REPORT
-    // =========================================================
+  {
+    path: "/owner/reports",
 
-    {
-        path: "/owner/reports/occupancy",
-        element: <OccupancyReport />,
-    },
-
-
-    // =========================================================
-    // PAYMENT REPORT
-    // =========================================================
-
-    {
-        path: "/owner/reports/payments",
-        element: <PaymentReport />,
-    },
-
-
-    // =========================================================
-    // REFUND REPORT
-    // =========================================================
-
-    {
-        path: "/owner/reports/refunds",
-        element: <RefundReport />,
-    },
-
-
-    // =========================================================
-    // MEMBERSHIP REPORT
-    // =========================================================
-
-    {
-        path: "/owner/reports/membership",
-        element: <MembershipReport />,
-    },
-
+    element: <Reports />,
+  },
 ];
 
 export default ownerRoutes;

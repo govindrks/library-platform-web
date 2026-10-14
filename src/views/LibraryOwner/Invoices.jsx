@@ -258,6 +258,21 @@ function Invoices() {
 
   const navigate = useNavigate();
 
+  // ==========================================================
+  // NOTIFICATION DEEP LINK
+  // ==========================================================
+
+  const fromNotification = Boolean(location.state?.fromNotification);
+
+  const notificationReferenceId =
+    location.state?.notificationReferenceId ?? null;
+
+  const notificationReferenceType =
+    location.state?.notificationReferenceType ?? null;
+
+  const isPlatformInvoiceNotification =
+    fromNotification && notificationReferenceType === "PLATFORM_INVOICE";
+
   /*
    * Default Finance -> Invoices behavior:
    * show student/member invoices only.
@@ -271,7 +286,9 @@ function Invoices() {
    * so platform invoices remain separated from tenant revenue.
    */
   const invoiceScope =
-    location.state?.invoiceScope === "platform" ? "platform" : "member";
+    isPlatformInvoiceNotification || location.state?.invoiceScope === "platform"
+      ? "platform"
+      : "member";
 
   // ==========================================================
   // LIBRARY
@@ -294,6 +311,10 @@ function Invoices() {
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
+
+  const [success, setSuccess] = useState("");
+
+  const [highlightedInvoiceId, setHighlightedInvoiceId] = useState(null);
 
   // ==========================================================
   // FILTERS
@@ -516,6 +537,161 @@ function Invoices() {
       loadInvoices(Number(selectedLibraryId));
     }
   }, [selectedLibraryId, loadInvoices]);
+
+  // ==========================================================
+  // RESOLVE PLATFORM INVOICE NOTIFICATION
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      !fromNotification ||
+      notificationReferenceType !== "PLATFORM_INVOICE" ||
+      !notificationReferenceId ||
+      libraries.length === 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveNotificationTarget = async () => {
+      const targetInvoiceId = Number(notificationReferenceId);
+
+      if (!Number.isFinite(targetInvoiceId)) {
+        if (!cancelled) {
+          setError("Invalid platform invoice notification reference.");
+
+          navigate(location.pathname, {
+            replace: true,
+            state: {
+              invoiceScope: "platform",
+            },
+          });
+        }
+
+        return;
+      }
+
+      for (const library of libraries) {
+        try {
+          const [invoiceResponse, platformTransactionIds] = await Promise.all([
+            invoiceApi.getLibraryInvoices(library.id),
+
+            loadPlatformTransactionIds(library.id),
+          ]);
+
+          const candidateInvoices = normalizeListResponse(invoiceResponse);
+
+          const matchingInvoice = candidateInvoices.find(
+            (invoice) =>
+              Number(invoice?.id ?? invoice?.invoiceId) === targetInvoiceId &&
+              platformTransactionIds.has(Number(invoice?.paymentTransactionId)),
+          );
+
+          if (!matchingInvoice) {
+            continue;
+          }
+
+          if (cancelled) {
+            return;
+          }
+
+          const nextLibraryId = String(library.id);
+
+          setSelectedLibraryId(nextLibraryId);
+
+          storeLibraryId(nextLibraryId);
+
+          setHighlightedInvoiceId(targetInvoiceId);
+
+          setSuccess(
+            `Platform invoice ${
+              matchingInvoice.invoiceNumber || `#${targetInvoiceId}`
+            } opened from notification.`,
+          );
+
+          navigate(location.pathname, {
+            replace: true,
+            state: {
+              invoiceScope: "platform",
+            },
+          });
+
+          return;
+        } catch (notificationError) {
+          /*
+           * This library does not own the target invoice,
+           * or one of the supporting scope lookups failed.
+           *
+           * Continue through the owner's remaining libraries.
+           */
+          console.debug(
+            "Platform invoice notification lookup skipped library:",
+            library?.id,
+            notificationError,
+          );
+        }
+      }
+
+      if (!cancelled) {
+        setError(
+          `Platform invoice #${targetInvoiceId} could not be found in your libraries.`,
+        );
+
+        navigate(location.pathname, {
+          replace: true,
+          state: {
+            invoiceScope: "platform",
+          },
+        });
+      }
+    };
+
+    resolveNotificationTarget();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fromNotification,
+    notificationReferenceId,
+    notificationReferenceType,
+    libraries,
+    loadPlatformTransactionIds,
+    location.pathname,
+    navigate,
+  ]);
+
+  // ==========================================================
+  // SCROLL TO HIGHLIGHTED INVOICE
+  // ==========================================================
+
+  useEffect(() => {
+    if (!highlightedInvoiceId || loading) {
+      return;
+    }
+
+    const targetExists = invoices.some(
+      (invoice) =>
+        Number(invoice?.id ?? invoice?.invoiceId) ===
+        Number(highlightedInvoiceId),
+    );
+
+    if (!targetExists) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      document
+        .getElementById(`owner-invoice-${highlightedInvoiceId}`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+    }, 150);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedInvoiceId, loading, invoices]);
 
   // ==========================================================
   // SUMMARY
@@ -750,6 +926,12 @@ function Invoices() {
         </Alert>
       )}
 
+      {success && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccess("")}>
+          {success}
+        </Alert>
+      )}
+
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
           {error}
@@ -936,7 +1118,28 @@ function Invoices() {
                     safeNumber(invoice.igst);
 
                   return (
-                    <TableRow key={invoice.id} hover>
+                    <TableRow
+                      id={`owner-invoice-${invoice.id}`}
+                      key={invoice.id}
+                      hover
+                      sx={{
+                        backgroundColor:
+                          String(invoice.id) === String(highlightedInvoiceId)
+                            ? "rgba(79, 70, 229, 0.06)"
+                            : "inherit",
+
+                        outline:
+                          String(invoice.id) === String(highlightedInvoiceId)
+                            ? "2px solid"
+                            : "none",
+
+                        outlineColor: "primary.main",
+
+                        outlineOffset: "-2px",
+
+                        transition: "all 0.25s ease",
+                      }}
+                    >
                       <TableCell>
                         <Typography variant="body2" fontWeight={700}>
                           {invoice.invoiceNumber || `#${invoice.id}`}

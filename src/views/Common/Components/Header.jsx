@@ -27,11 +27,15 @@ import {
 
 import { useMemo, useState } from "react";
 
-import { useDispatch, useSelector } from "react-redux";
-
 import { useNavigate } from "react-router-dom";
 
-import { logout } from "../../../redux/reducer/authReducer";
+import { useAuth } from "../../../context/AuthContext";
+
+import { useNotifications } from "../../../context/NotificationContext";
+
+// ============================================================
+// CONSTANTS
+// ============================================================
 
 const drawerWidth = 250;
 
@@ -80,25 +84,39 @@ const formatRole = (role) => {
 // ============================================================
 
 function Header({ onMenuClick }) {
-  const [anchorEl, setAnchorEl] = useState(null);
-
-  const dispatch = useDispatch();
+  // ==========================================================
+  // NAVIGATION
+  // ==========================================================
 
   const navigate = useNavigate();
 
-  // ========================================================
-  // LOGGED-IN USER
-  // ========================================================
+  // ==========================================================
+  // AUTH
+  // ==========================================================
 
-  const user = useSelector((state) => state.auth?.user);
+  const { user, role, logout } = useAuth();
 
-  // ========================================================
-  // DERIVED USER DATA
-  // ========================================================
+  // ==========================================================
+  // NOTIFICATIONS
+  // ==========================================================
+
+  const { unreadCount } = useNotifications();
+
+  // ==========================================================
+  // USER MENU STATE
+  // ==========================================================
+
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  // ==========================================================
+  // USER INFORMATION
+  // ==========================================================
 
   const userName = user?.fullName?.trim() || "User";
 
-  const userRole = user?.role || "USER";
+  const userRole = role || user?.role || null;
+
+  const profileImageUrl = user?.profileImageUrl || "";
 
   const isAdmin = userRole === "ADMIN";
 
@@ -112,9 +130,9 @@ function Header({ onMenuClick }) {
 
   const userMenuOpen = Boolean(anchorEl);
 
-  // ========================================================
+  // ==========================================================
   // USER MENU
-  // ========================================================
+  // ==========================================================
 
   const handleUserMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -124,9 +142,43 @@ function Header({ onMenuClick }) {
     setAnchorEl(null);
   };
 
-  // ========================================================
-  // ROLE-SPECIFIC SETTINGS
-  // ========================================================
+  // ==========================================================
+  // NOTIFICATIONS
+  // ==========================================================
+
+  const handleNotificationNavigation = () => {
+    handleUserMenuClose();
+
+    if (isLibraryOwner) {
+      navigate("/owner/notifications");
+
+      return;
+    }
+
+    if (isUser) {
+      navigate("/student/notifications");
+
+      return;
+    }
+
+    /*
+     * No /admin/notifications route currently exists.
+     *
+     * Keep ADMIN inside a valid route instead of allowing the
+     * wildcard router to send the user somewhere unexpected.
+     */
+    if (isAdmin) {
+      navigate("/admin/dashboard");
+
+      return;
+    }
+
+    navigate("/dashboard");
+  };
+
+  // ==========================================================
+  // SETTINGS
+  // ==========================================================
 
   const handleSettingsNavigation = () => {
     handleUserMenuClose();
@@ -143,44 +195,70 @@ function Header({ onMenuClick }) {
       return;
     }
 
-    navigate("/settings");
+    /*
+     * There is currently no /student/settings route.
+     */
+    if (isUser) {
+      navigate("/student/profile");
+
+      return;
+    }
+
+    navigate("/dashboard");
   };
 
-  // ========================================================
+  // ==========================================================
   // PROFILE
-  // ========================================================
+  // ==========================================================
 
   const handleProfileNavigation = () => {
     handleUserMenuClose();
 
-    /*
-     * Keep existing profile route.
-     *
-     * If separate Admin / Owner profile pages are
-     * introduced later, this method can dispatch
-     * by role in the same way as settings.
-     */
+    if (isUser) {
+      navigate("/student/profile");
 
-    navigate("/profile");
+      return;
+    }
+
+    /*
+     * Library owner currently has Library Profile rather than a
+     * dedicated /owner/profile route.
+     */
+    if (isLibraryOwner) {
+      navigate("/owner/library");
+
+      return;
+    }
+
+    /*
+     * No dedicated ADMIN profile route currently exists.
+     */
+    if (isAdmin) {
+      navigate("/admin/dashboard");
+
+      return;
+    }
+
+    navigate("/dashboard");
   };
 
-  // ========================================================
+  // ==========================================================
   // LOGOUT
-  // ========================================================
+  // ==========================================================
 
   const handleLogout = () => {
-    dispatch(logout());
-
     handleUserMenuClose();
+
+    logout();
 
     navigate("/login", {
       replace: true,
     });
   };
 
-  // ========================================================
+  // ==========================================================
   // RENDER
-  // ========================================================
+  // ==========================================================
 
   return (
     <AppBar
@@ -223,9 +301,9 @@ function Header({ onMenuClick }) {
           gap: 2,
         }}
       >
-        {/* =================================================
-                    MOBILE MENU
-                ================================================= */}
+        {/* =================================================== */}
+        {/* MOBILE MENU */}
+        {/* =================================================== */}
 
         <IconButton
           onClick={onMenuClick}
@@ -240,9 +318,9 @@ function Header({ onMenuClick }) {
           <Menu />
         </IconButton>
 
-        {/* =================================================
-                    ADMIN PLATFORM CONTEXT
-                ================================================= */}
+        {/* =================================================== */}
+        {/* ADMIN TITLE */}
+        {/* =================================================== */}
 
         {isAdmin && (
           <Box
@@ -274,15 +352,9 @@ function Header({ onMenuClick }) {
           </Box>
         )}
 
-        {/* =================================================
-                    LIBRARY OWNER SELECTOR
-                =================================================
-                    Owner-only for now.
-
-                    Currently this is still the existing mock
-                    selector. Later it can be connected to the
-                    actual selected library.
-                ================================================= */}
+        {/* =================================================== */}
+        {/* LIBRARY OWNER LIBRARY SELECTOR */}
+        {/* =================================================== */}
 
         {isLibraryOwner && (
           <Select
@@ -306,9 +378,9 @@ function Header({ onMenuClick }) {
           </Select>
         )}
 
-        {/* =================================================
-                    MEMBER CONTEXT
-                ================================================= */}
+        {/* =================================================== */}
+        {/* USER TITLE */}
+        {/* =================================================== */}
 
         {isUser && (
           <Box
@@ -326,9 +398,9 @@ function Header({ onMenuClick }) {
           </Box>
         )}
 
-        {/* =================================================
-                    SEARCH
-                ================================================= */}
+        {/* =================================================== */}
+        {/* SEARCH */}
+        {/* =================================================== */}
 
         <Paper
           component="form"
@@ -381,19 +453,15 @@ function Header({ onMenuClick }) {
           />
         </Paper>
 
-        {/* =================================================
-                    SPACER
-                ================================================= */}
-
         <Box
           sx={{
             flex: 1,
           }}
         />
 
-        {/* =================================================
-                    HELP
-                ================================================= */}
+        {/* =================================================== */}
+        {/* HELP */}
+        {/* =================================================== */}
 
         <Tooltip title="Help & Documentation">
           <IconButton>
@@ -401,21 +469,34 @@ function Header({ onMenuClick }) {
           </IconButton>
         </Tooltip>
 
-        {/* =================================================
-                    NOTIFICATIONS
-                ================================================= */}
+        {/* =================================================== */}
+        {/* NOTIFICATIONS */}
+        {/* =================================================== */}
 
-        <Tooltip title="Notifications">
-          <IconButton>
-            <Badge badgeContent={4} color="error">
+        <Tooltip
+          title={
+            unreadCount > 0
+              ? `${unreadCount} unread notification${
+                  unreadCount === 1 ? "" : "s"
+                }`
+              : "Notifications"
+          }
+        >
+          <IconButton onClick={handleNotificationNavigation}>
+            <Badge
+              badgeContent={unreadCount}
+              color="error"
+              max={99}
+              invisible={unreadCount <= 0}
+            >
               <NotificationsNone />
             </Badge>
           </IconButton>
         </Tooltip>
 
-        {/* =================================================
-                    USER PROFILE
-                ================================================= */}
+        {/* =================================================== */}
+        {/* USER PROFILE */}
+        {/* =================================================== */}
 
         <Box>
           <Box
@@ -442,9 +523,9 @@ function Header({ onMenuClick }) {
               },
             }}
           >
-            {/* AVATAR */}
-
             <Avatar
+              src={profileImageUrl || undefined}
+              alt={userName}
               sx={{
                 width: 36,
 
@@ -457,10 +538,8 @@ function Header({ onMenuClick }) {
                 fontWeight: 600,
               }}
             >
-              {userInitials}
+              {!profileImageUrl ? userInitials : null}
             </Avatar>
-
-            {/* USER DETAILS */}
 
             <Box
               sx={{
@@ -501,9 +580,9 @@ function Header({ onMenuClick }) {
             />
           </Box>
 
-          {/* =================================================
-                        USER MENU
-                    ================================================= */}
+          {/* ================================================= */}
+          {/* USER MENU */}
+          {/* ================================================= */}
 
           <MuiMenu
             anchorEl={anchorEl}
@@ -528,6 +607,30 @@ function Header({ onMenuClick }) {
                 }}
               />
               My Profile
+            </MenuItem>
+
+            <MenuItem onClick={handleNotificationNavigation}>
+              <NotificationsNone
+                fontSize="small"
+                sx={{
+                  mr: 1.5,
+                }}
+              />
+              Notifications
+              {unreadCount > 0 && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    ml: 2,
+
+                    color: "error.main",
+
+                    fontWeight: 700,
+                  }}
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Typography>
+              )}
             </MenuItem>
 
             <MenuItem onClick={handleSettingsNavigation}>

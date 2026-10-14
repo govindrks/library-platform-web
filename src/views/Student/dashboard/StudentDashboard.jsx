@@ -20,11 +20,10 @@ import {
   Notifications,
   Payments,
   ReceiptLong,
+  TrendingUp,
 } from "@mui/icons-material";
 
 import { useEffect, useMemo, useState } from "react";
-
-import { useSelector } from "react-redux";
 
 import { useNavigate } from "react-router-dom";
 
@@ -32,7 +31,9 @@ import studentSubscriptionApi from "../../../api/studentSubscriptionApi";
 
 import studentBookingApi from "../../../api/studentBookingApi";
 
-import studentNotificationApi from "../../../api/studentNotificationApi";
+import { useNotifications } from "../../../context/NotificationContext";
+
+import { useAuth } from "../../../context/AuthContext";
 
 // ============================================================
 // QUICK ACTION CARD
@@ -42,32 +43,90 @@ function QuickAction({ icon, title, description, actionLabel, onClick }) {
   return (
     <Card
       elevation={0}
+      onClick={onClick}
       sx={{
         height: "100%",
+
         border: "1px solid",
         borderColor: "divider",
+
         borderRadius: 3,
+
+        cursor: "pointer",
+
+        background:
+          "linear-gradient(145deg, #ffffff 0%, rgba(248,250,252,0.9) 100%)",
+
+        transition: "all 0.22s ease",
+
+        "&:hover": {
+          transform: "translateY(-4px)",
+
+          borderColor: "primary.light",
+
+          boxShadow: "0 12px 30px rgba(15, 23, 42, 0.08)",
+
+          "& .quick-action-icon": {
+            transform: "scale(1.08)",
+
+            backgroundColor: "primary.main",
+
+            color: "primary.contrastText",
+          },
+
+          "& .quick-action-arrow": {
+            transform: "translateX(4px)",
+          },
+        },
       }}
     >
-      <CardContent>
-        <Stack spacing={2}>
+      <CardContent
+        sx={{
+          p: 2.8,
+
+          height: "100%",
+
+          "&:last-child": {
+            pb: 2.8,
+          },
+        }}
+      >
+        <Stack
+          spacing={2.2}
+          sx={{
+            height: "100%",
+          }}
+        >
           <Box
+            className="quick-action-icon"
             sx={{
-              width: 44,
-              height: 44,
-              borderRadius: 2,
+              width: 50,
+              height: 50,
+
+              borderRadius: 2.5,
+
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
-              bgcolor: "action.hover",
+
+              backgroundColor: "rgba(79,70,229,0.08)",
+
               color: "primary.main",
+
+              transition: "all 0.22s ease",
             }}
           >
             {icon}
           </Box>
 
-          <Box>
-            <Typography variant="h6" fontWeight={700}>
+          <Box
+            sx={{
+              flex: 1,
+            }}
+          >
+            <Typography variant="h6" fontWeight={800}>
               {title}
             </Typography>
 
@@ -75,7 +134,8 @@ function QuickAction({ icon, title, description, actionLabel, onClick }) {
               variant="body2"
               color="text.secondary"
               sx={{
-                mt: 0.5,
+                mt: 0.6,
+                lineHeight: 1.6,
               }}
             >
               {description}
@@ -84,10 +144,31 @@ function QuickAction({ icon, title, description, actionLabel, onClick }) {
 
           <Button
             size="small"
-            endIcon={<ArrowForward />}
-            onClick={onClick}
+            endIcon={
+              <ArrowForward
+                className="quick-action-arrow"
+                sx={{
+                  transition: "transform 0.2s ease",
+                }}
+              />
+            }
+            onClick={(event) => {
+              event.stopPropagation();
+
+              onClick();
+            }}
             sx={{
               alignSelf: "flex-start",
+
+              px: 0,
+
+              textTransform: "none",
+
+              fontWeight: 700,
+
+              "&:hover": {
+                backgroundColor: "transparent",
+              },
             }}
           >
             {actionLabel}
@@ -102,29 +183,69 @@ function QuickAction({ icon, title, description, actionLabel, onClick }) {
 // STATUS CARD
 // ============================================================
 
-function StatusCard({ icon, title, value, description, loading = false }) {
+function StatusCard({
+  icon,
+  title,
+  value,
+  description,
+  loading = false,
+  onClick,
+}) {
   return (
     <Card
       elevation={0}
+      onClick={onClick}
       sx={{
         height: "100%",
+
         border: "1px solid",
         borderColor: "divider",
+
         borderRadius: 3,
+
+        backgroundColor: "background.paper",
+
+        cursor: onClick ? "pointer" : "default",
+
+        transition: "all 0.2s ease",
+
+        "&:hover": {
+          transform: onClick ? "translateY(-3px)" : "none",
+
+          borderColor: onClick ? "primary.light" : "divider",
+
+          boxShadow: onClick ? "0 10px 28px rgba(15,23,42,0.07)" : "none",
+        },
       }}
     >
-      <CardContent>
-        <Stack direction="row" spacing={2}>
+      <CardContent
+        sx={{
+          p: 2.5,
+
+          "&:last-child": {
+            pb: 2.5,
+          },
+        }}
+      >
+        <Stack direction="row" spacing={1.8} alignItems="center">
           <Box
             sx={{
-              width: 44,
-              height: 44,
-              minWidth: 44,
-              borderRadius: 2,
+              width: 50,
+              height: 50,
+
+              minWidth: 50,
+
+              borderRadius: 2.5,
+
               display: "flex",
+
               alignItems: "center",
+
               justifyContent: "center",
-              bgcolor: "action.hover",
+
+              background:
+                "linear-gradient(135deg, rgba(79,70,229,0.12), rgba(99,102,241,0.05))",
+
               color: "primary.main",
             }}
           >
@@ -134,9 +255,14 @@ function StatusCard({ icon, title, value, description, loading = false }) {
           <Box
             sx={{
               minWidth: 0,
+              flex: 1,
             }}
           >
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              fontWeight={600}
+            >
               {title}
             </Typography>
 
@@ -144,8 +270,9 @@ function StatusCard({ icon, title, value, description, loading = false }) {
               <CircularProgress
                 size={20}
                 sx={{
-                  mt: 1,
-                  mb: 0.5,
+                  display: "block",
+
+                  mt: 0.8,
                 }}
               />
             ) : (
@@ -153,8 +280,12 @@ function StatusCard({ icon, title, value, description, loading = false }) {
                 variant="h6"
                 fontWeight={800}
                 sx={{
+                  mt: 0.2,
+
                   overflow: "hidden",
+
                   textOverflow: "ellipsis",
+
                   whiteSpace: "nowrap",
                 }}
               >
@@ -162,7 +293,21 @@ function StatusCard({ icon, title, value, description, loading = false }) {
               </Typography>
             )}
 
-            <Typography variant="caption" color="text.secondary">
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: "block",
+
+                mt: 0.25,
+
+                overflow: "hidden",
+
+                textOverflow: "ellipsis",
+
+                whiteSpace: "nowrap",
+              }}
+            >
               {description}
             </Typography>
           </Box>
@@ -209,9 +354,19 @@ const formatDate = (value) => {
 function StudentDashboard() {
   const navigate = useNavigate();
 
-  const user = useSelector((state) => state.auth?.user);
+  // ==========================================================
+  // AUTH
+  // ==========================================================
+
+  const { user } = useAuth();
 
   const studentName = user?.fullName?.trim() || "Student";
+
+  // ==========================================================
+  // NOTIFICATIONS
+  // ==========================================================
+
+  const { unreadCount } = useNotifications();
 
   // ==========================================================
   // STATE
@@ -220,8 +375,6 @@ function StudentDashboard() {
   const [subscription, setSubscription] = useState(null);
 
   const [bookings, setBookings] = useState([]);
-
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   const [loading, setLoading] = useState(true);
 
@@ -237,42 +390,32 @@ function StudentDashboard() {
     const loadDashboard = async () => {
       try {
         setLoading(true);
+
         setError("");
 
-        /*
-         * Use Promise.allSettled so that one unavailable
-         * module does not prevent the rest of the student
-         * dashboard from loading.
-         */
         const results = await Promise.allSettled([
           studentSubscriptionApi.getMySubscription(),
 
           studentBookingApi.getMyBookings(),
-
-          studentNotificationApi.getUnreadCount(),
         ]);
 
         if (!active) {
           return;
         }
 
-        // --------------------------------------------------
+        // ===============================================
         // MEMBERSHIP
-        // --------------------------------------------------
+        // ===============================================
 
         if (results[0].status === "fulfilled") {
           setSubscription(results[0].value || null);
         } else {
-          /*
-           * A student may legitimately have no active
-           * subscription, so do not block the dashboard.
-           */
           setSubscription(null);
         }
 
-        // --------------------------------------------------
+        // ===============================================
         // BOOKINGS
-        // --------------------------------------------------
+        // ===============================================
 
         if (results[1].status === "fulfilled") {
           setBookings(Array.isArray(results[1].value) ? results[1].value : []);
@@ -280,40 +423,10 @@ function StudentDashboard() {
           setBookings([]);
         }
 
-        // --------------------------------------------------
-        // NOTIFICATIONS
-        // --------------------------------------------------
+        // ===============================================
+        // ERROR
+        // ===============================================
 
-        if (results[2].status === "fulfilled") {
-          const response = results[2].value;
-
-          /*
-           * Supports either:
-           *
-           * 5
-           *
-           * or:
-           *
-           * {
-           *   count: 5
-           * }
-           *
-           * depending on the current backend response.
-           */
-          const count =
-            typeof response === "number"
-              ? response
-              : Number(response?.count ?? response?.unreadCount ?? 0);
-
-          setUnreadNotifications(Number.isFinite(count) ? count : 0);
-        } else {
-          setUnreadNotifications(0);
-        }
-
-        /*
-         * Show one non-blocking warning only when every
-         * dashboard request failed.
-         */
         const allFailed = results.every(
           (result) => result.status === "rejected",
         );
@@ -358,10 +471,6 @@ function StudentDashboard() {
       .filter((booking) => {
         const status = getBookingStatus(booking);
 
-        /*
-         * Only bookings that are still relevant to the
-         * student are considered upcoming.
-         */
         const validStatus =
           status === "ACTIVE" ||
           status === "CONFIRMED" ||
@@ -411,7 +520,7 @@ function StudentDashboard() {
     : "No active membership.";
 
   // ==========================================================
-  // CURRENT SEAT DISPLAY
+  // CURRENT SEAT
   // ==========================================================
 
   const currentSeatValue = subscription?.seatNumber
@@ -422,7 +531,7 @@ function StudentDashboard() {
     subscription?.libraryName || "No active library.";
 
   // ==========================================================
-  // UPCOMING BOOKING DISPLAY
+  // UPCOMING BOOKING
   // ==========================================================
 
   const upcomingBookingValue = nextBooking?.seatNumber
@@ -438,83 +547,245 @@ function StudentDashboard() {
     : "No upcoming booking.";
 
   // ==========================================================
+  // NOTIFICATION DISPLAY
+  // ==========================================================
+
+  const notificationDescription =
+    unreadCount === 0
+      ? "You're all caught up."
+      : unreadCount === 1
+        ? "1 unread notification"
+        : `${unreadCount} unread notifications`;
+
+  // ==========================================================
   // UI
   // ==========================================================
 
   return (
-    <Box>
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+    <Box
+      sx={{
+        width: "100%",
+        pb: 5,
+      }}
+    >
+      {/* ===================================================== */}
+      {/* HERO HEADER */}
+      {/* ===================================================== */}
 
-      <Stack
-        direction={{
-          xs: "column",
-          md: "row",
-        }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "flex-start",
-          md: "center",
-        }}
-        spacing={2}
+      <Card
+        elevation={0}
         sx={{
           mb: 3,
+
+          borderRadius: 4,
+
+          overflow: "hidden",
+
+          border: "1px solid",
+
+          borderColor: "rgba(79,70,229,0.10)",
+
+          background:
+            "linear-gradient(135deg, rgba(79,70,229,0.11) 0%, rgba(255,255,255,1) 52%, rgba(99,102,241,0.06) 100%)",
+
+          position: "relative",
+
+          "&::before": {
+            content: '""',
+
+            position: "absolute",
+
+            width: 220,
+
+            height: 220,
+
+            borderRadius: "50%",
+
+            right: -80,
+
+            top: -110,
+
+            background: "rgba(79,70,229,0.08)",
+          },
+
+          "&::after": {
+            content: '""',
+
+            position: "absolute",
+
+            width: 120,
+
+            height: 120,
+
+            borderRadius: "50%",
+
+            right: 120,
+
+            bottom: -80,
+
+            background: "rgba(99,102,241,0.05)",
+          },
         }}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={800}>
-            Welcome, {studentName}
-          </Typography>
+        <CardContent
+          sx={{
+            position: "relative",
 
-          <Typography
-            variant="body1"
-            color="text.secondary"
-            sx={{
-              mt: 0.5,
-            }}
-          >
-            Manage your memberships, bookings, seats and payments.
-          </Typography>
-        </Box>
+            zIndex: 1,
 
-        <Button
-          variant="contained"
-          startIcon={<LibraryBooks />}
-          onClick={() => navigate("/student/libraries")}
+            p: {
+              xs: 2.5,
+              md: 3.5,
+            },
+
+            "&:last-child": {
+              pb: {
+                xs: 2.5,
+                md: 3.5,
+              },
+            },
+          }}
         >
-          Browse Libraries
-        </Button>
-      </Stack>
+          <Stack
+            direction={{
+              xs: "column",
 
-      {/* ======================================================
-          ERROR
-      ====================================================== */}
+              md: "row",
+            }}
+            justifyContent="space-between"
+            alignItems={{
+              xs: "flex-start",
+
+              md: "center",
+            }}
+            spacing={2.5}
+          >
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box
+                sx={{
+                  width: 58,
+
+                  height: 58,
+
+                  borderRadius: 3,
+
+                  bgcolor: "primary.main",
+
+                  color: "primary.contrastText",
+
+                  display: "flex",
+
+                  alignItems: "center",
+
+                  justifyContent: "center",
+
+                  boxShadow: "0 10px 26px rgba(79,70,229,0.25)",
+                }}
+              >
+                <TrendingUp
+                  sx={{
+                    fontSize: 30,
+                  }}
+                />
+              </Box>
+
+              <Box>
+                <Typography
+                  variant="h4"
+                  fontWeight={800}
+                  sx={{
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  Welcome, {studentName}
+                </Typography>
+
+                <Typography
+                  color="text.secondary"
+                  sx={{
+                    mt: 0.5,
+                  }}
+                >
+                  Manage your membership, bookings, seat and payments from one
+                  place.
+                </Typography>
+              </Box>
+            </Stack>
+
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<LibraryBooks />}
+              endIcon={<ArrowForward />}
+              onClick={() => navigate("/student/libraries")}
+              sx={{
+                minHeight: 48,
+
+                px: 2.5,
+
+                borderRadius: 2.5,
+
+                textTransform: "none",
+
+                fontWeight: 700,
+
+                boxShadow: "0 8px 18px rgba(79,70,229,0.22)",
+              }}
+            >
+              Browse Libraries
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* ===================================================== */}
+      {/* ERROR */}
+      {/* ===================================================== */}
 
       {error && (
         <Alert
           severity="warning"
           sx={{
             mb: 3,
+            borderRadius: 2.5,
           }}
         >
           {error}
         </Alert>
       )}
 
-      {/* ======================================================
-          STUDENT ACTIVITY
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* ACTIVITY HEADER */}
+      {/* ===================================================== */}
 
-      <Typography
-        variant="h6"
-        fontWeight={700}
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        alignItems="center"
         sx={{
-          mb: 1.5,
+          mb: 1.6,
         }}
       >
-        My Library Activity
-      </Typography>
+        <Box>
+          <Typography variant="h6" fontWeight={800}>
+            My Library Activity
+          </Typography>
+
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{
+              mt: 0.25,
+            }}
+          >
+            A quick snapshot of your current library activity.
+          </Typography>
+        </Box>
+      </Stack>
+
+      {/* ===================================================== */}
+      {/* ACTIVITY CARDS */}
+      {/* ===================================================== */}
 
       <Grid
         container
@@ -523,8 +794,6 @@ function StudentDashboard() {
           mb: 4,
         }}
       >
-        {/* ACTIVE MEMBERSHIP */}
-
         <Grid
           size={{
             xs: 12,
@@ -538,10 +807,9 @@ function StudentDashboard() {
             value={membershipValue}
             description={membershipDescription}
             loading={loading}
+            onClick={() => navigate("/student/membership")}
           />
         </Grid>
-
-        {/* CURRENT SEAT */}
 
         <Grid
           size={{
@@ -556,10 +824,9 @@ function StudentDashboard() {
             value={currentSeatValue}
             description={currentSeatDescription}
             loading={loading}
+            onClick={() => navigate("/student/membership")}
           />
         </Grid>
-
-        {/* UPCOMING BOOKING */}
 
         <Grid
           size={{
@@ -574,10 +841,9 @@ function StudentDashboard() {
             value={upcomingBookingValue}
             description={upcomingBookingDescription}
             loading={loading}
+            onClick={() => navigate("/student/bookings")}
           />
         </Grid>
-
-        {/* NOTIFICATIONS */}
 
         <Grid
           size={{
@@ -589,43 +855,69 @@ function StudentDashboard() {
           <StatusCard
             icon={<Notifications />}
             title="Notifications"
-            value={unreadNotifications}
-            description={
-              unreadNotifications === 1
-                ? "1 unread notification"
-                : `${unreadNotifications} unread notifications`
-            }
-            loading={loading}
+            value={unreadCount}
+            description={notificationDescription}
+            loading={false}
+            onClick={() => navigate("/student/notifications")}
           />
         </Grid>
       </Grid>
 
-      {/* ======================================================
-          QUICK ACTION HEADER
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* QUICK ACTION HEADER */}
+      {/* ===================================================== */}
 
       <Stack
-        direction="row"
-        alignItems="center"
+        direction={{
+          xs: "column",
+
+          sm: "row",
+        }}
+        justifyContent="space-between"
+        alignItems={{
+          xs: "flex-start",
+
+          sm: "center",
+        }}
         spacing={1}
         sx={{
-          mb: 1.5,
+          mb: 1.8,
         }}
       >
-        <Typography variant="h6" fontWeight={700}>
-          Quick Actions
-        </Typography>
+        <Box>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Typography variant="h6" fontWeight={800}>
+              Quick Actions
+            </Typography>
 
-        <Chip size="small" label="Student" color="primary" variant="outlined" />
+            <Chip
+              size="small"
+              label="Student"
+              color="primary"
+              variant="outlined"
+              sx={{
+                fontWeight: 700,
+              }}
+            />
+          </Stack>
+
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{
+              mt: 0.35,
+            }}
+          >
+            Jump directly to the most frequently used areas.
+          </Typography>
+        </Box>
       </Stack>
 
-      {/* ======================================================
-          QUICK ACTIONS
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* QUICK ACTIONS */}
+      {/* ===================================================== */}
 
       <Grid container spacing={2}>
-        {/* FIND LIBRARY */}
-
         <Grid
           size={{
             xs: 12,
@@ -641,8 +933,6 @@ function StudentDashboard() {
             onClick={() => navigate("/student/libraries")}
           />
         </Grid>
-
-        {/* FIND SEAT */}
 
         <Grid
           size={{
@@ -660,8 +950,6 @@ function StudentDashboard() {
           />
         </Grid>
 
-        {/* BOOKINGS */}
-
         <Grid
           size={{
             xs: 12,
@@ -677,8 +965,6 @@ function StudentDashboard() {
             onClick={() => navigate("/student/bookings")}
           />
         </Grid>
-
-        {/* MEMBERSHIP */}
 
         <Grid
           size={{
@@ -696,8 +982,6 @@ function StudentDashboard() {
           />
         </Grid>
 
-        {/* PAYMENTS */}
-
         <Grid
           size={{
             xs: 12,
@@ -713,8 +997,6 @@ function StudentDashboard() {
             onClick={() => navigate("/student/payments")}
           />
         </Grid>
-
-        {/* INVOICES */}
 
         <Grid
           size={{
@@ -732,8 +1014,6 @@ function StudentDashboard() {
           />
         </Grid>
 
-        {/* NOTIFICATIONS */}
-
         <Grid
           size={{
             xs: 12,
@@ -744,7 +1024,13 @@ function StudentDashboard() {
           <QuickAction
             icon={<Notifications />}
             title="Notifications"
-            description="View important booking, payment and membership updates."
+            description={
+              unreadCount > 0
+                ? `You have ${unreadCount} unread notification${
+                    unreadCount === 1 ? "" : "s"
+                  }.`
+                : "View important booking, payment and membership updates."
+            }
             actionLabel="View Notifications"
             onClick={() => navigate("/student/notifications")}
           />

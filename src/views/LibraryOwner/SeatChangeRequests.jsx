@@ -21,19 +21,19 @@ import SearchIcon from "@mui/icons-material/Search";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
 
-import SeatChangeRequestStatus from "../SeatChangeRequest/components/SeatChangeRequestStatus";
+import { useLocation, useNavigate } from "react-router-dom";
+
+import SeatChangeRequestStatus
+  from "../Common/Components/SeatChangeRequestStatus";
 import OwnerReviewDialog from "./components/OwnerReviewDialog";
 
 import libraryApi from "../../api/libraryApi";
 import seatChangeRequestApi from "../../api/seatChangeRequestApi";
 
-/* =========================================================
-   HELPERS
-========================================================= */
+// ============================================================
+// HELPERS
+// ============================================================
 
-/**
- * Extract a readable message from an Axios/backend error.
- */
 function getErrorMessage(error, fallback = "Something went wrong.") {
   return (
     error?.response?.data?.message ||
@@ -43,20 +43,6 @@ function getErrorMessage(error, fallback = "Something went wrong.") {
   );
 }
 
-/**
- * Normalize backend list responses.
- *
- * Supports:
- * [
- *   {...}
- * ]
- *
- * and:
- *
- * {
- *   content: [...]
- * }
- */
 function normalizeListResponse(response) {
   if (Array.isArray(response)) {
     return response;
@@ -69,9 +55,6 @@ function normalizeListResponse(response) {
   return [];
 }
 
-/**
- * Format date/time returned by backend.
- */
 function formatDateTime(value) {
   if (!value) {
     return "-";
@@ -92,60 +75,75 @@ function formatDateTime(value) {
   });
 }
 
-/* =========================================================
-   SEAT CHANGE REQUESTS
-========================================================= */
+// ============================================================
+// SEAT CHANGE REQUESTS
+// ============================================================
 
 function SeatChangeRequests() {
-  /* =======================================================
-     LIBRARY STATE
-  ======================================================= */
+  // ==========================================================
+  // ROUTER / NOTIFICATION DEEP LINK
+  // ==========================================================
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const fromNotification = Boolean(location.state?.fromNotification);
+
+  const notificationReferenceId =
+    location.state?.notificationReferenceId ?? null;
+
+  const notificationReferenceType =
+    location.state?.notificationReferenceType ?? null;
+
+  const [highlightedRequestId, setHighlightedRequestId] = useState(null);
+
+  const [resolvingNotificationTarget, setResolvingNotificationTarget] =
+    useState(false);
+
+  const [notificationTargetHandled, setNotificationTargetHandled] =
+    useState(false);
+
+  // ==========================================================
+  // LIBRARY STATE
+  // ==========================================================
 
   const [libraries, setLibraries] = useState([]);
-
   const [libraryId, setLibraryId] = useState("");
-
   const [loadingLibraries, setLoadingLibraries] = useState(true);
 
-  /* =======================================================
-     REQUEST DATA
-  ======================================================= */
+  // ==========================================================
+  // REQUEST DATA
+  // ==========================================================
 
   const [requests, setRequests] = useState([]);
-
   const [summary, setSummary] = useState(null);
-
   const [loadingRequests, setLoadingRequests] = useState(false);
 
-  /* =======================================================
-     FILTERS
-  ======================================================= */
+  // ==========================================================
+  // FILTERS
+  // ==========================================================
 
   const [search, setSearch] = useState("");
-
   const [status, setStatus] = useState("ALL");
 
-  /* =======================================================
-     REVIEW DIALOG
-  ======================================================= */
+  // ==========================================================
+  // REVIEW DIALOG
+  // ==========================================================
 
   const [reviewRequest, setReviewRequest] = useState(null);
-
   const [reviewAction, setReviewAction] = useState(null);
-
   const [processingReview, setProcessingReview] = useState(false);
 
-  /* =======================================================
-     FEEDBACK
-  ======================================================= */
+  // ==========================================================
+  // FEEDBACK
+  // ==========================================================
 
   const [error, setError] = useState("");
-
   const [success, setSuccess] = useState("");
 
-  /* =======================================================
-     LOAD OWNER LIBRARIES
-  ======================================================= */
+  // ==========================================================
+  // LOAD OWNER LIBRARIES
+  // ==========================================================
 
   const loadLibraries = useCallback(async () => {
     try {
@@ -162,16 +160,9 @@ function SeatChangeRequests() {
         setLibraryId("");
         setRequests([]);
         setSummary(null);
-
         return;
       }
 
-      /*
-       * Preserve current selection if the library
-       * still belongs to the authenticated owner.
-       *
-       * Otherwise select the first available library.
-       */
       setLibraryId((currentLibraryId) => {
         const currentLibraryStillExists =
           currentLibraryId &&
@@ -199,15 +190,14 @@ function SeatChangeRequests() {
     }
   }, []);
 
-  /* =======================================================
-     LOAD SEAT CHANGE REQUESTS
-  ======================================================= */
+  // ==========================================================
+  // LOAD SEAT CHANGE REQUESTS
+  // ==========================================================
 
   const loadRequests = useCallback(async () => {
     if (!libraryId) {
       setRequests([]);
       setSummary(null);
-
       return;
     }
 
@@ -215,10 +205,6 @@ function SeatChangeRequests() {
       setLoadingRequests(true);
       setError("");
 
-      /*
-       * Request list and summary can be loaded
-       * independently at the same time.
-       */
       const [requestsResponse, summaryResponse] = await Promise.all([
         seatChangeRequestApi.getLibraryRequests(libraryId, status),
 
@@ -240,36 +226,192 @@ function SeatChangeRequests() {
     }
   }, [libraryId, status]);
 
-  /* =======================================================
-     INITIAL LIBRARY LOAD
-  ======================================================= */
+  // ==========================================================
+  // INITIAL LIBRARY LOAD
+  // ==========================================================
 
   useEffect(() => {
     loadLibraries();
   }, [loadLibraries]);
 
-  /* =======================================================
-     LOAD REQUESTS WHEN LIBRARY / STATUS CHANGES
-  ======================================================= */
+  // ==========================================================
+  // LOAD REQUESTS WHEN LIBRARY / STATUS CHANGES
+  // ==========================================================
 
   useEffect(() => {
     if (!libraryId) {
       setRequests([]);
       setSummary(null);
-
       return;
     }
 
     loadRequests();
   }, [libraryId, loadRequests]);
 
-  /* =======================================================
-     SEARCH FILTER
+  // ==========================================================
+  // RESOLVE NOTIFICATION TARGET ACROSS OWNER LIBRARIES
+  // ==========================================================
 
-     Status filtering is performed by backend.
-     Search remains client-side because the current backend
-     endpoint does not require a search parameter.
-  ======================================================= */
+  useEffect(() => {
+    if (!fromNotification) {
+      return;
+    }
+
+    if (notificationTargetHandled) {
+      return;
+    }
+
+    if (notificationReferenceType !== "SEAT_CHANGE_REQUEST") {
+      return;
+    }
+
+    if (!notificationReferenceId) {
+      return;
+    }
+
+    if (loadingLibraries || libraries.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveTarget = async () => {
+      try {
+        setResolvingNotificationTarget(true);
+        setError("");
+
+        for (const library of libraries) {
+          if (cancelled) {
+            return;
+          }
+
+          const response = await seatChangeRequestApi.getLibraryRequests(
+            library.id,
+            "ALL",
+          );
+
+          const libraryRequests = normalizeListResponse(response);
+
+          const matchingRequest = libraryRequests.find(
+            (request) =>
+              Number(request?.requestId) === Number(notificationReferenceId),
+          );
+
+          if (matchingRequest) {
+            setLibraryId(String(library.id));
+
+            setStatus("ALL");
+            setSearch("");
+
+            setHighlightedRequestId(matchingRequest.requestId);
+
+            setSuccess(
+              `Seat change request #${matchingRequest.requestId} opened from notification.`,
+            );
+
+            setNotificationTargetHandled(true);
+
+            navigate(location.pathname, {
+              replace: true,
+              state: null,
+            });
+
+            return;
+          }
+        }
+
+        setError(
+          `Seat change request #${notificationReferenceId} could not be found in your libraries.`,
+        );
+
+        setNotificationTargetHandled(true);
+
+        navigate(location.pathname, {
+          replace: true,
+          state: null,
+        });
+      } catch (err) {
+        console.error(
+          "Failed to resolve notification seat-change request:",
+          err,
+        );
+
+        setError(
+          getErrorMessage(
+            err,
+            "Unable to open the seat change request from the notification.",
+          ),
+        );
+
+        setNotificationTargetHandled(true);
+
+        navigate(location.pathname, {
+          replace: true,
+          state: null,
+        });
+      } finally {
+        if (!cancelled) {
+          setResolvingNotificationTarget(false);
+        }
+      }
+    };
+
+    resolveTarget();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fromNotification,
+    notificationReferenceId,
+    notificationReferenceType,
+    notificationTargetHandled,
+    loadingLibraries,
+    libraries,
+    location.pathname,
+    navigate,
+  ]);
+
+  // ==========================================================
+  // SCROLL TO HIGHLIGHTED REQUEST AFTER DATA LOADS
+  // ==========================================================
+
+  useEffect(() => {
+    if (!highlightedRequestId) {
+      return;
+    }
+
+    if (loadingRequests) {
+      return;
+    }
+
+    const exists = requests.some(
+      (request) => String(request.requestId) === String(highlightedRequestId),
+    );
+
+    if (!exists) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const element = document.getElementById(
+        `seat-change-request-${highlightedRequestId}`,
+      );
+
+      element?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 150);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [highlightedRequestId, loadingRequests, requests]);
+
+  // ==========================================================
+  // SEARCH FILTER
+  // ==========================================================
 
   const filteredRequests = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -302,9 +444,9 @@ function SeatChangeRequests() {
     });
   }, [requests, search]);
 
-  /* =======================================================
-     SUMMARY VALUES
-  ======================================================= */
+  // ==========================================================
+  // SUMMARY VALUES
+  // ==========================================================
 
   const totalRequests = Number(summary?.totalRequests ?? 0);
 
@@ -314,9 +456,9 @@ function SeatChangeRequests() {
 
   const rejectedRequests = Number(summary?.rejectedRequests ?? 0);
 
-  /* =======================================================
-     OPEN APPROVE DIALOG
-  ======================================================= */
+  // ==========================================================
+  // OPEN APPROVE DIALOG
+  // ==========================================================
 
   const handleApprove = (request) => {
     setError("");
@@ -326,9 +468,9 @@ function SeatChangeRequests() {
     setReviewAction("APPROVE");
   };
 
-  /* =======================================================
-     OPEN REJECT DIALOG
-  ======================================================= */
+  // ==========================================================
+  // OPEN REJECT DIALOG
+  // ==========================================================
 
   const handleReject = (request) => {
     setError("");
@@ -338,9 +480,9 @@ function SeatChangeRequests() {
     setReviewAction("REJECT");
   };
 
-  /* =======================================================
-     CLOSE REVIEW DIALOG
-  ======================================================= */
+  // ==========================================================
+  // CLOSE REVIEW DIALOG
+  // ==========================================================
 
   const handleCloseReview = () => {
     if (processingReview) {
@@ -351,39 +493,24 @@ function SeatChangeRequests() {
     setReviewAction(null);
   };
 
-  /* =======================================================
-     REVIEW CONFIRM
-
-     Supports the existing OwnerReviewDialog callback shape:
-
-     {
-       requestId,
-       status,
-       ownerComment
-     }
-  ======================================================= */
+  // ==========================================================
+  // REVIEW CONFIRM
+  // ==========================================================
 
   const handleReviewConfirm = async ({
     requestId,
     status: reviewedStatus,
     ownerComment,
   }) => {
-    /*
-     * If OwnerReviewDialog still sends the old
-     * request.id field, fall back to the currently
-     * selected backend request.
-     */
     const effectiveRequestId = requestId ?? reviewRequest?.requestId;
 
     if (!libraryId) {
       setError("Please select a library.");
-
       return;
     }
 
     if (!effectiveRequestId) {
       setError("Seat change request id is missing.");
-
       return;
     }
 
@@ -391,10 +518,6 @@ function SeatChangeRequests() {
       setProcessingReview(true);
       setError("");
       setSuccess("");
-
-      /* ---------------------------------------------------
-         APPROVE
-      --------------------------------------------------- */
 
       if (reviewedStatus === "APPROVED" || reviewAction === "APPROVE") {
         await seatChangeRequestApi.approveLibraryRequest(
@@ -406,15 +529,10 @@ function SeatChangeRequests() {
           `Seat change request #${effectiveRequestId} approved successfully.`,
         );
       } else if (reviewedStatus === "REJECTED" || reviewAction === "REJECT") {
-
-      /* ---------------------------------------------------
-         REJECT
-      --------------------------------------------------- */
         const rejectionReason = ownerComment?.trim();
 
         if (!rejectionReason) {
           setError("Rejection reason is required.");
-
           return;
         }
 
@@ -428,29 +546,13 @@ function SeatChangeRequests() {
           `Seat change request #${effectiveRequestId} rejected successfully.`,
         );
       } else {
-
-      /* ---------------------------------------------------
-         INVALID ACTION
-      --------------------------------------------------- */
         setError("Invalid seat change request action.");
-
         return;
       }
 
-      /*
-       * Close dialog only after backend operation
-       * succeeds.
-       */
       setReviewRequest(null);
       setReviewAction(null);
 
-      /*
-       * Reload authoritative backend data.
-       *
-       * We intentionally do not modify request status
-       * locally because approval may also transfer the
-       * member's subscription seat.
-       */
       await loadRequests();
     } catch (err) {
       console.error("Failed to review seat change request:", err);
@@ -461,9 +563,9 @@ function SeatChangeRequests() {
     }
   };
 
-  /* =======================================================
-     LIBRARY CHANGE
-  ======================================================= */
+  // ==========================================================
+  // LIBRARY CHANGE
+  // ==========================================================
 
   const handleLibraryChange = (event) => {
     setLibraryId(String(event.target.value));
@@ -474,31 +576,34 @@ function SeatChangeRequests() {
     setReviewRequest(null);
     setReviewAction(null);
 
+    setHighlightedRequestId(null);
+
     setError("");
     setSuccess("");
   };
 
-  /* =======================================================
-     STATUS CHANGE
-  ======================================================= */
+  // ==========================================================
+  // STATUS CHANGE
+  // ==========================================================
 
   const handleStatusChange = (event) => {
     setStatus(event.target.value);
 
     setSearch("");
+    setHighlightedRequestId(null);
 
     setError("");
   };
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <Box>
-      {/* ===================================================
-          PAGE HEADER
-      =================================================== */}
+      {/* =================================================== */}
+      {/* PAGE HEADER */}
+      {/* =================================================== */}
 
       <Stack
         direction={{
@@ -523,8 +628,6 @@ function SeatChangeRequests() {
           </Typography>
         </Box>
 
-        {/* Library Selector */}
-
         <FormControl
           size="small"
           sx={{
@@ -536,7 +639,7 @@ function SeatChangeRequests() {
           <Select
             value={libraryId}
             label="Library"
-            disabled={loadingLibraries}
+            disabled={loadingLibraries || resolvingNotificationTarget}
             onChange={handleLibraryChange}
           >
             {libraries.map((library) => (
@@ -548,9 +651,25 @@ function SeatChangeRequests() {
         </FormControl>
       </Stack>
 
-      {/* ===================================================
-          SUCCESS MESSAGE
-      =================================================== */}
+      {/* =================================================== */}
+      {/* NOTIFICATION RESOLUTION */}
+      {/* =================================================== */}
+
+      {resolvingNotificationTarget && (
+        <Alert
+          severity="info"
+          sx={{
+            mb: 3,
+          }}
+          icon={<CircularProgress size={18} />}
+        >
+          Opening the seat change request from your notification...
+        </Alert>
+      )}
+
+      {/* =================================================== */}
+      {/* SUCCESS MESSAGE */}
+      {/* =================================================== */}
 
       {success && (
         <Alert
@@ -564,9 +683,9 @@ function SeatChangeRequests() {
         </Alert>
       )}
 
-      {/* ===================================================
-          ERROR MESSAGE
-      =================================================== */}
+      {/* =================================================== */}
+      {/* ERROR MESSAGE */}
+      {/* =================================================== */}
 
       {error && (
         <Alert
@@ -580,9 +699,9 @@ function SeatChangeRequests() {
         </Alert>
       )}
 
-      {/* ===================================================
-          NO LIBRARY
-      =================================================== */}
+      {/* =================================================== */}
+      {/* NO LIBRARY */}
+      {/* =================================================== */}
 
       {!loadingLibraries && libraries.length === 0 && (
         <Alert
@@ -595,14 +714,12 @@ function SeatChangeRequests() {
         </Alert>
       )}
 
-      {/* ===================================================
-          SUMMARY CARDS
-      =================================================== */}
+      {/* =================================================== */}
+      {/* SUMMARY CARDS */}
+      {/* =================================================== */}
 
       {libraryId && (
         <Grid container spacing={2} mb={3}>
-          {/* Total */}
-
           <Grid
             size={{
               xs: 12,
@@ -626,8 +743,6 @@ function SeatChangeRequests() {
               </CardContent>
             </Card>
           </Grid>
-
-          {/* Pending */}
 
           <Grid
             size={{
@@ -658,8 +773,6 @@ function SeatChangeRequests() {
             </Card>
           </Grid>
 
-          {/* Approved */}
-
           <Grid
             size={{
               xs: 12,
@@ -688,8 +801,6 @@ function SeatChangeRequests() {
               </CardContent>
             </Card>
           </Grid>
-
-          {/* Rejected */}
 
           <Grid
             size={{
@@ -722,9 +833,9 @@ function SeatChangeRequests() {
         </Grid>
       )}
 
-      {/* ===================================================
-          SEARCH / FILTER
-      =================================================== */}
+      {/* =================================================== */}
+      {/* SEARCH / FILTER */}
+      {/* =================================================== */}
 
       <Card
         sx={{
@@ -739,8 +850,6 @@ function SeatChangeRequests() {
             }}
             spacing={2}
           >
-            {/* Search */}
-
             <TextField
               fullWidth
               size="small"
@@ -758,8 +867,6 @@ function SeatChangeRequests() {
                 ),
               }}
             />
-
-            {/* Status */}
 
             <FormControl
               size="small"
@@ -788,9 +895,9 @@ function SeatChangeRequests() {
         </CardContent>
       </Card>
 
-      {/* ===================================================
-          LIBRARY LOADING
-      =================================================== */}
+      {/* =================================================== */}
+      {/* LIBRARY LOADING */}
+      {/* =================================================== */}
 
       {loadingLibraries && (
         <Card>
@@ -813,9 +920,9 @@ function SeatChangeRequests() {
         </Card>
       )}
 
-      {/* ===================================================
-          REQUEST LOADING
-      =================================================== */}
+      {/* =================================================== */}
+      {/* REQUEST LOADING */}
+      {/* =================================================== */}
 
       {!loadingLibraries && loadingRequests && (
         <Card>
@@ -838,209 +945,214 @@ function SeatChangeRequests() {
         </Card>
       )}
 
-      {/* ===================================================
-          REQUEST CARDS
-      =================================================== */}
+      {/* =================================================== */}
+      {/* REQUEST CARDS */}
+      {/* =================================================== */}
 
       {!loadingLibraries && !loadingRequests && libraryId && (
         <Grid container spacing={2}>
-          {filteredRequests.map((request) => (
-            <Grid
-              size={{
-                xs: 12,
-              }}
-              key={request.requestId}
-            >
-              <Card>
-                <CardContent>
-                  <Stack spacing={2}>
-                    {/* =================================
-                            REQUEST HEADER
-                        ================================= */}
+          {filteredRequests.map((request) => {
+            const highlighted =
+              String(highlightedRequestId) === String(request.requestId);
 
-                    <Stack
-                      direction={{
-                        xs: "column",
-                        md: "row",
-                      }}
-                      justifyContent="space-between"
-                      alignItems={{
-                        xs: "flex-start",
-                        md: "center",
-                      }}
-                      spacing={2}
-                    >
-                      <Box>
-                        <Typography fontWeight={700}>
-                          {request.studentName || "Unknown Member"}
-                        </Typography>
+            return (
+              <Grid
+                size={{
+                  xs: 12,
+                }}
+                key={request.requestId}
+              >
+                <Card
+                  id={`seat-change-request-${request.requestId}`}
+                  sx={{
+                    border: highlighted ? "2px solid" : "1px solid",
 
-                        <Typography variant="body2" color="text.secondary">
-                          Request #{request.requestId}
-                          {request.subscriptionId &&
-                            ` · Subscription #${request.subscriptionId}`}
-                        </Typography>
+                    borderColor: highlighted ? "primary.main" : "divider",
 
-                        {request.studentEmail && (
-                          <Typography variant="caption" color="text.secondary">
-                            {request.studentEmail}
+                    backgroundColor: highlighted
+                      ? "rgba(79, 70, 229, 0.04)"
+                      : "background.paper",
+
+                    boxShadow: highlighted ? 3 : 0,
+
+                    transition: "all 0.25s ease",
+                  }}
+                >
+                  <CardContent>
+                    <Stack spacing={2}>
+                      {/* REQUEST HEADER */}
+
+                      <Stack
+                        direction={{
+                          xs: "column",
+                          md: "row",
+                        }}
+                        justifyContent="space-between"
+                        alignItems={{
+                          xs: "flex-start",
+                          md: "center",
+                        }}
+                        spacing={2}
+                      >
+                        <Box>
+                          <Typography fontWeight={700}>
+                            {request.studentName || "Unknown Member"}
                           </Typography>
-                        )}
-                      </Box>
 
-                      <SeatChangeRequestStatus status={request.status} />
-                    </Stack>
+                          <Typography variant="body2" color="text.secondary">
+                            Request #{request.requestId}
+                            {request.subscriptionId &&
+                              ` · Subscription #${request.subscriptionId}`}
+                          </Typography>
 
-                    {/* =================================
-                            REQUEST DETAILS
-                        ================================= */}
+                          {request.studentEmail && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {request.studentEmail}
+                            </Typography>
+                          )}
+                        </Box>
 
-                    <Stack
-                      direction={{
-                        xs: "column",
-                        sm: "row",
-                      }}
-                      spacing={{
-                        xs: 2,
-                        sm: 4,
-                      }}
-                    >
-                      {/* Current Seat */}
+                        <SeatChangeRequestStatus status={request.status} />
+                      </Stack>
 
-                      <Box
-                        sx={{
-                          minWidth: 120,
+                      {/* REQUEST DETAILS */}
+
+                      <Stack
+                        direction={{
+                          xs: "column",
+                          sm: "row",
+                        }}
+                        spacing={{
+                          xs: 2,
+                          sm: 4,
                         }}
                       >
-                        <Typography variant="caption" color="text.secondary">
-                          Current Seat
-                        </Typography>
-
-                        <Typography fontWeight={700}>
-                          {request.currentSeat || "-"}
-                        </Typography>
-                      </Box>
-
-                      {/* Requested Seat */}
-
-                      <Box
-                        sx={{
-                          minWidth: 120,
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          Requested Seat
-                        </Typography>
-
-                        <Typography fontWeight={700}>
-                          {request.requestedSeat || "-"}
-                        </Typography>
-                      </Box>
-
-                      {/* Reason */}
-
-                      <Box
-                        sx={{
-                          flex: 1,
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          Reason
-                        </Typography>
-
-                        <Typography variant="body2">
-                          {request.reason || "-"}
-                        </Typography>
-                      </Box>
-
-                      {/* Requested At */}
-
-                      <Box
-                        sx={{
-                          minWidth: 180,
-                        }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          Requested At
-                        </Typography>
-
-                        <Typography variant="body2">
-                          {formatDateTime(request.requestedAt)}
-                        </Typography>
-                      </Box>
-                    </Stack>
-
-                    {/* =================================
-                            REJECTION REASON
-                        ================================= */}
-
-                    {request.status === "REJECTED" &&
-                      request.rejectionReason && (
                         <Box
                           sx={{
-                            p: 1.5,
-                            borderRadius: 1,
-                            bgcolor: "error.light",
+                            minWidth: 120,
                           }}
                         >
-                          <Typography
-                            variant="caption"
-                            color="error.dark"
-                            fontWeight={700}
-                          >
-                            Rejection Reason
+                          <Typography variant="caption" color="text.secondary">
+                            Current Seat
                           </Typography>
 
-                          <Typography
-                            variant="body2"
-                            color="error.dark"
-                            mt={0.25}
-                          >
-                            {request.rejectionReason}
+                          <Typography fontWeight={700}>
+                            {request.currentSeat || "-"}
                           </Typography>
                         </Box>
-                      )}
 
-                    {/* =================================
-                            PENDING ACTIONS
-                        ================================= */}
-
-                    {request.status === "PENDING" && (
-                      <Stack
-                        direction="row"
-                        justifyContent="flex-end"
-                        spacing={1}
-                      >
-                        <Button
-                          variant="outlined"
-                          color="error"
-                          disabled={processingReview}
-                          startIcon={<CancelOutlinedIcon />}
-                          onClick={() => handleReject(request)}
+                        <Box
+                          sx={{
+                            minWidth: 120,
+                          }}
                         >
-                          Reject
-                        </Button>
+                          <Typography variant="caption" color="text.secondary">
+                            Requested Seat
+                          </Typography>
 
-                        <Button
-                          variant="contained"
-                          color="success"
-                          disabled={processingReview}
-                          startIcon={<CheckCircleIcon />}
-                          onClick={() => handleApprove(request)}
+                          <Typography fontWeight={700}>
+                            {request.requestedSeat || "-"}
+                          </Typography>
+                        </Box>
+
+                        <Box
+                          sx={{
+                            flex: 1,
+                          }}
                         >
-                          Approve
-                        </Button>
+                          <Typography variant="caption" color="text.secondary">
+                            Reason
+                          </Typography>
+
+                          <Typography variant="body2">
+                            {request.reason || "-"}
+                          </Typography>
+                        </Box>
+
+                        <Box
+                          sx={{
+                            minWidth: 180,
+                          }}
+                        >
+                          <Typography variant="caption" color="text.secondary">
+                            Requested At
+                          </Typography>
+
+                          <Typography variant="body2">
+                            {formatDateTime(request.requestedAt)}
+                          </Typography>
+                        </Box>
                       </Stack>
-                    )}
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
 
-          {/* =============================================
-                EMPTY STATE
-            ============================================= */}
+                      {/* REJECTION REASON */}
+
+                      {request.status === "REJECTED" &&
+                        request.rejectionReason && (
+                          <Box
+                            sx={{
+                              p: 1.5,
+                              borderRadius: 1,
+                              bgcolor: "error.light",
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="error.dark"
+                              fontWeight={700}
+                            >
+                              Rejection Reason
+                            </Typography>
+
+                            <Typography
+                              variant="body2"
+                              color="error.dark"
+                              mt={0.25}
+                            >
+                              {request.rejectionReason}
+                            </Typography>
+                          </Box>
+                        )}
+
+                      {/* PENDING ACTIONS */}
+
+                      {request.status === "PENDING" && (
+                        <Stack
+                          direction="row"
+                          justifyContent="flex-end"
+                          spacing={1}
+                        >
+                          <Button
+                            variant="outlined"
+                            color="error"
+                            disabled={processingReview}
+                            startIcon={<CancelOutlinedIcon />}
+                            onClick={() => handleReject(request)}
+                          >
+                            Reject
+                          </Button>
+
+                          <Button
+                            variant="contained"
+                            color="success"
+                            disabled={processingReview}
+                            startIcon={<CheckCircleIcon />}
+                            onClick={() => handleApprove(request)}
+                          >
+                            Approve
+                          </Button>
+                        </Stack>
+                      )}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+
+          {/* EMPTY STATE */}
 
           {filteredRequests.length === 0 && (
             <Grid
@@ -1075,9 +1187,9 @@ function SeatChangeRequests() {
         </Grid>
       )}
 
-      {/* ===================================================
-          REVIEW DIALOG
-      =================================================== */}
+      {/* =================================================== */}
+      {/* REVIEW DIALOG */}
+      {/* =================================================== */}
 
       <OwnerReviewDialog
         open={Boolean(reviewRequest)}

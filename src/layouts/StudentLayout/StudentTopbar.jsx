@@ -1,5 +1,4 @@
 import {
-  AccountCircle,
   HelpOutlineOutlined,
   Logout,
   Menu as MenuIcon,
@@ -21,103 +20,129 @@ import {
   Typography,
 } from "@mui/material";
 
-import {
-  useMemo,
-  useState,
-} from "react";
+import { useMemo, useState } from "react";
 
-import {
-  useDispatch,
-  useSelector,
-} from "react-redux";
+import { useNavigate } from "react-router-dom";
 
-import {
-  useNavigate,
-} from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 
-import {
-  logout,
-} from "../../redux/reducer/authReducer";
+import { useNotifications } from "../../context/NotificationContext";
 
-import {
-  drawerWidth,
-} from "./StudentSidebar";
+import { drawerWidth } from "./StudentSidebar";
 
+// ============================================================
+// HELPERS
+// ============================================================
 
-const getInitials =
-  (name) => {
-    if (!name) {
-      return "U";
-    }
+const getInitials = (name) => {
+  if (!name) {
+    return "U";
+  }
 
-    return name
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map(
-        (part) =>
-          part
-            .charAt(0)
-            .toUpperCase()
-      )
-      .join("");
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+};
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
+function StudentTopbar({ onMenuClick }) {
+  const navigate = useNavigate();
+
+  // ==========================================================
+  // AUTH
+  // ==========================================================
+
+  const { user, logout } = useAuth();
+
+  // ==========================================================
+  // NOTIFICATIONS
+  // ==========================================================
+
+  const { unreadCount } = useNotifications();
+
+  // ==========================================================
+  // ACCOUNT MENU
+  // ==========================================================
+
+  const [anchorEl, setAnchorEl] = useState(null);
+
+  // ==========================================================
+  // USER INFORMATION
+  // ==========================================================
+
+  const userName = user?.fullName?.trim() || "Member";
+
+  const profileImageUrl = user?.profileImageUrl || "";
+
+  const initials = useMemo(() => getInitials(userName), [userName]);
+
+  // ==========================================================
+  // USER MENU
+  // ==========================================================
+
+  const handleUserMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
   };
 
+  const handleUserMenuClose = () => {
+    setAnchorEl(null);
+  };
 
-function StudentTopbar({
-  onMenuClick,
-}) {
-  const navigate =
-    useNavigate();
+  // ==========================================================
+  // NOTIFICATION NAVIGATION
+  // ==========================================================
 
-  const dispatch =
-    useDispatch();
+  const handleNotificationNavigation = () => {
+    navigate("/student/notifications");
+  };
 
-  const user =
-    useSelector(
-      (state) =>
-        state.auth?.user
-    );
+  // ==========================================================
+  // PROFILE NAVIGATION
+  // ==========================================================
 
-  const [
-    anchorEl,
-    setAnchorEl,
-  ] = useState(null);
+  const handleProfileNavigation = () => {
+    handleUserMenuClose();
 
+    navigate("/student/profile");
+  };
 
-  const userName =
-    user?.fullName?.trim() ||
-    "Member";
+  // ==========================================================
+  // MENU NOTIFICATION NAVIGATION
+  // ==========================================================
 
+  const handleMenuNotificationNavigation = () => {
+    handleUserMenuClose();
 
-  const initials =
-    useMemo(
-      () =>
-        getInitials(
-          userName
-        ),
-      [
-        userName,
-      ]
-    );
+    handleNotificationNavigation();
+  };
 
+  // ==========================================================
+  // LOGOUT
+  // ==========================================================
 
-  const handleLogout =
-    () => {
-      setAnchorEl(null);
+  const handleLogout = () => {
+    handleUserMenuClose();
 
-      dispatch(
-        logout()
-      );
+    logout();
 
-      navigate(
-        "/login",
-        {
-          replace: true,
-        }
-      );
-    };
+    navigate("/login", {
+      replace: true,
 
+      state: {
+        message: "You have been signed out successfully.",
+      },
+    });
+  };
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <AppBar
@@ -126,44 +151,41 @@ function StudentTopbar({
       elevation={0}
       sx={{
         width: {
-          md:
-            `calc(100% - ${drawerWidth}px)`,
+          md: `calc(100% - ${drawerWidth}px)`,
         },
 
         ml: {
-          md:
-            `${drawerWidth}px`,
+          md: `${drawerWidth}px`,
         },
 
-        borderBottom:
-          "1px solid",
+        borderBottom: "1px solid",
 
-        borderColor:
-          "divider",
+        borderColor: "divider",
 
-        bgcolor:
-          "background.paper",
+        bgcolor: "background.paper",
       }}
     >
       <Toolbar
         sx={{
-          minHeight:
-            "76px !important",
+          minHeight: "76px !important",
+
           px: {
             xs: 2,
             md: 3,
           },
         }}
       >
+        {/* =================================================== */}
         {/* MOBILE MENU */}
+        {/* =================================================== */}
 
         <IconButton
           edge="start"
-          onClick={
-            onMenuClick
-          }
+          onClick={onMenuClick}
+          aria-label="Open navigation menu"
           sx={{
             mr: 1,
+
             display: {
               md: "none",
             },
@@ -172,16 +194,13 @@ function StudentTopbar({
           <MenuIcon />
         </IconButton>
 
+        {/* =================================================== */}
+        {/* TITLE */}
+        {/* =================================================== */}
 
-        {/* PORTAL TITLE */}
-
-        <Typography
-          variant="h6"
-          fontWeight={700}
-        >
+        <Typography variant="h6" fontWeight={700}>
           Member Portal
         </Typography>
-
 
         <Box
           sx={{
@@ -189,50 +208,49 @@ function StudentTopbar({
           }}
         />
 
-
+        {/* =================================================== */}
         {/* HELP */}
+        {/* =================================================== */}
 
-        <Tooltip
-          title=
-            "Help & Support"
-        >
+        <Tooltip title="Help & Support">
           <IconButton
-            onClick={() =>
-              navigate(
-                "/student/help"
-              )
-            }
+            aria-label="Help and support"
+            onClick={() => navigate("/student/help")}
           >
             <HelpOutlineOutlined />
           </IconButton>
         </Tooltip>
 
-
+        {/* =================================================== */}
         {/* NOTIFICATIONS */}
+        {/* =================================================== */}
 
         <Tooltip
-          title=
-            "Notifications"
+          title={
+            unreadCount > 0
+              ? `${unreadCount} unread notification${
+                  unreadCount === 1 ? "" : "s"
+                }`
+              : "Notifications"
+          }
         >
           <IconButton
-            onClick={() =>
-              navigate(
-                "/student/notifications"
-              )
-            }
+            aria-label="Notifications"
+            onClick={handleNotificationNavigation}
             sx={{
               ml: 0.5,
             }}
           >
             <Badge
-              variant="dot"
+              badgeContent={unreadCount}
               color="error"
+              max={99}
+              invisible={unreadCount <= 0}
             >
               <NotificationsNone />
             </Badge>
           </IconButton>
         </Tooltip>
-
 
         <Divider
           orientation="vertical"
@@ -243,150 +261,146 @@ function StudentTopbar({
           }}
         />
 
-
+        {/* =================================================== */}
         {/* USER */}
+        {/* =================================================== */}
 
         <Box
-          onClick={(
-            event
-          ) =>
-            setAnchorEl(
-              event.currentTarget
-            )
-          }
+          onClick={handleUserMenuOpen}
+          role="button"
+          tabIndex={0}
+          aria-label="Open account menu"
           sx={{
             display: "flex",
-            alignItems:
-              "center",
+
+            alignItems: "center",
+
             gap: 1.25,
+
             cursor: "pointer",
           }}
         >
           <Avatar
+            src={profileImageUrl || undefined}
+            alt={userName}
             sx={{
               width: 40,
+
               height: 40,
-              bgcolor:
-                "primary.main",
+
+              bgcolor: "primary.main",
+
+              color: "primary.contrastText",
+
+              fontWeight: 700,
             }}
           >
-            {initials}
+            {!profileImageUrl ? initials : null}
           </Avatar>
 
           <Box
             sx={{
               display: {
                 xs: "none",
+
                 sm: "block",
               },
             }}
           >
-            <Typography
-              variant="body2"
-              fontWeight={700}
-            >
+            <Typography variant="body2" fontWeight={700}>
               {userName}
             </Typography>
 
-            <Typography
-              variant="caption"
-              color=
-                "text.secondary"
-            >
+            <Typography variant="caption" color="text.secondary">
               Member
             </Typography>
           </Box>
         </Box>
 
-
+        {/* =================================================== */}
         {/* ACCOUNT MENU */}
+        {/* =================================================== */}
 
         <Menu
-          anchorEl={
-            anchorEl
-          }
-          open={
-            Boolean(
-              anchorEl
-            )
-          }
-          onClose={() =>
-            setAnchorEl(
-              null
-            )
-          }
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleUserMenuClose}
           anchorOrigin={{
-            vertical:
-              "bottom",
-            horizontal:
-              "right",
+            vertical: "bottom",
+
+            horizontal: "right",
           }}
           transformOrigin={{
-            vertical:
-              "top",
-            horizontal:
-              "right",
+            vertical: "top",
+
+            horizontal: "right",
           }}
         >
-          <MenuItem
-            onClick={() => {
-              setAnchorEl(
-                null
-              );
+          {/* PROFILE */}
 
-              navigate(
-                "/student/profile"
-              );
-            }}
-          >
+          <MenuItem onClick={handleProfileNavigation}>
             <Person
               fontSize="small"
               sx={{
                 mr: 1.5,
               }}
             />
-
             My Profile
           </MenuItem>
 
+          {/* NOTIFICATIONS */}
 
-          <MenuItem
-            onClick={() => {
-              setAnchorEl(
-                null
-              );
-
-              navigate(
-                "/student/notifications"
-              );
-            }}
-          >
-            <AccountCircle
+          <MenuItem onClick={handleMenuNotificationNavigation}>
+            <NotificationsNone
               fontSize="small"
               sx={{
                 mr: 1.5,
               }}
             />
 
-            Notifications
-          </MenuItem>
+            <Box
+              sx={{
+                display: "flex",
 
+                alignItems: "center",
+
+                width: "100%",
+              }}
+            >
+              Notifications
+              <Box
+                sx={{
+                  flexGrow: 1,
+                }}
+              />
+              {unreadCount > 0 && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    ml: 2,
+
+                    fontWeight: 700,
+
+                    color: "error.main",
+                  }}
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Typography>
+              )}
+            </Box>
+          </MenuItem>
 
           <Divider />
 
+          {/* LOGOUT */}
 
-          <MenuItem
-            onClick={
-              handleLogout
-            }
-          >
+          <MenuItem onClick={handleLogout}>
             <Logout
               fontSize="small"
               sx={{
                 mr: 1.5,
               }}
             />
-
             Logout
           </MenuItem>
         </Menu>

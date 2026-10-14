@@ -38,7 +38,7 @@ import {
   ReceiptLong as ReceiptLongIcon,
 } from "@mui/icons-material";
 
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import libraryApi from "../../api/libraryApi";
 import libraryRegistrationApi from "../../api/libraryRegistrationApi";
@@ -289,7 +289,21 @@ const loadRazorpayScript = () =>
 // ============================================================
 
 function SubscriptionBilling() {
+  const location = useLocation();
+
   const navigate = useNavigate();
+
+  // ==========================================================
+  // NOTIFICATION DEEP LINK
+  // ==========================================================
+
+  const fromNotification = Boolean(location.state?.fromNotification);
+
+  const notificationReferenceId =
+    location.state?.notificationReferenceId ?? null;
+
+  const notificationReferenceType =
+    location.state?.notificationReferenceType ?? null;
 
   const [libraries, setLibraries] = useState([]);
 
@@ -308,6 +322,11 @@ function SubscriptionBilling() {
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
+
+  const [notificationSuccess, setNotificationSuccess] = useState("");
+
+  const [highlightedPaymentTransactionId, setHighlightedPaymentTransactionId] =
+    useState(null);
 
   const [showAllHistory, setShowAllHistory] = useState(false);
 
@@ -614,6 +633,174 @@ function SubscriptionBilling() {
     return () =>
       window.removeEventListener("owner-library-changed", handleLibraryChanged);
   }, [libraries, loadSubscriptionData]);
+
+  // ==========================================================
+  // PLATFORM SUBSCRIPTION PAYMENT NOTIFICATION
+  // ==========================================================
+
+  useEffect(() => {
+    if (
+      loading ||
+      !fromNotification ||
+      notificationReferenceType !== "PLATFORM_SUBSCRIPTION_PAYMENT" ||
+      !notificationReferenceId ||
+      libraries.length === 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const resolveNotificationTarget = async () => {
+      const targetPaymentTransactionId = Number(notificationReferenceId);
+
+      if (!Number.isFinite(targetPaymentTransactionId)) {
+        if (!cancelled) {
+          setError(
+            "Invalid platform subscription payment notification reference.",
+          );
+
+          navigate(location.pathname, {
+            replace: true,
+            state: null,
+          });
+        }
+
+        return;
+      }
+
+      /*
+       * Search every owner library because a notification may refer
+       * to a payment belonging to a library other than the currently
+       * selected owner library.
+       */
+      for (const ownerLibrary of libraries) {
+        try {
+          const response =
+            await platformSubscriptionApi.getLibrarySubscriptions(
+              ownerLibrary.id,
+            );
+
+          const subscriptionList = normalizeListResponse(response);
+
+          const matchingSubscription = subscriptionList.find(
+            (subscription) =>
+              Number(subscription?.paymentTransactionId) ===
+              targetPaymentTransactionId,
+          );
+
+          if (!matchingSubscription) {
+            continue;
+          }
+
+          if (cancelled) {
+            return;
+          }
+
+          const targetLibraryId = Number(ownerLibrary.id);
+
+          setLibraryId(String(targetLibraryId));
+
+          setLibrary(ownerLibrary);
+
+          storeLibraryId(targetLibraryId);
+
+          /*
+           * Make sure the matched historical transaction is visible
+           * even when it is outside the default five-row view.
+           */
+          setShowAllHistory(true);
+
+          await loadSubscriptionData(targetLibraryId);
+
+          if (cancelled) {
+            return;
+          }
+
+          setHighlightedPaymentTransactionId(targetPaymentTransactionId);
+
+          setNotificationSuccess(
+            `Platform payment #${targetPaymentTransactionId} opened from notification.`,
+          );
+
+          /*
+           * Clear the notification navigation state after resolving.
+           * This allows future notification clicks to this mounted
+           * route to be handled independently.
+           */
+          navigate(location.pathname, {
+            replace: true,
+            state: null,
+          });
+
+          return;
+        } catch (notificationError) {
+          console.debug(
+            "Platform payment notification lookup skipped library:",
+            ownerLibrary?.id,
+            notificationError,
+          );
+        }
+      }
+
+      if (!cancelled) {
+        setError(
+          `Platform payment #${targetPaymentTransactionId} could not be found in your billing history.`,
+        );
+
+        navigate(location.pathname, {
+          replace: true,
+          state: null,
+        });
+      }
+    };
+
+    resolveNotificationTarget();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    loading,
+    fromNotification,
+    notificationReferenceId,
+    notificationReferenceType,
+    libraries,
+    loadSubscriptionData,
+    location.pathname,
+    navigate,
+  ]);
+
+  // ==========================================================
+  // SCROLL TO HIGHLIGHTED PLATFORM PAYMENT
+  // ==========================================================
+
+  useEffect(() => {
+    if (!highlightedPaymentTransactionId) {
+      return;
+    }
+
+    const targetExists = subscriptions.some(
+      (subscription) =>
+        Number(subscription?.paymentTransactionId) ===
+        Number(highlightedPaymentTransactionId),
+    );
+
+    if (!targetExists) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      document
+        .getElementById(`platform-payment-${highlightedPaymentTransactionId}`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+    }, 150);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedPaymentTransactionId, subscriptions, showAllHistory]);
 
   // ==========================================================
   // CURRENT PLAN
@@ -1308,6 +1495,16 @@ function SubscriptionBilling() {
         </Button>
       </Stack>
 
+      {notificationSuccess && (
+        <Alert
+          severity="success"
+          sx={{ mb: 3 }}
+          onClose={() => setNotificationSuccess("")}
+        >
+          {notificationSuccess}
+        </Alert>
+      )}
+
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
           {error}
@@ -1967,7 +2164,30 @@ function SubscriptionBilling() {
 
               <TableBody>
                 {displayedHistory.map((item) => (
-                  <TableRow key={item.id} hover>
+                  <TableRow
+                    id={`platform-payment-${item.paymentTransactionId}`}
+                    key={item.id}
+                    hover
+                    sx={{
+                      backgroundColor:
+                        String(item.paymentTransactionId) ===
+                        String(highlightedPaymentTransactionId)
+                          ? "rgba(79, 70, 229, 0.06)"
+                          : "inherit",
+
+                      outline:
+                        String(item.paymentTransactionId) ===
+                        String(highlightedPaymentTransactionId)
+                          ? "2px solid"
+                          : "none",
+
+                      outlineColor: "primary.main",
+
+                      outlineOffset: "-2px",
+
+                      transition: "all 0.25s ease",
+                    }}
+                  >
                     <TableCell>#{item.id}</TableCell>
 
                     <TableCell>{formatDate(item.date)}</TableCell>

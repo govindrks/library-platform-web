@@ -1,17 +1,12 @@
 import {
-  Analytics,
-  Assessment,
   CalendarMonth,
   CardMembership,
   Dashboard,
-  EventSeat,
   LibraryBooks,
   Notifications,
   Payments,
-  People,
+  Person,
   ReceiptLong,
-  Replay,
-  Settings,
 } from "@mui/icons-material";
 
 import {
@@ -25,22 +20,33 @@ import {
   Typography,
 } from "@mui/material";
 
-import { useSelector } from "react-redux";
-
 import { useLocation, useNavigate } from "react-router-dom";
 
 import ownerMenu from "../../../navigation/ownerMenu";
+
 import adminMenu from "../../../navigation/adminMenu";
+
+import { useAuth } from "../../../context/AuthContext";
+
+// ============================================================
+// CONSTANTS
+// ============================================================
 
 const drawerWidth = 250;
 
 // ============================================================
-// DEFAULT USER MENU
+// STUDENT MENU
 // ============================================================
-//
-// Menu used for normal USER accounts.
-//
-// ============================================================
+
+/*
+ * Shared Sidebar normally serves ADMIN / LIBRARY_OWNER through
+ * VerticalLayout.
+ *
+ * USER currently uses StudentLayout + StudentSidebar.
+ *
+ * We still keep this USER menu valid as a safe fallback in case
+ * Sidebar is ever rendered for a USER.
+ */
 
 const userMenu = [
   {
@@ -49,44 +55,40 @@ const userMenu = [
     items: [
       {
         label: "Dashboard",
-        path: "/dashboard",
+
+        path: "/student/dashboard",
+
         icon: Dashboard,
       },
     ],
   },
 
   {
-    title: "LIBRARY",
+    title: "LIBRARIES",
 
     items: [
       {
-        label: "Library Profile",
-        path: "/library/profile",
+        label: "Browse Libraries",
+
+        path: "/student/libraries",
+
         icon: LibraryBooks,
       },
 
       {
-        label: "Members",
-        path: "/members",
-        icon: People,
-      },
+        label: "My Bookings",
 
-      {
-        label: "Membership Plans",
-        path: "/membership-plans",
-        icon: CardMembership,
-      },
+        path: "/student/bookings",
 
-      {
-        label: "Seats",
-        path: "/seats",
-        icon: EventSeat,
-      },
-
-      {
-        label: "Bookings",
-        path: "/bookings",
         icon: CalendarMonth,
+      },
+
+      {
+        label: "Membership",
+
+        path: "/student/membership",
+
+        icon: CardMembership,
       },
     ],
   },
@@ -97,56 +99,40 @@ const userMenu = [
     items: [
       {
         label: "Payments",
-        path: "/payments",
+
+        path: "/student/payments",
+
         icon: Payments,
       },
 
       {
-        label: "Refunds",
-        path: "/refunds",
-        icon: Replay,
-      },
-
-      {
         label: "Invoices",
-        path: "/invoices",
+
+        path: "/student/invoices",
+
         icon: ReceiptLong,
       },
     ],
   },
 
   {
-    title: "INSIGHTS",
-
-    items: [
-      {
-        label: "Reports",
-        path: "/reports",
-        icon: Assessment,
-      },
-
-      {
-        label: "Analytics",
-        path: "/analytics",
-        icon: Analytics,
-      },
-    ],
-  },
-
-  {
-    title: "SYSTEM",
+    title: "ACCOUNT",
 
     items: [
       {
         label: "Notifications",
-        path: "/notifications",
+
+        path: "/student/notifications",
+
         icon: Notifications,
       },
 
       {
-        label: "Settings",
-        path: "/settings",
-        icon: Settings,
+        label: "My Profile",
+
+        path: "/student/profile",
+
+        icon: Person,
       },
     ],
   },
@@ -155,18 +141,18 @@ const userMenu = [
 // ============================================================
 // NORMALIZE OWNER MENU
 // ============================================================
-//
-// ownerMenu uses:
-//
-// section
-// items
-//
-// Sidebar expects:
-//
-// title
-// items
-//
-// ============================================================
+
+/*
+ * ownerMenu uses:
+ *
+ * section
+ * items
+ *
+ * Sidebar expects:
+ *
+ * title
+ * items
+ */
 
 const normalizeOwnerMenu = ownerMenu.map((section) => ({
   title: section.section,
@@ -189,17 +175,23 @@ const normalizeAdminMenu = adminMenu.map((section) => ({
 // ============================================================
 
 function Sidebar({ mobileOpen, onMobileClose }) {
+  // ==========================================================
+  // ROUTER
+  // ==========================================================
+
   const location = useLocation();
 
   const navigate = useNavigate();
 
-  const user = useSelector((state) => state.auth.user);
+  // ==========================================================
+  // AUTH
+  // ==========================================================
 
-  const role = user?.role;
+  const { role } = useAuth();
 
-  // =========================================================
+  // ==========================================================
   // SELECT MENU BY ROLE
-  // =========================================================
+  // ==========================================================
 
   let menuSections = userMenu;
 
@@ -211,19 +203,23 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     menuSections = normalizeAdminMenu;
   }
 
-  // =========================================================
+  // ==========================================================
   // NAVIGATION
-  // =========================================================
+  // ==========================================================
 
   const handleNavigation = (path) => {
+    if (!path) {
+      return;
+    }
+
     navigate(path);
 
     onMobileClose?.();
   };
 
-  // =========================================================
+  // ==========================================================
   // DRAWER CONTENT
-  // =========================================================
+  // ==========================================================
 
   const drawerContent = (
     <Box
@@ -237,9 +233,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         backgroundColor: "background.paper",
       }}
     >
-      {/* =================================================
-                LOGO
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* LOGO */}
+      {/* ===================================================== */}
 
       <Box
         sx={{
@@ -297,16 +293,18 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           <Typography variant="caption" color="text.secondary">
             {role === "ADMIN"
               ? "Platform Administration"
-              : "Management Platform"}
+              : role === "LIBRARY_OWNER"
+                ? "Library Management"
+                : "Member Portal"}
           </Typography>
         </Box>
       </Box>
 
       <Divider />
 
-      {/* =================================================
-                NAVIGATION
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* NAVIGATION */}
+      {/* ===================================================== */}
 
       <Box
         sx={{
@@ -352,8 +350,8 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                 /*
                  * Exact route should be active.
                  *
-                 * Child routes should also
-                 * keep the parent item active.
+                 * Child routes should keep the parent
+                 * sidebar item active.
                  *
                  * Example:
                  *
@@ -363,7 +361,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                  *
                  * /admin/libraries
                  *
-                 * highlighted.
+                 * selected.
                  */
                 const active =
                   location.pathname === item.path ||
@@ -406,7 +404,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                         color: active ? "primary.main" : "text.secondary",
                       }}
                     >
-                      <Icon fontSize="small" />
+                      {Icon && <Icon fontSize="small" />}
                     </ListItemIcon>
 
                     <ListItemText
@@ -425,9 +423,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         ))}
       </Box>
 
-      {/* =================================================
-                FOOTER
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* FOOTER */}
+      {/* ===================================================== */}
 
       <Box
         sx={{
@@ -447,15 +445,15 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     </Box>
   );
 
-  // =========================================================
+  // ==========================================================
   // RENDER
-  // =========================================================
+  // ==========================================================
 
   return (
     <>
-      {/* =================================================
-                DESKTOP DRAWER
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* DESKTOP DRAWER */}
+      {/* ===================================================== */}
 
       <Drawer
         variant="permanent"
@@ -480,9 +478,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         {drawerContent}
       </Drawer>
 
-      {/* =================================================
-                MOBILE DRAWER
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* MOBILE DRAWER */}
+      {/* ===================================================== */}
 
       <Drawer
         variant="temporary"

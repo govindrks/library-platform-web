@@ -1,107 +1,73 @@
 import api from "./axios";
 
-
 // ============================================================
 // NOTIFICATION API
 // ============================================================
 
 const notificationApi = {
+  // ==========================================================
+  // GET ALL NOTIFICATIONS
+  // ==========================================================
 
-    // ========================================================
-    // GET ALL
-    // ========================================================
+  getAll: async (page = 0, size = 20) => {
+    const response = await api.get("/api/notifications", {
+      params: {
+        page,
+        size,
+      },
+    });
 
-    getAll: async (
-        page = 0,
-        size = 20
-    ) => {
+    return response.data;
+  },
 
-        const response =
-            await api.get(
-                "/api/notifications",
-                {
-                    params: {
-                        page,
-                        size,
-                    },
-                }
-            );
+  // ==========================================================
+  // GET UNREAD NOTIFICATIONS
+  // ==========================================================
 
-        return response.data;
-    },
+  getUnread: async (page = 0, size = 20) => {
+    const response = await api.get("/api/notifications/unread", {
+      params: {
+        page,
+        size,
+      },
+    });
 
+    return response.data;
+  },
 
-    // ========================================================
-    // GET UNREAD
-    // ========================================================
+  // ==========================================================
+  // GET UNREAD COUNT
+  // ==========================================================
 
-    getUnread: async (
-        page = 0,
-        size = 20
-    ) => {
+  getUnreadCount: async () => {
+    const response = await api.get("/api/notifications/unread-count");
 
-        const response =
-            await api.get(
-                "/api/notifications/unread",
-                {
-                    params: {
-                        page,
-                        size,
-                    },
-                }
-            );
+    return response.data;
+  },
 
-        return response.data;
-    },
+  // ==========================================================
+  // MARK ONE AS READ
+  // ==========================================================
 
+  markAsRead: async (notificationId) => {
+    if (!notificationId) {
+      throw new Error("Notification ID is required.");
+    }
 
-    // ========================================================
-    // UNREAD COUNT
-    // ========================================================
+    const response = await api.put(`/api/notifications/${notificationId}/read`);
 
-    getUnreadCount: async () => {
+    return response.data;
+  },
 
-        const response =
-            await api.get(
-                "/api/notifications/unread-count"
-            );
+  // ==========================================================
+  // MARK ALL AS READ
+  // ==========================================================
 
-        return response.data;
-    },
+  markAllAsRead: async () => {
+    const response = await api.put("/api/notifications/read-all");
 
-
-    // ========================================================
-    // MARK ONE READ
-    // ========================================================
-
-    markAsRead: async (
-        notificationId
-    ) => {
-
-        const response =
-            await api.put(
-                `/api/notifications/${notificationId}/read`
-            );
-
-        return response.data;
-    },
-
-
-    // ========================================================
-    // MARK ALL READ
-    // ========================================================
-
-    markAllAsRead: async () => {
-
-        const response =
-            await api.put(
-                "/api/notifications/read-all"
-            );
-
-        return response.data;
-    },
-
+    return response.data;
+  },
 };
-
 
 export default notificationApi;

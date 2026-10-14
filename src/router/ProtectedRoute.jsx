@@ -1,45 +1,90 @@
-import {
-    Navigate,
-    Outlet,
-    useLocation,
-} from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
-import { useSelector } from "react-redux";
+import { Box, CircularProgress } from "@mui/material";
 
+import { useAuth } from "../context/AuthContext";
+
+// ============================================================
+// PROTECTED ROUTE
+// ============================================================
 
 function ProtectedRoute() {
+  const location = useLocation();
 
-    const location =
-        useLocation();
+  const { isAuthenticated, initializing } = useAuth();
 
+  // ==========================================================
+  // AUTH INITIALIZATION
+  // ==========================================================
 
-    const isAuthenticated =
-        useSelector(
-            (state) =>
-                state.auth.isAuthenticated
-        );
+  /*
+   * AuthContext may still be restoring:
+   *
+   * - JWT
+   * - cached user
+   * - backend profile
+   *
+   * Never redirect while this process is still running.
+   */
+  if (initializing) {
+    return (
+      <Box
+        sx={{
+          minHeight: "100vh",
 
+          display: "flex",
 
-    if (
-        !isAuthenticated
-    ) {
+          alignItems: "center",
 
-        return (
+          justifyContent: "center",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
 
-            <Navigate
-                to="/login"
-                replace
-                state={{
-                    from:
-                        location.pathname,
-                }}
-            />
-        );
-    }
+  // ==========================================================
+  // NOT AUTHENTICATED
+  // ==========================================================
 
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{
+          /*
+           * Preserve the complete destination.
+           *
+           * Example:
+           *
+           * /student/libraries/4/book-seat?slot=3
+           */
+          from: location.pathname + location.search,
 
-    return <Outlet />;
+          /*
+           * Preserve optional booking flow information.
+           */
+          action: location.state?.action,
+
+          seatId: location.state?.seatId,
+
+          libraryId: location.state?.libraryId,
+
+          date: location.state?.date,
+
+          slotId: location.state?.slotId,
+        }}
+      />
+    );
+  }
+
+  // ==========================================================
+  // AUTHENTICATED
+  // ==========================================================
+
+  return <Outlet />;
 }
-
 
 export default ProtectedRoute;

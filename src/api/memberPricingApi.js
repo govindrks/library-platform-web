@@ -1,4 +1,4 @@
-import api from "../utility/axiosInterceptor";
+import api from "./axios";
 
 const memberPricingApi = {
 

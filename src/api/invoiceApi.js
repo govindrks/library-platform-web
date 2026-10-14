@@ -88,16 +88,13 @@ const invoiceApi = {
   // OWNER / LIBRARY INVOICES
   // ==========================================================
 
-  /**
+  /*
    * Get all invoices belonging to a library.
    *
    * Backend:
    *
    * GET
    * /api/libraries/{libraryId}/invoices
-   *
-   * Controller:
-   * OwnerPaymentInvoiceController
    */
   getLibraryInvoices: async (libraryId) => {
     if (!libraryId) {
@@ -113,9 +110,9 @@ const invoiceApi = {
   // GET OWNER-SCOPED INVOICE BY ID
   // ==========================================================
 
-  /**
+  /*
    * Retrieves invoice details while enforcing
-   * library/tenant ownership.
+   * library / tenant ownership.
    *
    * Backend:
    *
@@ -142,27 +139,13 @@ const invoiceApi = {
   // DOWNLOAD LIBRARY-SCOPED PDF
   // ==========================================================
 
-  /**
+  /*
    * Downloads an invoice PDF for the selected library.
    *
    * Backend:
    *
    * GET
    * /api/libraries/{libraryId}/invoices/{invoiceId}/download
-   *
-   * Backend flow:
-   *
-   * OwnerPaymentInvoiceController
-   *      ↓
-   * PaymentInvoiceService.downloadForLibrary(...)
-   *      ↓
-   * existing stored PDF
-   *
-   * OR
-   *
-   * PdfInvoiceGeneratorImpl.generate(invoice)
-   *      ↓
-   * PDF bytes
    */
   downloadInvoice: async (libraryId, invoiceId, invoiceNumber) => {
     if (!libraryId) {
@@ -198,31 +181,14 @@ const invoiceApi = {
   // GENERATE INVOICE
   // ==========================================================
 
-  /**
-   * Generates an invoice for a successful payment transaction.
+  /*
+   * Generates or returns an existing invoice for a successful
+   * payment transaction.
    *
    * Backend:
    *
    * POST
    * /api/payment/invoices/generate/{paymentTransactionId}
-   *
-   * Backend flow:
-   *
-   * PaymentInvoiceController
-   *      ↓
-   * PaymentInvoiceService.generate(...)
-   *      ↓
-   * GST calculation
-   *      ↓
-   * PaymentInvoice saved
-   *      ↓
-   * PdfInvoiceGeneratorImpl.generate(invoice)
-   *      ↓
-   * PDF stored
-   *
-   *
-   * Use this when a successful transaction exists
-   * but an invoice has not yet been generated.
    */
   generateInvoice: async (paymentTransactionId) => {
     if (!paymentTransactionId) {
@@ -237,10 +203,102 @@ const invoiceApi = {
   },
 
   // ==========================================================
+  // GENERATE MISSING / HISTORICAL INVOICE
+  // ==========================================================
+
+  /*
+   * Creates a missing invoice for an already-successful
+   * historical payment.
+   *
+   * Backend:
+   *
+   * POST
+   * /api/payment/invoices/generate-missing/{paymentTransactionId}
+   *
+   * Backend uses generateIfAbsent(...), therefore this remains
+   * safe when called repeatedly.
+   */
+  generateMissingInvoice: async (paymentTransactionId) => {
+    if (!paymentTransactionId) {
+      throw new Error("Payment transaction ID is required.");
+    }
+
+    const response = await api.post(
+      `/api/payment/invoices/generate-missing/${paymentTransactionId}`,
+    );
+
+    return response.data;
+  },
+
+  // ==========================================================
+  // REGENERATE EXISTING INVOICE PDF
+  // ==========================================================
+
+  /*
+   * Recreates the PDF for an invoice that already exists.
+   *
+   * IMPORTANT:
+   *
+   * This does NOT create another invoice row.
+   * This does NOT create another invoice number.
+   *
+   * Existing:
+   *
+   * invoiceId
+   * invoiceNumber
+   * paymentTransactionId
+   * libraryId
+   * customerId
+   *
+   * remain unchanged.
+   *
+   * Only the stored PDF is regenerated using the latest
+   * PdfInvoiceGeneratorImpl template.
+   *
+   * Backend:
+   *
+   * POST
+   * /api/payment/invoices/{invoiceId}/regenerate-pdf
+   *
+   * Used when:
+   *
+   * Due Date -> Paid On
+   *
+   * or when any future PDF-template change needs to be applied
+   * to an existing historical invoice.
+   */
+  regeneratePdf: async (invoiceId, invoiceNumber) => {
+    if (!invoiceId) {
+      throw new Error("Invoice ID is required.");
+    }
+
+    const response = await api.post(
+      `/api/payment/invoices/${invoiceId}/regenerate-pdf`,
+      {},
+      {
+        responseType: "blob",
+      },
+    );
+
+    const fallbackFilename = invoiceNumber
+      ? `${invoiceNumber}.pdf`
+      : `invoice-${invoiceId}.pdf`;
+
+    const filename = extractFilename(
+      response.headers?.["content-disposition"],
+      fallbackFilename,
+    );
+
+    downloadBlob(response.data, filename);
+
+    return true;
+  },
+
+  // ==========================================================
   // GET INVOICE BY GLOBAL ID
   // ==========================================================
 
-  /**
+  /*
    * Backend:
    *
    * GET
@@ -260,7 +318,7 @@ const invoiceApi = {
   // GET INVOICE BY NUMBER
   // ==========================================================
 
-  /**
+  /*
    * Backend:
    *
    * GET
@@ -282,9 +340,7 @@ const invoiceApi = {
   // GET CUSTOMER INVOICES
   // ==========================================================
 
-  /**
-   * Useful for student/member invoice history.
-   *
+  /*
    * Backend:
    *
    * GET
@@ -303,19 +359,33 @@ const invoiceApi = {
   },
 
   // ==========================================================
-  // GET LIBRARY INVOICES - GENERAL CONTROLLER
+  // GET AUTHENTICATED USER INVOICES
   // ==========================================================
 
-  /**
-   * General invoice endpoint.
+  /*
+   * Returns invoices belonging to the currently authenticated
+   * student/member.
    *
    * Backend:
    *
    * GET
-   * /api/payment/invoices/library/{libraryId}
+   * /api/payment/invoices/my
+   */
+  getMyInvoices: async () => {
+    const response = await api.get("/api/payment/invoices/my");
+
+    return response.data;
+  },
+
+  // ==========================================================
+  // GET LIBRARY INVOICES - GENERAL CONTROLLER
+  // ==========================================================
+
+  /*
+   * Backend:
    *
-   * Prefer getLibraryInvoices() for owner-facing pages because
-   * that route uses @TenantRequired.
+   * GET
+   * /api/payment/invoices/library/{libraryId}
    */
   getLibraryInvoicesGlobal: async (libraryId) => {
     if (!libraryId) {
@@ -329,24 +399,17 @@ const invoiceApi = {
     return response.data;
   },
 
-  getMyInvoices: async () => {
-    const response = await api.get("/api/payment/invoices/my");
-
-    return response.data;
-  },
-
   // ==========================================================
   // DOWNLOAD GLOBAL INVOICE
   // ==========================================================
 
-  /**
+  /*
    * Backend:
    *
    * GET
    * /api/payment/invoices/{invoiceId}/download
    *
-   * Normally owner-facing pages should use downloadInvoice()
-   * instead because it keeps the library/tenant boundary.
+   * This normally returns the already-stored PDF.
    */
   downloadGlobalInvoice: async (invoiceId, invoiceNumber) => {
     if (!invoiceId) {
@@ -360,9 +423,14 @@ const invoiceApi = {
       },
     );
 
-    const filename = invoiceNumber
+    const fallbackFilename = invoiceNumber
       ? `${invoiceNumber}.pdf`
       : `invoice-${invoiceId}.pdf`;
+
+    const filename = extractFilename(
+      response.headers?.["content-disposition"],
+      fallbackFilename,
+    );
 
     downloadBlob(response.data, filename);
 

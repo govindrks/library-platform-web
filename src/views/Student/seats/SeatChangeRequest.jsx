@@ -12,94 +12,130 @@ import {
   Typography,
 } from "@mui/material";
 
-import {
-  ArrowBack,
-  EventSeat,
-  Send,
-  SwapHoriz,
-} from "@mui/icons-material";
+import { ArrowBack, EventSeat, Send, SwapHoriz } from "@mui/icons-material";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 
-import {
-  useNavigate,
-} from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import studentSeatApi from "../../../api/studentSeatApi";
 import studentSeatChangeApi from "../../../api/studentSeatChangeApi";
 import studentSubscriptionApi from "../../../api/studentSubscriptionApi";
 
+// ============================================================
+// COMPONENT
+// ============================================================
+
 function SeatChangeRequest() {
+  // ==========================================================
+  // ROUTER
+  // ==========================================================
+
+  const location = useLocation();
+
   const navigate = useNavigate();
 
-  const [subscription, setSubscription] =
-    useState(null);
+  // ==========================================================
+  // NOTIFICATION SAFETY
+  // ==========================================================
 
-  const [seats, setSeats] =
-    useState([]);
+  const fromNotification = Boolean(location.state?.fromNotification);
 
-  const [selectedSeat, setSelectedSeat] =
-    useState(null);
+  const notificationReferenceType =
+    location.state?.notificationReferenceType ?? null;
 
-  const [reason, setReason] =
-    useState("");
+  /*
+   * This component is the seat-change REQUEST CREATION form.
+   *
+   * Approved/rejected notification deep links belong to the
+   * student's seat-change history page:
+   *
+   * /student/seat-change
+   *
+   * If this creation page is ever opened accidentally with a
+   * SEAT_CHANGE_REQUEST notification state, forward the user to
+   * the history page while preserving the navigation state.
+   */
 
-  const [loading, setLoading] =
-    useState(true);
+  useEffect(() => {
+    if (!fromNotification) {
+      return;
+    }
 
-  const [submitting, setSubmitting] =
-    useState(false);
+    if (notificationReferenceType !== "SEAT_CHANGE_REQUEST") {
+      return;
+    }
 
-  const [error, setError] =
-    useState("");
+    if (location.pathname === "/student/seat-change") {
+      return;
+    }
 
-  const [submittedRequest, setSubmittedRequest] =
-    useState(null);
+    navigate("/student/seat-change", {
+      replace: true,
+      state: location.state,
+    });
+  }, [
+    fromNotification,
+    notificationReferenceType,
+    location.pathname,
+    location.state,
+    navigate,
+  ]);
+
+  // ==========================================================
+  // STATE
+  // ==========================================================
+
+  const [subscription, setSubscription] = useState(null);
+
+  const [seats, setSeats] = useState([]);
+
+  const [selectedSeat, setSelectedSeat] = useState(null);
+
+  const [reason, setReason] = useState("");
+
+  const [loading, setLoading] = useState(true);
+
+  const [submitting, setSubmitting] = useState(false);
+
+  const [error, setError] = useState("");
+
+  const [submittedRequest, setSubmittedRequest] = useState(null);
+
+  // ==========================================================
+  // LOAD SUBSCRIPTION + AVAILABLE SEATS
+  // ==========================================================
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
+
         setError("");
 
         const subscriptionResponse =
-          await studentSubscriptionApi
-            .getMySubscription();
+          await studentSubscriptionApi.getMySubscription();
 
-        setSubscription(
-          subscriptionResponse
-        );
+        setSubscription(subscriptionResponse);
 
         if (!subscriptionResponse?.libraryId) {
           throw new Error(
-            "Library ID is unavailable for the active membership."
+            "Library ID is unavailable for the active membership.",
           );
         }
 
-        const seatResponse =
-          await studentSeatApi
-            .getAvailableSeats(
-              subscriptionResponse.libraryId
-            );
+        const seatResponse = await studentSeatApi.getAvailableSeats(
+          subscriptionResponse.libraryId,
+        );
 
-        setSeats(
-          Array.isArray(seatResponse)
-            ? seatResponse
-            : []
-        );
+        setSeats(Array.isArray(seatResponse) ? seatResponse : []);
       } catch (requestError) {
-        console.error(
-          "Failed to load seat change data:",
-          requestError
-        );
+        console.error("Failed to load seat change data:", requestError);
 
         setError(
           requestError?.response?.data?.message ||
             requestError?.message ||
-            "Unable to load seat change information."
+            "Unable to load seat change information.",
         );
       } finally {
         setLoading(false);
@@ -109,70 +145,74 @@ function SeatChangeRequest() {
     loadData();
   }, []);
 
+  // ==========================================================
+  // SUBMIT
+  // ==========================================================
+
   const handleSubmit = async () => {
     if (!selectedSeat) {
-      setError(
-        "Please select a new seat."
-      );
+      setError("Please select a new seat.");
 
       return;
     }
 
-    const trimmedReason =
-      reason.trim();
+    const trimmedReason = reason.trim();
 
     if (!trimmedReason) {
-      setError(
-        "Please enter a reason for changing your seat."
-      );
+      setError("Please enter a reason for changing your seat.");
+
+      return;
+    }
+
+    if (!subscription?.subscriptionId) {
+      setError("Active subscription ID is unavailable.");
 
       return;
     }
 
     try {
       setSubmitting(true);
+
       setError("");
 
-      const response =
-        await studentSeatChangeApi
-          .submitRequest({
-            subscriptionId:
-              subscription.subscriptionId,
+      const response = await studentSeatChangeApi.submitRequest({
+        subscriptionId: subscription.subscriptionId,
 
-            requestedSeatId:
-              selectedSeat.id,
+        requestedSeatId: selectedSeat.id,
 
-            reason:
-              trimmedReason,
-          });
+        reason: trimmedReason,
+      });
 
       setSubmittedRequest({
         ...response,
-        reason:
-          trimmedReason,
+
+        reason: trimmedReason,
       });
     } catch (requestError) {
-      console.error(
-        "Seat change request failed:",
-        requestError
-      );
+      console.error("Seat change request failed:", requestError);
 
       setError(
         requestError?.response?.data?.message ||
           requestError?.message ||
-          "Unable to submit seat change request."
+          "Unable to submit seat change request.",
       );
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ==========================================================
+  // LOADING
+  // ==========================================================
+
   if (loading) {
     return (
       <Stack
         alignItems="center"
         spacing={2}
-        sx={{ py: 8 }}
+        sx={{
+          py: 8,
+        }}
       >
         <CircularProgress />
 
@@ -183,17 +223,16 @@ function SeatChangeRequest() {
     );
   }
 
-  /*
-   * ==========================================================
-   * SUCCESS
-   * ==========================================================
-   */
+  // ==========================================================
+  // SUCCESS
+  // ==========================================================
 
   if (submittedRequest) {
     return (
       <Box
         sx={{
           maxWidth: 680,
+
           mx: "auto",
         }}
       >
@@ -201,7 +240,9 @@ function SeatChangeRequest() {
           elevation={0}
           sx={{
             border: "1px solid",
+
             borderColor: "divider",
+
             borderRadius: 3,
           }}
         >
@@ -209,16 +250,24 @@ function SeatChangeRequest() {
             <Stack
               alignItems="center"
               spacing={1.5}
-              sx={{ py: 2 }}
+              sx={{
+                py: 2,
+              }}
             >
               <Box
                 sx={{
                   width: 72,
+
                   height: 72,
+
                   borderRadius: "50%",
+
                   bgcolor: "primary.light",
+
                   display: "flex",
+
                   alignItems: "center",
+
                   justifyContent: "center",
                 }}
               >
@@ -230,70 +279,49 @@ function SeatChangeRequest() {
                 />
               </Box>
 
-              <Typography
-                variant="h5"
-                fontWeight={800}
-                textAlign="center"
-              >
+              <Typography variant="h5" fontWeight={800} textAlign="center">
                 Seat Change Request Submitted
               </Typography>
 
-              <Typography
-                color="text.secondary"
-                textAlign="center"
-              >
+              <Typography color="text.secondary" textAlign="center">
                 Your request has been sent to the library owner for review.
               </Typography>
             </Stack>
 
             <Stack
               spacing={1.5}
-              sx={{ mt: 3 }}
+              sx={{
+                mt: 3,
+              }}
             >
               <SummaryRow
                 label="Request ID"
-                value={
-                  submittedRequest.requestId
-                }
+                value={submittedRequest.requestId}
               />
 
               <SummaryRow
                 label="Current Seat"
-                value={
-                  submittedRequest.currentSeat
-                }
+                value={submittedRequest.currentSeat}
               />
 
               <SummaryRow
                 label="Requested Seat"
-                value={
-                  submittedRequest.requestedSeat
-                }
+                value={submittedRequest.requestedSeat}
               />
 
-              <SummaryRow
-                label="Reason"
-                value={
-                  submittedRequest.reason
-                }
-              />
+              <SummaryRow label="Reason" value={submittedRequest.reason} />
 
               <Stack
                 direction="row"
                 justifyContent="space-between"
                 alignItems="center"
               >
-                <Typography color="text.secondary">
-                  Status
-                </Typography>
+                <Typography color="text.secondary">Status</Typography>
 
                 <Chip
                   size="small"
                   color="warning"
-                  label={
-                    submittedRequest.status ||
-                    "PENDING"
-                  }
+                  label={submittedRequest.status || "PENDING"}
                 />
               </Stack>
             </Stack>
@@ -301,11 +329,17 @@ function SeatChangeRequest() {
             <Button
               fullWidth
               variant="outlined"
-              sx={{ mt: 3 }}
+              sx={{
+                mt: 3,
+              }}
               onClick={() =>
-                navigate(
-                  "/student/seat-change"
-                )
+                navigate("/student/seat-change", {
+                  state: {
+                    fromSeatChangeSubmission: true,
+
+                    submittedRequestId: submittedRequest.requestId ?? null,
+                  },
+                })
               }
             >
               Back to Seat Change Requests
@@ -316,24 +350,23 @@ function SeatChangeRequest() {
     );
   }
 
+  // ==========================================================
+  // MAIN FORM
+  // ==========================================================
+
   return (
     <Box>
       <Button
         startIcon={<ArrowBack />}
-        onClick={() =>
-          navigate(
-            "/student/membership"
-          )
-        }
-        sx={{ mb: 2 }}
+        onClick={() => navigate("/student/membership")}
+        sx={{
+          mb: 2,
+        }}
       >
         Back
       </Button>
 
-      <Typography
-        variant="h4"
-        fontWeight={800}
-      >
+      <Typography variant="h4" fontWeight={800}>
         Request Seat Change
       </Typography>
 
@@ -341,6 +374,7 @@ function SeatChangeRequest() {
         color="text.secondary"
         sx={{
           mt: 0.5,
+
           mb: 3,
         }}
       >
@@ -350,28 +384,33 @@ function SeatChangeRequest() {
       {error && (
         <Alert
           severity="error"
-          sx={{ mb: 3 }}
+          sx={{
+            mb: 3,
+          }}
+          onClose={() => setError("")}
         >
           {error}
         </Alert>
       )}
 
+      {/* ===================================================== */}
       {/* CURRENT SEAT */}
+      {/* ===================================================== */}
 
       <Card
         elevation={0}
         sx={{
           border: "1px solid",
+
           borderColor: "divider",
+
           borderRadius: 3,
+
           mb: 3,
         }}
       >
         <CardContent>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-          >
+          <Typography variant="body2" color="text.secondary">
             Current Seat
           </Typography>
 
@@ -379,30 +418,29 @@ function SeatChangeRequest() {
             direction="row"
             spacing={1.5}
             alignItems="center"
-            sx={{ mt: 1 }}
+            sx={{
+              mt: 1,
+            }}
           >
-            <EventSeat
-              color="primary"
-            />
+            <EventSeat color="primary" />
 
-            <Typography
-              variant="h4"
-              fontWeight={800}
-            >
-              {
-                subscription?.seatNumber
-              }
+            <Typography variant="h4" fontWeight={800}>
+              {subscription?.seatNumber || "-"}
             </Typography>
           </Stack>
         </CardContent>
       </Card>
 
+      {/* ===================================================== */}
       {/* NEW SEAT */}
+      {/* ===================================================== */}
 
       <Typography
         variant="h6"
         fontWeight={700}
-        sx={{ mb: 2 }}
+        sx={{
+          mb: 2,
+        }}
       >
         Select New Seat
       </Typography>
@@ -412,44 +450,32 @@ function SeatChangeRequest() {
           No alternative seats are currently available.
         </Alert>
       ) : (
-        <Grid
-          container
-          spacing={1.5}
-        >
+        <Grid container spacing={1.5}>
           {seats.map((seat) => {
-            const selected =
-              selectedSeat?.id ===
-              seat.id;
+            const selected = selectedSeat?.id === seat.id;
 
             return (
               <Grid
                 key={seat.id}
                 size={{
                   xs: 6,
+
                   sm: 4,
+
                   md: 3,
+
                   lg: 2,
                 }}
               >
                 <Button
                   fullWidth
-                  variant={
-                    selected
-                      ? "contained"
-                      : "outlined"
-                  }
-                  startIcon={
-                    <EventSeat />
-                  }
-                  onClick={() =>
-                    setSelectedSeat(
-                      seat
-                    )
-                  }
+                  variant={selected ? "contained" : "outlined"}
+                  startIcon={<EventSeat />}
+                  onClick={() => setSelectedSeat(seat)}
                   sx={{
                     minHeight: 72,
-                    flexDirection:
-                      "column",
+
+                    flexDirection: "column",
                   }}
                 >
                   {seat.seatNumber}
@@ -460,14 +486,20 @@ function SeatChangeRequest() {
         </Grid>
       )}
 
+      {/* ===================================================== */}
+      {/* SELECTED SEAT SUMMARY */}
+      {/* ===================================================== */}
+
       {selectedSeat && (
         <Card
           elevation={0}
           sx={{
             mt: 3,
+
             border: "1px solid",
-            borderColor:
-              "primary.main",
+
+            borderColor: "primary.main",
+
             borderRadius: 3,
           }}
         >
@@ -479,45 +511,24 @@ function SeatChangeRequest() {
               spacing={2}
             >
               <Box textAlign="center">
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                >
+                <Typography variant="caption" color="text.secondary">
                   Current Seat
                 </Typography>
 
-                <Typography
-                  variant="h6"
-                  fontWeight={800}
-                >
-                  {
-                    subscription
-                      ?.seatNumber
-                  }
+                <Typography variant="h6" fontWeight={800}>
+                  {subscription?.seatNumber || "-"}
                 </Typography>
               </Box>
 
-              <SwapHoriz
-                color="primary"
-              />
+              <SwapHoriz color="primary" />
 
               <Box textAlign="center">
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                >
+                <Typography variant="caption" color="text.secondary">
                   Requested Seat
                 </Typography>
 
-                <Typography
-                  variant="h6"
-                  fontWeight={800}
-                  color="primary.main"
-                >
-                  {
-                    selectedSeat
-                      .seatNumber
-                  }
+                <Typography variant="h6" fontWeight={800} color="primary.main">
+                  {selectedSeat.seatNumber}
                 </Typography>
               </Box>
             </Stack>
@@ -525,7 +536,9 @@ function SeatChangeRequest() {
         </Card>
       )}
 
+      {/* ===================================================== */}
       {/* REASON */}
+      {/* ===================================================== */}
 
       <TextField
         fullWidth
@@ -535,18 +548,16 @@ function SeatChangeRequest() {
         label="Reason for Seat Change"
         placeholder="Example: Need a quieter seat."
         value={reason}
-        onChange={(event) =>
-          setReason(
-            event.target.value
-          )
-        }
+        onChange={(event) => setReason(event.target.value)}
         slotProps={{
           htmlInput: {
             maxLength: 200,
           },
         }}
         helperText={`${reason.length}/200`}
-        sx={{ mt: 3 }}
+        sx={{
+          mt: 3,
+        }}
       />
 
       <Button
@@ -554,42 +565,28 @@ function SeatChangeRequest() {
         size="large"
         variant="contained"
         startIcon={<Send />}
-        disabled={
-          submitting ||
-          !selectedSeat ||
-          !reason.trim()
-        }
-        onClick={
-          handleSubmit
-        }
-        sx={{ mt: 2 }}
+        disabled={submitting || !selectedSeat || !reason.trim()}
+        onClick={handleSubmit}
+        sx={{
+          mt: 2,
+        }}
       >
-        {submitting
-          ? "Submitting..."
-          : "Submit Request"}
+        {submitting ? "Submitting..." : "Submit Request"}
       </Button>
     </Box>
   );
 }
 
-function SummaryRow({
-  label,
-  value,
-}) {
-  return (
-    <Stack
-      direction="row"
-      justifyContent="space-between"
-      spacing={2}
-    >
-      <Typography color="text.secondary">
-        {label}
-      </Typography>
+// ============================================================
+// SUMMARY ROW
+// ============================================================
 
-      <Typography
-        fontWeight={600}
-        textAlign="right"
-      >
+function SummaryRow({ label, value }) {
+  return (
+    <Stack direction="row" justifyContent="space-between" spacing={2}>
+      <Typography color="text.secondary">{label}</Typography>
+
+      <Typography fontWeight={600} textAlign="right">
         {value || "-"}
       </Typography>
     </Stack>

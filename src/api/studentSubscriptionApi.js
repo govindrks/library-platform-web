@@ -13,6 +13,14 @@ const studentSubscriptionApi = {
     return response.data;
   },
 
+   getSubscriptionHistory: async () => {
+    const response = await axiosInstance.get(
+      "/api/subscriptions/history"
+    );
+
+    return response.data;
+  },
+
 };
 
 export default studentSubscriptionApi;

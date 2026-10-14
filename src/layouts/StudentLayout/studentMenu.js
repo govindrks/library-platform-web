@@ -103,7 +103,7 @@ const studentMenu = [
 
       {
         label: "Help & Support",
-        path: "/student/help",
+        path: "/student/help-support",
         icon: HelpOutlineOutlined,
       },
     ],

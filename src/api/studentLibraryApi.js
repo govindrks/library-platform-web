@@ -7,11 +7,9 @@ import api from "./axios";
  *
  * Student-facing library discovery API.
  *
- * Reuses the public LibraryController endpoints:
+ * Reuses public/student LibraryController endpoints.
  *
- * /api/libraries
- *
- * These APIs are used for:
+ * Used for:
  *
  * - Browse Libraries
  * - Library Details
@@ -20,6 +18,7 @@ import api from "./axios";
  * - Search by amenity
  * - Filter libraries
  * - Nearby libraries
+ * - Library reviews
  *
  * This API does NOT contain Library Owner management operations.
  */
@@ -30,8 +29,6 @@ const studentLibraryApi = {
    * ==========================================================
    *
    * GET /api/libraries
-   *
-   * Returns only libraries available for public discovery.
    */
   getAll: async () => {
     const response = await api.get("/api/libraries");
@@ -186,6 +183,153 @@ const studentLibraryApi = {
         radius,
       },
     });
+
+    return response.data;
+  },
+
+  // ==========================================================
+  // LIBRARY REVIEWS
+  // ==========================================================
+
+  /**
+   * ==========================================================
+   * GET LIBRARY RATING SUMMARY
+   * ==========================================================
+   *
+   * GET /api/libraries/{libraryId}/rating
+   *
+   * Response example:
+   *
+   * {
+   *   averageRating: 4.5,
+   *   totalReviews: 12
+   * }
+   */
+  getRatingSummary: async (libraryId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
+
+    const response = await api.get(`/api/libraries/${libraryId}/rating`);
+
+    return response.data;
+  },
+
+  /**
+   * ==========================================================
+   * GET ALL LIBRARY REVIEWS
+   * ==========================================================
+   *
+   * GET /api/libraries/{libraryId}/reviews
+   */
+  getReviews: async (libraryId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
+
+    const response = await api.get(`/api/libraries/${libraryId}/reviews`);
+
+    return response.data;
+  },
+
+  /**
+   * ==========================================================
+   * GET CURRENT STUDENT REVIEW
+   * ==========================================================
+   *
+   * GET /api/libraries/{libraryId}/reviews/me
+   *
+   * Returns the authenticated student's review.
+   *
+   * 404 means:
+   * student has not reviewed the library yet.
+   */
+  getMyReview: async (libraryId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
+
+    const response = await api.get(`/api/libraries/${libraryId}/reviews/me`);
+
+    return response.data;
+  },
+
+  /**
+   * ==========================================================
+   * CREATE / UPSERT REVIEW
+   * ==========================================================
+   *
+   * POST /api/libraries/{libraryId}/reviews
+   *
+   * Payload:
+   *
+   * {
+   *   rating: 5,
+   *   comment: "Very good library"
+   * }
+   *
+   * Backend behavior:
+   *
+   * No existing review
+   * -> creates review
+   *
+   * Existing review
+   * -> updates review
+   */
+  submitReview: async (libraryId, payload) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
+
+    if (!payload || !payload.rating) {
+      throw new Error("Rating is required.");
+    }
+
+    const response = await api.post(
+      `/api/libraries/${libraryId}/reviews`,
+      payload,
+    );
+
+    return response.data;
+  },
+
+  /**
+   * ==========================================================
+   * UPDATE REVIEW
+   * ==========================================================
+   *
+   * PUT /api/reviews/{reviewId}
+   *
+   * This remains available even though submitReview()
+   * currently supports backend upsert behavior.
+   */
+  updateReview: async (reviewId, payload) => {
+    if (!reviewId) {
+      throw new Error("Review ID is required.");
+    }
+
+    if (!payload || !payload.rating) {
+      throw new Error("Rating is required.");
+    }
+
+    const response = await api.put(`/api/reviews/${reviewId}`, payload);
+
+    return response.data;
+  },
+
+  /**
+   * ==========================================================
+   * DELETE REVIEW
+   * ==========================================================
+   *
+   * DELETE /api/reviews/{reviewId}
+   */
+  deleteReview: async (reviewId) => {
+    if (!reviewId) {
+      throw new Error("Review ID is required.");
+    }
+
+    const response = await api.delete(`/api/reviews/${reviewId}`);
 
     return response.data;
   },

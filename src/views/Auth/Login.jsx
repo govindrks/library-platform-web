@@ -20,22 +20,32 @@ import {
   Typography,
 } from "@mui/material";
 
-import { useState } from "react";
-
-import { useDispatch } from "react-redux";
+import { useEffect, useState } from "react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
 import authApi from "../../api/authApi";
 
-import { loginSuccess } from "../../redux/reducer/authReducer";
+import { useAuth } from "../../context/AuthContext";
+
+// ============================================================
+// LOGIN PAGE
+// ============================================================
 
 function Login() {
   const navigate = useNavigate();
 
-  const dispatch = useDispatch();
-
   const location = useLocation();
+
+  // ==========================================================
+  // AUTH CONTEXT
+  // ==========================================================
+
+  const { login, refreshProfile } = useAuth();
+
+  // ==========================================================
+  // FORM STATE
+  // ==========================================================
 
   const [form, setForm] = useState({
     email: "",
@@ -44,34 +54,111 @@ function Login() {
 
   const [showPassword, setShowPassword] = useState(false);
 
+  const [rememberMe, setRememberMe] = useState(false);
+
   const [loading, setLoading] = useState(false);
 
   const [error, setError] = useState("");
+
+  const [success, setSuccess] = useState("");
+
+  // ==========================================================
+  // NAVIGATION MESSAGE
+  // ==========================================================
+
+  useEffect(() => {
+    const navigationMessage = location.state?.message;
+
+    if (navigationMessage) {
+      setSuccess(navigationMessage);
+    }
+  }, [location.state]);
+
+  // ==========================================================
+  // FORM CHANGE
+  // ==========================================================
 
   const handleChange = (event) => {
     const { name, value } = event.target;
 
     setForm((previous) => ({
       ...previous,
+
       [name]: value,
     }));
+
+    if (error) {
+      setError("");
+    }
   };
+
+  // ==========================================================
+  // PASSWORD MOUSE HANDLERS
+  // ==========================================================
+
+  const handlePasswordMouseDown = (event) => {
+    event.preventDefault();
+  };
+
+  const handlePasswordMouseUp = (event) => {
+    event.preventDefault();
+  };
+
+  // ==========================================================
+  // VALIDATION
+  // ==========================================================
+
+  const validateForm = () => {
+    const normalizedEmail = form.email.trim();
+
+    if (!normalizedEmail || !form.password) {
+      setError("Please enter your email and password.");
+
+      return false;
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(normalizedEmail)) {
+      setError("Please enter a valid email address.");
+
+      return false;
+    }
+
+    return true;
+  };
+
+  // ==========================================================
+  // LOGIN SUBMIT
+  // ==========================================================
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     setError("");
 
-    if (!form.email || !form.password) {
-      setError("Please enter your email and password.");
+    setSuccess("");
 
+    if (!validateForm()) {
       return;
     }
 
     try {
       setLoading(true);
 
-      const response = await authApi.login(form);
+      // ====================================================
+      // LOGIN REQUEST
+      // ====================================================
+
+      const response = await authApi.login({
+        email: form.email.trim().toLowerCase(),
+
+        password: form.password,
+      });
+
+      // ====================================================
+      // NORMALIZE LOGIN RESPONSE
+      // ====================================================
 
       const token =
         response?.token ||
@@ -79,38 +166,56 @@ function Login() {
         response?.data?.token ||
         response?.data?.accessToken;
 
-      const user = response?.user || response?.data?.user || null;
+      const loginUser = response?.user || response?.data?.user || null;
 
       if (!token) {
         throw new Error("Authentication token was not returned by the server.");
       }
 
-      // =====================================================
-      // SAVE AUTHENTICATION STATE
-      // =====================================================
+      // ====================================================
+      // STORE AUTHENTICATION
+      // ====================================================
 
-      dispatch(
-        loginSuccess({
-          token,
-          user,
-        }),
-      );
+      login(token, loginUser, rememberMe);
+
+      // ====================================================
+      // LOAD CANONICAL PROFILE
+      // ====================================================
 
       /*
-       * =====================================================
-       * RETURN TO ORIGINAL DESTINATION
-       * =====================================================
+       * AuthContext owns profile synchronization.
        *
-       * If the user came to login because they wanted to
-       * perform a particular action, send them back there.
+       * This loads:
        *
-       * Example:
-       *
-       * /libraries/10/seats
-       *
-       * Existing action context is preserved.
-       * =====================================================
+       * id
+       * fullName
+       * phone
+       * email
+       * gender
+       * role
+       * profileImageUrl
        */
+      let authenticatedUser = loginUser;
+
+      try {
+        const profile = await refreshProfile();
+
+        if (profile) {
+          authenticatedUser = profile;
+        }
+      } catch (profileError) {
+        /*
+         * Authentication itself succeeded.
+         *
+         * A temporary profile hydration failure should not
+         * prevent the user from entering the application.
+         */
+        console.warn("Unable to refresh profile after login:", profileError);
+      }
+
+      // ====================================================
+      // RETURN TO ORIGINAL DESTINATION
+      // ====================================================
 
       const destination = location.state?.from;
 
@@ -124,21 +229,25 @@ function Login() {
             seatId: location.state?.seatId,
 
             libraryId: location.state?.libraryId,
+
+            date: location.state?.date,
           },
         });
 
         return;
       }
 
-      /*
-       * =====================================================
-       * NORMAL ROLE-BASED LOGIN REDIRECT
-       * =====================================================
-       */
+      // ====================================================
+      // RESOLVE ROLE
+      // ====================================================
 
-      const role = user?.role;
+      const authenticatedRole = authenticatedUser?.role || loginUser?.role;
 
-      if (role === "LIBRARY_OWNER") {
+      // ====================================================
+      // OWNER
+      // ====================================================
+
+      if (authenticatedRole === "LIBRARY_OWNER") {
         navigate("/owner/dashboard", {
           replace: true,
         });
@@ -146,7 +255,11 @@ function Login() {
         return;
       }
 
-      if (role === "ADMIN") {
+      // ====================================================
+      // ADMIN
+      // ====================================================
+
+      if (authenticatedRole === "ADMIN") {
         navigate("/admin/dashboard", {
           replace: true,
         });
@@ -154,7 +267,11 @@ function Login() {
         return;
       }
 
-      if (role === "USER") {
+      // ====================================================
+      // STUDENT
+      // ====================================================
+
+      if (authenticatedRole === "USER") {
         navigate("/student/dashboard", {
           replace: true,
         });
@@ -162,20 +279,24 @@ function Login() {
         return;
       }
 
-      /*
-       * Unknown/missing role fallback.
-       *
-       * Keep the shared dashboard dispatcher available so
-       * an unexpected auth payload does not silently enter
-       * one of the role-specific applications.
-       */
+      // ====================================================
+      // FALLBACK
+      // ====================================================
+
       navigate("/dashboard", {
         replace: true,
       });
-    } catch (err) {
+    } catch (requestError) {
+      console.error("Login failed:", requestError);
+
+      const backendMessage =
+        requestError?.response?.data?.message ||
+        requestError?.response?.data?.error ||
+        requestError?.response?.data?.detail;
+
       setError(
-        err.response?.data?.message ||
-          err.message ||
+        backendMessage ||
+          requestError?.message ||
           "Login failed. Please check your credentials.",
       );
     } finally {
@@ -183,14 +304,23 @@ function Login() {
     }
   };
 
+  // ==========================================================
+  // PAGE
+  // ==========================================================
+
   return (
     <Box
       sx={{
         minHeight: "100vh",
+
         display: "flex",
+
         alignItems: "center",
+
         justifyContent: "center",
+
         backgroundColor: "background.default",
+
         p: 2,
       }}
     >
@@ -198,38 +328,59 @@ function Login() {
         elevation={0}
         sx={{
           width: "100%",
+
           maxWidth: 460,
+
           border: "1px solid",
+
           borderColor: "divider",
+
           borderRadius: 3,
+
           p: {
             xs: 3,
+
             sm: 5,
           },
         }}
       >
         <Stack spacing={3}>
-          {/* Logo */}
+          {/* ================================================= */}
+          {/* HEADER */}
+          {/* ================================================= */}
+
           <Box>
             <Box
               sx={{
                 width: 46,
+
                 height: 46,
+
                 borderRadius: 2,
+
                 backgroundColor: "primary.main",
+
                 color: "white",
+
                 display: "flex",
+
                 alignItems: "center",
+
                 justifyContent: "center",
+
                 fontSize: 22,
+
                 fontWeight: 700,
+
                 mb: 3,
               }}
             >
               L
             </Box>
 
-            <Typography variant="h4">Welcome back</Typography>
+            <Typography variant="h4" fontWeight={700}>
+              Welcome back
+            </Typography>
 
             <Typography
               variant="body2"
@@ -242,30 +393,58 @@ function Login() {
             </Typography>
           </Box>
 
-          {/* Error */}
-          {error && <Alert severity="error">{error}</Alert>}
+          {/* ================================================= */}
+          {/* SUCCESS */}
+          {/* ================================================= */}
 
-          {/* Login Form */}
-          <Box component="form" onSubmit={handleSubmit}>
+          {success && (
+            <Alert severity="success" onClose={() => setSuccess("")}>
+              {success}
+            </Alert>
+          )}
+
+          {/* ================================================= */}
+          {/* ERROR */}
+          {/* ================================================= */}
+
+          {error && (
+            <Alert severity="error" onClose={() => setError("")}>
+              {error}
+            </Alert>
+          )}
+
+          {/* ================================================= */}
+          {/* FORM */}
+          {/* ================================================= */}
+
+          <Box component="form" onSubmit={handleSubmit} noValidate>
             <Stack spacing={2.5}>
+              {/* EMAIL */}
+
               <TextField
                 fullWidth
+                required
                 label="Email address"
                 name="email"
                 type="email"
                 value={form.email}
                 onChange={handleChange}
                 autoComplete="email"
+                disabled={loading}
               />
+
+              {/* PASSWORD */}
 
               <TextField
                 fullWidth
+                required
                 label="Password"
                 name="password"
                 type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={handleChange}
                 autoComplete="current-password"
+                disabled={loading}
                 slotProps={{
                   input: {
                     startAdornment: (
@@ -277,8 +456,18 @@ function Login() {
                     endAdornment: (
                       <InputAdornment position="end">
                         <IconButton
-                          onClick={() => setShowPassword((value) => !value)}
+                          type="button"
                           edge="end"
+                          disabled={loading}
+                          aria-label={
+                            showPassword ? "Hide password" : "Show password"
+                          }
+                          aria-pressed={showPassword}
+                          onClick={() =>
+                            setShowPassword((previous) => !previous)
+                          }
+                          onMouseDown={handlePasswordMouseDown}
+                          onMouseUp={handlePasswordMouseUp}
                         >
                           {showPassword ? <VisibilityOff /> : <Visibility />}
                         </IconButton>
@@ -288,24 +477,48 @@ function Login() {
                 }}
               />
 
+              {/* ================================================= */}
+              {/* REMEMBER ME / FORGOT PASSWORD */}
+              {/* ================================================= */}
+
               <Box
                 sx={{
                   display: "flex",
+
                   alignItems: "center",
+
                   justifyContent: "space-between",
+
+                  gap: 1,
+
+                  flexWrap: "wrap",
                 }}
               >
-                <FormControlLabel control={<Checkbox />} label="Remember me" />
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={rememberMe}
+                      onChange={(event) => setRememberMe(event.target.checked)}
+                      disabled={loading}
+                    />
+                  }
+                  label="Remember me"
+                />
 
                 <Link
                   component="button"
                   type="button"
                   underline="hover"
+                  disabled={loading}
                   onClick={() => navigate("/forgot-password")}
                 >
                   Forgot password?
                 </Link>
               </Box>
+
+              {/* ================================================= */}
+              {/* SIGN IN */}
+              {/* ================================================= */}
 
               <Button
                 type="submit"
@@ -320,14 +533,32 @@ function Login() {
             </Stack>
           </Box>
 
-          {/* Register */}
+          {/* ================================================= */}
+          {/* REGISTER */}
+          {/* ================================================= */}
+
           <Typography variant="body2" textAlign="center" color="text.secondary">
             Don't have an account?{" "}
             <Link
               component="button"
               type="button"
               underline="hover"
-              onClick={() => navigate("/register")}
+              disabled={loading}
+              onClick={() =>
+                navigate("/register", {
+                  state: {
+                    from: location.state?.from,
+
+                    action: location.state?.action,
+
+                    seatId: location.state?.seatId,
+
+                    libraryId: location.state?.libraryId,
+
+                    date: location.state?.date,
+                  },
+                })
+              }
             >
               Create account
             </Link>

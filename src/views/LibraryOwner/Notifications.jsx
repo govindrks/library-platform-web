@@ -33,7 +33,11 @@ import {
   Warning,
 } from "@mui/icons-material";
 
+import { useNavigate } from "react-router-dom";
+
 import notificationApi from "../../api/notificationApi";
+
+import { useNotifications } from "../../context/NotificationContext";
 
 // ============================================================
 // CONSTANTS
@@ -114,10 +118,6 @@ const getErrorMessage = (error, fallback) => {
   );
 };
 
-// ============================================================
-// ICON
-// ============================================================
-
 const getNotificationIcon = (type) => {
   switch (type) {
     case "BOOKING":
@@ -127,11 +127,15 @@ const getNotificationIcon = (type) => {
       return <Payment />;
 
     case "MEMBERSHIP":
+
     case "SUBSCRIPTION":
       return <Groups />;
 
     case "SEAT":
+
     case "SEAT_CHANGE":
+
+    case "SEAT_TRANSFER":
       return <EventSeat />;
 
     case "REPORT":
@@ -152,14 +156,69 @@ const getNotificationIcon = (type) => {
 // NOTIFICATION CARD
 // ============================================================
 
-function NotificationCard({ notification, onMarkRead, markingId }) {
+function NotificationCard({ notification, onMarkRead, onOpen, markingId }) {
   const isUnread = !notification.read;
 
   const marking = markingId === notification.id;
 
+  const hasAction = Boolean(
+    notification?.actionUrl && String(notification.actionUrl).trim(),
+  );
+
+  // ==========================================================
+  // OPEN
+  // ==========================================================
+
+  const handleOpen = () => {
+    if (!hasAction) {
+      return;
+    }
+
+    onOpen(notification);
+  };
+
+  // ==========================================================
+  // KEYBOARD OPEN
+  // ==========================================================
+
+  const handleKeyDown = (event) => {
+    if (!hasAction) {
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+
+      handleOpen();
+    }
+  };
+
+  // ==========================================================
+  // MARK READ BUTTON
+  // ==========================================================
+
+  const handleMarkReadClick = (event) => {
+    /*
+     * Prevent clicking "Mark as read" from also triggering
+     * the Card deep-link navigation.
+     */
+
+    event.stopPropagation();
+
+    onMarkRead(notification.id);
+  };
+
+  // ==========================================================
+  // UI
+  // ==========================================================
+
   return (
     <Card
       variant="outlined"
+      onClick={hasAction ? handleOpen : undefined}
+      onKeyDown={hasAction ? handleKeyDown : undefined}
+      role={hasAction ? "button" : undefined}
+      tabIndex={hasAction ? 0 : undefined}
       sx={{
         borderColor: isUnread ? "primary.main" : "divider",
 
@@ -169,10 +228,23 @@ function NotificationCard({ notification, onMarkRead, markingId }) {
 
         transition: "all 0.2s ease",
 
+        cursor: hasAction ? "pointer" : "default",
+
         "&:hover": {
-          borderColor: "primary.main",
-          boxShadow: 1,
+          borderColor: hasAction ? "primary.main" : undefined,
+
+          boxShadow: hasAction ? 1 : undefined,
         },
+
+        "&:focus-visible": hasAction
+          ? {
+              outline: "2px solid",
+
+              outlineColor: "primary.main",
+
+              outlineOffset: "2px",
+            }
+          : undefined,
       }}
     >
       <CardContent
@@ -181,12 +253,16 @@ function NotificationCard({ notification, onMarkRead, markingId }) {
         }}
       >
         <Stack direction="row" spacing={2} alignItems="flex-start">
+          {/* ================================================= */}
           {/* ICON */}
+          {/* ================================================= */}
 
           <Box
             sx={{
               width: 44,
+
               height: 44,
+
               borderRadius: 2,
 
               display: "flex",
@@ -207,7 +283,9 @@ function NotificationCard({ notification, onMarkRead, markingId }) {
             {getNotificationIcon(notification.type)}
           </Box>
 
+          {/* ================================================= */}
           {/* CONTENT */}
+          {/* ================================================= */}
 
           <Box
             sx={{
@@ -258,7 +336,14 @@ function NotificationCard({ notification, onMarkRead, markingId }) {
               </Typography>
             </Stack>
 
-            <Typography variant="body2" color="text.secondary" mt={0.7}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              mt={0.7}
+              sx={{
+                whiteSpace: "pre-line",
+              }}
+            >
               {notification.message}
             </Typography>
 
@@ -280,6 +365,15 @@ function NotificationCard({ notification, onMarkRead, markingId }) {
                 variant="outlined"
               />
 
+              {hasAction && (
+                <Chip
+                  label="Open details"
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              )}
+
               <Box
                 sx={{
                   flexGrow: 1,
@@ -290,7 +384,7 @@ function NotificationCard({ notification, onMarkRead, markingId }) {
                 <Button
                   size="small"
                   disabled={marking}
-                  onClick={() => onMarkRead(notification.id)}
+                  onClick={handleMarkReadClick}
                 >
                   {marking ? <CircularProgress size={16} /> : "Mark as read"}
                 </Button>
@@ -308,13 +402,35 @@ function NotificationCard({ notification, onMarkRead, markingId }) {
 // ============================================================
 
 function Notifications() {
-  // ========================================================
-  // STATE
-  // ========================================================
+  // ==========================================================
+  // NAVIGATION
+  // ==========================================================
+
+  const navigate = useNavigate();
+
+  // ==========================================================
+  // GLOBAL NOTIFICATION STATE
+  // ==========================================================
+
+  const {
+    unreadCount,
+
+    latestNotification,
+
+    notificationVersion,
+
+    decreaseUnreadCount,
+
+    clearUnreadCount,
+
+    refreshUnreadCount,
+  } = useNotifications();
+
+  // ==========================================================
+  // LOCAL PAGE STATE
+  // ==========================================================
 
   const [notifications, setNotifications] = useState([]);
-
-  const [unreadCount, setUnreadCount] = useState(0);
 
   const [activeTab, setActiveTab] = useState(0);
 
@@ -336,16 +452,12 @@ function Notifications() {
 
   const [error, setError] = useState("");
 
-  // ========================================================
-  // LOAD NOTIFICATIONS
-  // ========================================================
+  // ==========================================================
+  // LOAD
+  // ==========================================================
 
   const loadNotifications = useCallback(
-    async ({
-      requestedPage = page,
-
-      showFullLoader = false,
-    } = {}) => {
+    async ({ requestedPage = 0, showFullLoader = false } = {}) => {
       try {
         if (showFullLoader) {
           setLoading(true);
@@ -360,10 +472,7 @@ function Notifications() {
             ? notificationApi.getUnread(requestedPage, PAGE_SIZE)
             : notificationApi.getAll(requestedPage, PAGE_SIZE);
 
-        const [notificationResponse, unreadResponse] = await Promise.all([
-          notificationPromise,
-          notificationApi.getUnreadCount(),
-        ]);
+        const notificationResponse = await notificationPromise;
 
         setNotifications(
           Array.isArray(notificationResponse?.content)
@@ -371,13 +480,13 @@ function Notifications() {
             : [],
         );
 
-        setPage(Number(notificationResponse?.number || 0));
+        setPage(Number(notificationResponse?.number ?? 0));
 
-        setTotalPages(Number(notificationResponse?.totalPages || 0));
+        setTotalPages(Number(notificationResponse?.totalPages ?? 0));
 
-        setTotalElements(Number(notificationResponse?.totalElements || 0));
+        setTotalElements(Number(notificationResponse?.totalElements ?? 0));
 
-        setUnreadCount(Number(unreadResponse?.unreadCount || 0));
+        await refreshUnreadCount();
       } catch (requestError) {
         console.error("Failed to load notifications:", requestError);
 
@@ -390,24 +499,64 @@ function Notifications() {
         setRefreshing(false);
       }
     },
-    [activeTab, page],
+    [activeTab, refreshUnreadCount],
   );
 
-  // ========================================================
-  // INITIAL LOAD
-  // ========================================================
+  // ==========================================================
+  // INITIAL + TAB LOAD
+  // ==========================================================
 
   useEffect(() => {
     loadNotifications({
       requestedPage: 0,
-
       showFullLoader: true,
     });
-  }, [activeTab]);
+  }, [activeTab, loadNotifications]);
 
-  // ========================================================
-  // TYPE FILTER
-  // ========================================================
+  // ==========================================================
+  // REAL-TIME EVENT
+  // ==========================================================
+
+  useEffect(() => {
+    if (!latestNotification || notificationVersion <= 0) {
+      return;
+    }
+
+    /*
+     * Only inject locally when viewing newest page.
+     */
+
+    if (page !== 0) {
+      return;
+    }
+
+    /*
+     * When viewing unread tab, do not inject a notification
+     * if the backend ever pushes one already marked read.
+     */
+
+    if (activeTab === 1 && latestNotification.read === true) {
+      return;
+    }
+
+    setNotifications((previous) => {
+      const alreadyExists = previous.some(
+        (notification) => notification.id === latestNotification.id,
+      );
+
+      if (alreadyExists) {
+        return previous;
+      }
+
+      return [latestNotification, ...previous].slice(0, PAGE_SIZE);
+    });
+
+    setTotalElements((previous) => previous + 1);
+  }, [notificationVersion, latestNotification, page, activeTab]);
+
+  // ==========================================================
+  // CLIENT-SIDE TYPE FILTER
+  // ==========================================================
 
   const filteredNotifications = useMemo(() => {
     if (typeFilter === "ALL") {
@@ -419,13 +568,26 @@ function Notifications() {
     );
   }, [notifications, typeFilter]);
 
-  // ========================================================
-  // MARK ONE AS READ
-  // ========================================================
+  // ==========================================================
+  // MARK ONE
+  // ==========================================================
 
   const handleMarkRead = async (notificationId) => {
     if (!notificationId) {
-      return;
+      return false;
+    }
+
+    const currentNotification = notifications.find(
+      (notification) => notification.id === notificationId,
+    );
+
+    /*
+     * If already marked read locally, avoid an unnecessary
+     * backend request.
+     */
+
+    if (currentNotification && currentNotification.read === true) {
+      return true;
     }
 
     try {
@@ -435,11 +597,10 @@ function Notifications() {
 
       await notificationApi.markAsRead(notificationId);
 
-      /*
-       * If the user is currently on the unread tab,
-       * remove the item immediately because it no
-       * longer belongs in that filtered result.
-       */
+      // -----------------------------------------------------
+      // UNREAD TAB
+      // -----------------------------------------------------
+
       if (activeTab === 1) {
         setNotifications((previous) =>
           previous.filter((notification) => notification.id !== notificationId),
@@ -447,10 +608,10 @@ function Notifications() {
 
         setTotalElements((previous) => Math.max(previous - 1, 0));
       } else {
-        /*
-         * On the All tab keep the notification
-         * visible, but update its read state.
-         */
+        // ---------------------------------------------------
+        // ALL TAB
+        // ---------------------------------------------------
+
         setNotifications((previous) =>
           previous.map((notification) =>
             notification.id === notificationId
@@ -464,21 +625,77 @@ function Notifications() {
         );
       }
 
-      setUnreadCount((previous) => Math.max(previous - 1, 0));
+      decreaseUnreadCount();
+
+      return true;
     } catch (requestError) {
       console.error("Failed to mark notification as read:", requestError);
 
       setError(
         getErrorMessage(requestError, "Unable to mark notification as read."),
       );
+
+      return false;
     } finally {
       setMarkingId(null);
     }
   };
 
-  // ========================================================
-  // MARK ALL AS READ
-  // ========================================================
+  // ==========================================================
+  // OPEN NOTIFICATION / DEEP LINK
+  // ==========================================================
+
+  const handleNotificationOpen = async (notification) => {
+    if (!notification) {
+      return;
+    }
+
+    const actionUrl = notification?.actionUrl
+      ? String(notification.actionUrl).trim()
+      : "";
+
+    if (!actionUrl) {
+      return;
+    }
+
+    /*
+     * Mark unread notification before leaving the page.
+     */
+
+    if (notification.read !== true) {
+      const marked = await handleMarkRead(notification.id);
+
+      /*
+       * Do not navigate if the read operation failed.
+       *
+       * This keeps backend/local unread state consistent.
+       */
+
+      if (!marked) {
+        return;
+      }
+    }
+
+    // ======================================================
+    // NAVIGATE
+    // ======================================================
+
+    navigate(actionUrl, {
+      state: {
+        fromNotification: true,
+
+        notificationId: notification.id ?? null,
+
+        notificationReferenceId: notification.referenceId ?? null,
+
+        notificationReferenceType: notification.referenceType ?? null,
+      },
+    });
+  };
+
+  // ==========================================================
+  // MARK ALL
+  // ==========================================================
 
   const handleMarkAllRead = async () => {
     if (unreadCount <= 0) {
@@ -492,12 +709,8 @@ function Notifications() {
 
       await notificationApi.markAllAsRead();
 
-      setUnreadCount(0);
+      clearUnreadCount();
 
-      /*
-       * On unread tab, after marking everything read,
-       * the result should become empty.
-       */
       if (activeTab === 1) {
         setNotifications([]);
 
@@ -507,10 +720,6 @@ function Notifications() {
 
         setPage(0);
       } else {
-        /*
-         * On All tab, retain the notifications and
-         * simply update their read flag.
-         */
         setNotifications((previous) =>
           previous.map((notification) => ({
             ...notification,
@@ -520,8 +729,6 @@ function Notifications() {
         );
       }
     } catch (requestError) {
-      console.error("Failed to mark all notifications as read:", requestError);
-
       setError(
         getErrorMessage(
           requestError,
@@ -533,9 +740,9 @@ function Notifications() {
     }
   };
 
-  // ========================================================
-  // TAB CHANGE
-  // ========================================================
+  // ==========================================================
+  // TAB
+  // ==========================================================
 
   const handleTabChange = (event, value) => {
     setPage(0);
@@ -545,9 +752,9 @@ function Notifications() {
     setActiveTab(value);
   };
 
-  // ========================================================
-  // PAGE CHANGE
-  // ========================================================
+  // ==========================================================
+  // PAGE
+  // ==========================================================
 
   const handlePageChange = (event, value) => {
     const requestedPage = value - 1;
@@ -560,27 +767,26 @@ function Notifications() {
     });
   };
 
-  // ========================================================
+  // ==========================================================
   // REFRESH
-  // ========================================================
+  // ==========================================================
 
   const handleRefresh = () => {
     loadNotifications({
       requestedPage: page,
-
       showFullLoader: false,
     });
   };
 
-  // ========================================================
+  // ==========================================================
   // UI
-  // ========================================================
+  // ==========================================================
 
   return (
     <Box>
-      {/* ==================================================
-                HEADER
-            ================================================== */}
+      {/* ===================================================== */}
+      {/* HEADER */}
+      {/* ===================================================== */}
 
       <Stack
         direction={{
@@ -615,7 +821,12 @@ function Notifications() {
               color: "primary.main",
             }}
           >
-            <Badge badgeContent={unreadCount} color="error" max={99}>
+            <Badge
+              badgeContent={unreadCount}
+              color="error"
+              max={99}
+              invisible={unreadCount <= 0}
+            >
               <NotificationsActive />
             </Badge>
           </Box>
@@ -626,8 +837,7 @@ function Notifications() {
             </Typography>
 
             <Typography variant="body1" color="text.secondary" mt={0.5}>
-              Stay updated with important library activities and automated
-              operations.
+              Stay updated with important library activities.
             </Typography>
           </Box>
         </Stack>
@@ -665,9 +875,9 @@ function Notifications() {
         </Stack>
       </Stack>
 
-      {/* ==================================================
-                ERROR
-            ================================================== */}
+      {/* ===================================================== */}
+      {/* ERROR */}
+      {/* ===================================================== */}
 
       {error && (
         <Alert
@@ -680,9 +890,9 @@ function Notifications() {
         </Alert>
       )}
 
-      {/* ==================================================
-                UNREAD SUMMARY
-            ================================================== */}
+      {/* ===================================================== */}
+      {/* UNREAD SUMMARY */}
+      {/* ===================================================== */}
 
       {!loading && unreadCount > 0 && (
         <Alert
@@ -696,9 +906,9 @@ function Notifications() {
         </Alert>
       )}
 
-      {/* ==================================================
-                FILTERS
-            ================================================== */}
+      {/* ===================================================== */}
+      {/* FILTERS */}
+      {/* ===================================================== */}
 
       <Card
         sx={{
@@ -761,21 +971,27 @@ function Notifications() {
 
               <MenuItem value="SUBSCRIPTION">Subscriptions</MenuItem>
 
-              <MenuItem value="SEAT">Seats</MenuItem>
-
               <MenuItem value="SEAT_CHANGE">Seat Changes</MenuItem>
+
+              <MenuItem value="SEAT_TRANSFER">Seat Transfers</MenuItem>
+
+              <MenuItem value="LIBRARY">Library</MenuItem>
+
+              <MenuItem value="REVIEW">Reviews</MenuItem>
 
               <MenuItem value="REPORT">Reports</MenuItem>
 
               <MenuItem value="SYSTEM">System</MenuItem>
+
+              <MenuItem value="AI_ASSISTANT">AI Assistant</MenuItem>
             </Select>
           </Stack>
         </CardContent>
       </Card>
 
-      {/* ==================================================
-                INITIAL / PAGE LOADING
-            ================================================== */}
+      {/* ===================================================== */}
+      {/* CONTENT */}
+      {/* ===================================================== */}
 
       {loading ? (
         <Card>
@@ -795,24 +1011,17 @@ function Notifications() {
         </Card>
       ) : filteredNotifications.length > 0 ? (
         <>
-          {/* ==========================================
-                        NOTIFICATION LIST
-                    ========================================== */}
-
           <Stack spacing={2}>
             {filteredNotifications.map((notification) => (
               <NotificationCard
                 key={notification.id}
                 notification={notification}
                 onMarkRead={handleMarkRead}
+                onOpen={handleNotificationOpen}
                 markingId={markingId}
               />
             ))}
           </Stack>
-
-          {/* ==========================================
-                        PAGINATION
-                    ========================================== */}
 
           {totalPages > 1 && (
             <Stack
@@ -842,10 +1051,6 @@ function Notifications() {
           )}
         </>
       ) : (
-        /* ==============================================
-                   EMPTY STATE
-                ============================================== */
-
         <Card>
           <CardContent
             sx={{
@@ -877,9 +1082,9 @@ function Notifications() {
         </Card>
       )}
 
-      {/* ==================================================
-                FOOTER
-            ================================================== */}
+      {/* ===================================================== */}
+      {/* FOOTER */}
+      {/* ===================================================== */}
 
       <Divider
         sx={{
@@ -897,8 +1102,7 @@ function Notifications() {
         />
 
         <Typography variant="caption" color="text.secondary">
-          Notifications are loaded from the LibraryHub backend and are scoped to
-          your authenticated account.
+          Notifications are synchronized with LibraryHub in real time.
         </Typography>
       </Stack>
     </Box>

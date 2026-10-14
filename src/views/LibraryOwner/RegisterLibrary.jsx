@@ -63,7 +63,7 @@ import platformPaymentApi from "../../api/platformPaymentApi";
 import ownerDashboardApi from "../../api/ownerDashboardApi";
 import seatApi from "../../api/seatApi";
 import slotApi from "../../api/slotApi";
-import storage from "../../utility/browserStorage";
+import { useAuth } from "../../context/AuthContext";
 
 // ============================================================
 // STEPS
@@ -155,8 +155,7 @@ const saveOnboardingDraft = ({
               subscriptionId: paymentResult.subscriptionId ?? null,
               platformPlanId: paymentResult.platformPlanId ?? null,
               platformPlanName: paymentResult.platformPlanName ?? null,
-              paymentTransactionId:
-                paymentResult.paymentTransactionId ?? null,
+              paymentTransactionId: paymentResult.paymentTransactionId ?? null,
               gatewayOrderId: paymentResult.gatewayOrderId ?? null,
               keyId: paymentResult.keyId ?? null,
               amount: paymentResult.amount ?? null,
@@ -181,7 +180,6 @@ const saveOnboardingDraft = ({
 const clearOnboardingDraft = () => {
   localStorage.removeItem(ONBOARDING_DRAFT_KEY);
 };
-
 
 const normalizeCollection = (response, preferredKeys = []) => {
   if (Array.isArray(response)) {
@@ -506,6 +504,18 @@ const RegisterLibrary = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // ==========================================================
+  // AUTH
+  // ==========================================================
+
+  const {
+    token,
+    user,
+    initializing: authInitializing,
+    login,
+    refreshProfile,
+  } = useAuth();
+
   const incomingPlanId = location.state?.selectedPlanId ?? "";
 
   // ==========================================================
@@ -704,15 +714,12 @@ const RegisterLibrary = () => {
           return;
         }
 
-        const floors = normalizeCollection(
-          floorsResponse,
-          ["floors"],
-        );
+        const floors = normalizeCollection(floorsResponse, ["floors"]);
 
-        const slots = normalizeCollection(
-          slotsResponse,
-          ["slots", "bookingSlots"],
-        );
+        const slots = normalizeCollection(slotsResponse, [
+          "slots",
+          "bookingSlots",
+        ]);
 
         // ========================================================
         // 2. RESTORE SLOTS
@@ -1117,17 +1124,24 @@ const RegisterLibrary = () => {
   // Completed owner:
   //   return to Owner Dashboard
   //
+  // Authentication itself is owned by AuthContext.
   // ==========================================================
 
   useEffect(() => {
+    if (authInitializing) {
+      return undefined;
+    }
+
     let active = true;
 
     const restoreOwnerOnboarding = async () => {
-      const token = storage.getToken();
+      // ------------------------------------------------------
+      // NO AUTHENTICATION
+      // ------------------------------------------------------
 
-      // No authentication means this is a new registration.
       if (!token) {
         if (active) {
+          setAuthenticatedOwner(null);
           setInitializingOnboarding(false);
         }
 
@@ -1142,7 +1156,7 @@ const RegisterLibrary = () => {
         }
 
         // ------------------------------------------------------
-        // Completed onboarding
+        // COMPLETED ONBOARDING
         // ------------------------------------------------------
 
         if (
@@ -1157,33 +1171,46 @@ const RegisterLibrary = () => {
         }
 
         // ------------------------------------------------------
-        // Restore authenticated owner
+        // AUTHENTICATED OWNER
         // ------------------------------------------------------
 
-        setAuthenticatedOwner({
-          id: context?.ownerId,
-          fullName: context?.ownerName,
-          email: context?.email,
-          role: "LIBRARY_OWNER",
-          onboardingStep: context?.onboardingStep,
+        const ownerUser = {
+          ...(user || {}),
+
+          id: context?.ownerId ?? user?.id ?? null,
+
+          fullName: context?.ownerName ?? user?.fullName ?? "",
+
+          email: context?.email ?? user?.email ?? "",
+
+          role: user?.role ?? "LIBRARY_OWNER",
+
+          onboardingStep:
+            context?.onboardingStep ?? user?.onboardingStep ?? null,
+
           onboardingCompleted: Boolean(context?.onboardingCompleted),
-          libraryId: context?.libraryId ?? null,
-        });
+
+          libraryId: context?.libraryId ?? user?.libraryId ?? null,
+        };
+
+        setAuthenticatedOwner(ownerUser);
 
         // ------------------------------------------------------
-        // Restore owner fields we already know
+        // RESTORE OWNER FIELDS
         // ------------------------------------------------------
 
         setFormData((previous) => ({
           ...previous,
 
-          ownerName: context?.ownerName ?? previous.ownerName,
+          ownerName: context?.ownerName ?? user?.fullName ?? previous.ownerName,
 
-          email: context?.email ?? previous.email,
+          email: context?.email ?? user?.email ?? previous.email,
+
+          phone: user?.phone ?? previous.phone,
         }));
 
         // ------------------------------------------------------
-        // Restore draft library ID
+        // RESTORE DRAFT LIBRARY ID
         // ------------------------------------------------------
 
         if (context?.libraryId) {
@@ -1199,7 +1226,7 @@ const RegisterLibrary = () => {
         }
 
         // ------------------------------------------------------
-        // Restore current onboarding step
+        // RESTORE CURRENT ONBOARDING STEP
         // ------------------------------------------------------
 
         const resumeStep = STEP_INDEX[context?.onboardingStep];
@@ -1207,20 +1234,20 @@ const RegisterLibrary = () => {
         if (resumeStep !== undefined) {
           setCurrentStep(resumeStep);
         } else {
-          // Authenticated LIBRARY_OWNER has already completed
-          // Owner Account, therefore never send them back to
-          // Step 1 merely because the step value is missing.
-          setCurrentStep(1);
+          /*
+           * An authenticated LIBRARY_OWNER has already completed
+           * the Owner Account step. Never return them to Step 1
+           * merely because the backend onboarding step is missing.
+           */
+          setCurrentStep(STEP_INDEX.LIBRARY_DETAILS);
         }
       } catch (requestError) {
         console.error("Failed to restore library onboarding:", requestError);
 
         /*
-         * If the stored token is invalid/expired, axios.js will
-         * handle authentication failure.
-         *
-         * Do not destroy onboarding data here for ordinary
-         * server/network failures.
+         * Authentication failure handling remains centralized in
+         * the Axios interceptor. Do not destroy onboarding draft
+         * information here for ordinary network/server failures.
          */
       } finally {
         if (active) {
@@ -1234,7 +1261,7 @@ const RegisterLibrary = () => {
     return () => {
       active = false;
     };
-  }, [navigate]);
+  }, [authInitializing, token, user, navigate]);
 
   useEffect(() => {
     if (!libraryId) {
@@ -1251,22 +1278,19 @@ const RegisterLibrary = () => {
         // Load owner's libraries + this library's amenities
         // ------------------------------------------------------
 
-        const [
-          librariesResponse,
-          amenitiesResponse,
-          libraryDetailsResponse,
-        ] = await Promise.all([
-          libraryRegistrationApi.getMyLibraries(),
+        const [librariesResponse, amenitiesResponse, libraryDetailsResponse] =
+          await Promise.all([
+            libraryRegistrationApi.getMyLibraries(),
 
-          libraryRegistrationApi.getLibraryAmenities(libraryId),
+            libraryRegistrationApi.getLibraryAmenities(libraryId),
 
-          /*
-           * /my is primarily an owner-library listing. Use the detailed
-           * library response as the source of truth for editable fields
-           * such as 24-hour timing.
-           */
-          libraryApi.getLibraryDetails(libraryId),
-        ]);
+            /*
+             * /my is primarily an owner-library listing. Use the detailed
+             * library response as the source of truth for editable fields
+             * such as 24-hour timing.
+             */
+            libraryApi.getLibraryDetails(libraryId),
+          ]);
 
         if (!active) {
           return;
@@ -1434,16 +1458,12 @@ const RegisterLibrary = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-
   // ==========================================================
   // RESTORE PLATFORM SUBSCRIPTION / PAYMENT FROM BACKEND
   // ==========================================================
 
   useEffect(() => {
-    if (
-      !libraryId ||
-      currentStep < STEP_INDEX.PLATFORM_PLAN
-    ) {
+    if (!libraryId || currentStep < STEP_INDEX.PLATFORM_PLAN) {
       return undefined;
     }
 
@@ -1462,14 +1482,12 @@ const RegisterLibrary = () => {
 
         try {
           const historyResponse =
-            await platformSubscriptionApi.getLibrarySubscriptions(
-              libraryId,
-            );
+            await platformSubscriptionApi.getLibrarySubscriptions(libraryId);
 
-          subscriptions = normalizeCollection(
-            historyResponse,
-            ["subscriptions", "items"],
-          );
+          subscriptions = normalizeCollection(historyResponse, [
+            "subscriptions",
+            "items",
+          ]);
         } catch (historyError) {
           console.warn(
             "Unable to load platform subscription history:",
@@ -1488,9 +1506,7 @@ const RegisterLibrary = () => {
         if (subscriptions.length === 0) {
           try {
             const activeSubscription =
-              await platformSubscriptionApi.getActiveSubscription(
-                libraryId,
-              );
+              await platformSubscriptionApi.getActiveSubscription(libraryId);
 
             if (activeSubscription) {
               subscriptions = [activeSubscription];
@@ -1520,12 +1536,8 @@ const RegisterLibrary = () => {
         }
 
         const subscription =
-          subscriptions.find(
-            (item) => item?.status === "ACTIVE",
-          ) ??
-          subscriptions.find(
-            (item) => item?.status === "PENDING_PAYMENT",
-          ) ??
+          subscriptions.find((item) => item?.status === "ACTIVE") ??
+          subscriptions.find((item) => item?.status === "PENDING_PAYMENT") ??
           subscriptions[0];
 
         if (!subscription) {
@@ -1539,8 +1551,7 @@ const RegisterLibrary = () => {
 
         const matchedPlan = Number.isFinite(planId)
           ? platformPlans.find(
-              (plan) =>
-                Number(plan?.id ?? plan?.planId) === planId,
+              (plan) => Number(plan?.id ?? plan?.planId) === planId,
             )
           : null;
 
@@ -1552,9 +1563,7 @@ const RegisterLibrary = () => {
         );
 
         const totalAmount = Number(
-          subscription?.totalAmount ??
-            subscription?.amount ??
-            0,
+          subscription?.totalAmount ?? subscription?.amount ?? 0,
         );
 
         const calculatedGst =
@@ -1595,21 +1604,17 @@ const RegisterLibrary = () => {
             null,
 
           paymentUrl:
-            subscription?.paymentUrl ??
-            paymentResult?.paymentUrl ??
-            null,
+            subscription?.paymentUrl ?? paymentResult?.paymentUrl ?? null,
 
           planAmount:
-            subscription?.planAmount ??
-            (baseAmount > 0 ? baseAmount : null),
+            subscription?.planAmount ?? (baseAmount > 0 ? baseAmount : null),
 
           gstAmount:
             subscription?.gstAmount ??
             (calculatedGst > 0 ? calculatedGst : null),
 
           totalAmount:
-            subscription?.totalAmount ??
-            (totalAmount > 0 ? totalAmount : null),
+            subscription?.totalAmount ?? (totalAmount > 0 ? totalAmount : null),
 
           amount:
             subscription?.amount ??
@@ -1623,17 +1628,12 @@ const RegisterLibrary = () => {
             paymentResult?.currency ??
             "INR",
 
-          status:
-            subscription?.status ??
-            paymentResult?.status ??
-            null,
+          status: subscription?.status ?? paymentResult?.status ?? null,
         };
 
         setPaymentResult(restoredPayment);
 
-        const restoredPlanId = Number(
-          restoredPayment.platformPlanId,
-        );
+        const restoredPlanId = Number(restoredPayment.platformPlanId);
 
         if (Number.isFinite(restoredPlanId)) {
           setFormData((previous) => ({
@@ -1652,10 +1652,7 @@ const RegisterLibrary = () => {
           );
         }
       } catch (restoreError) {
-        console.error(
-          "Failed to restore platform subscription:",
-          restoreError,
-        );
+        console.error("Failed to restore platform subscription:", restoreError);
 
         if (active) {
           setPlatformSubscriptionError(
@@ -1677,12 +1674,11 @@ const RegisterLibrary = () => {
     return () => {
       active = false;
     };
-  }, [
-    libraryId,
-    currentStep,
-    platformPlans,
-  ]);
+  }, [libraryId, currentStep, platformPlans]);
 
+  // ==========================================================
+  // SAVE OWNER STEP
+  // ==========================================================
 
   const saveOwnerStep = async () => {
     const payload = {
@@ -1702,34 +1698,80 @@ const RegisterLibrary = () => {
       throw new Error("Invalid library owner registration response.");
     }
 
+    // ------------------------------------------------------
+    // AUTHENTICATE THROUGH AUTH CONTEXT
+    // ------------------------------------------------------
+
     /*
-     * Keep authentication storage centralized.
-     * axiosInterceptor reads the JWT through browserStorage,
-     * so registration must write to the same storage helper.
+     * AuthContext is the single source of truth for:
+     *
+     * - JWT persistence
+     * - authenticated user
+     * - role
+     * - browser auth storage
+     * - profile synchronization
      */
-    storage.setToken(response.token);
-    storage.setUser(response.user);
+    login(response.token, response.user, false);
 
-    setAuthenticatedOwner(response.user);
+    // ------------------------------------------------------
+    // LOAD CANONICAL OWNER PROFILE
+    // ------------------------------------------------------
 
-    if (response.user?.libraryId) {
-      const id = Number(response.user.libraryId);
+    let ownerUser = response.user;
+
+    try {
+      const refreshedUser = await refreshProfile();
+
+      if (refreshedUser) {
+        ownerUser = refreshedUser;
+      }
+    } catch (profileError) {
+      /*
+       * Owner registration itself succeeded.
+       *
+       * A temporary profile-hydration failure must not destroy
+       * the newly created onboarding session.
+       */
+      console.warn(
+        "Unable to refresh owner profile after registration:",
+        profileError,
+      );
+    }
+
+    // ------------------------------------------------------
+    // LOCAL ONBOARDING OWNER STATE
+    // ------------------------------------------------------
+
+    setAuthenticatedOwner(ownerUser);
+
+    // ------------------------------------------------------
+    // RESTORE LIBRARY ID WHEN BACKEND ALREADY RETURNED ONE
+    // ------------------------------------------------------
+
+    const ownerLibraryId =
+      ownerUser?.libraryId ?? response?.user?.libraryId ?? null;
+
+    if (ownerLibraryId) {
+      const id = Number(ownerLibraryId);
 
       setLibraryId(id);
 
       localStorage.setItem("libraryOnboardingLibraryId", String(id));
     }
 
-    /*
-     * Never keep the raw password in React state
-     * after account creation.
-     */
+    // ------------------------------------------------------
+    // NEVER KEEP RAW PASSWORD AFTER ACCOUNT CREATION
+    // ------------------------------------------------------
+
     setFormData((previous) => ({
       ...previous,
       password: "",
     }));
 
-    return response;
+    return {
+      ...response,
+      user: ownerUser,
+    };
   };
 
   const saveLibraryStep = async () => {
@@ -1765,13 +1807,9 @@ const RegisterLibrary = () => {
      * the real update endpoint instead of calling POST again.
      */
     if (libraryId) {
-      const response = await libraryApi.updateLibrary(
-        libraryId,
-        payload,
-      );
+      const response = await libraryApi.updateLibrary(libraryId, payload);
 
-      const updatedLibraryId =
-        response?.id ?? response?.libraryId ?? libraryId;
+      const updatedLibraryId = response?.id ?? response?.libraryId ?? libraryId;
 
       setLibraryId(Number(updatedLibraryId));
 
@@ -1832,16 +1870,13 @@ const RegisterLibrary = () => {
     () =>
       platformPlans.find(
         (plan) =>
-          Number(plan?.id ?? plan?.planId) ===
-          Number(formData.platformPlanId),
+          Number(plan?.id ?? plan?.planId) === Number(formData.platformPlanId),
       ) || null,
     [platformPlans, formData.platformPlanId],
   );
 
   const reviewPlanName =
-    selectedPlan?.name ??
-    paymentResult?.platformPlanName ??
-    "Not available";
+    selectedPlan?.name ?? paymentResult?.platformPlanName ?? "Not available";
 
   const reviewPlanBaseAmount = Number(
     paymentResult?.planAmount ??
@@ -1853,9 +1888,7 @@ const RegisterLibrary = () => {
   const reviewGstAmount = Number(paymentResult?.gstAmount ?? 0);
 
   const reviewTotalAmount = Number(
-    paymentResult?.totalAmount ??
-      paymentResult?.amount ??
-      reviewPlanBaseAmount,
+    paymentResult?.totalAmount ?? paymentResult?.amount ?? reviewPlanBaseAmount,
   );
 
   const reviewCurrency =
@@ -1863,8 +1896,8 @@ const RegisterLibrary = () => {
 
   const hasPaymentRecord = Boolean(
     paymentResult?.paymentTransactionId ||
-      paymentResult?.gatewayOrderId ||
-      paymentState === "SUCCESS",
+    paymentResult?.gatewayOrderId ||
+    paymentState === "SUCCESS",
   );
 
   const selectedAmenities = useMemo(
@@ -2176,9 +2209,7 @@ const RegisterLibrary = () => {
       setRemovedSlotIds((previous) => {
         const id = Number(slot.id);
 
-        return previous.includes(id)
-          ? previous
-          : [...previous, id];
+        return previous.includes(id) ? previous : [...previous, id];
       });
     }
 
@@ -2254,11 +2285,16 @@ const RegisterLibrary = () => {
       existingSeatList = extractSeatList(existingMatrix).map((seat) => ({
         ...seat,
         id: seat?.id ?? seat?.seatId,
-        rowLabel: String(seat?.rowLabel ?? "").trim().toUpperCase(),
+        rowLabel: String(seat?.rowLabel ?? "")
+          .trim()
+          .toUpperCase(),
         columnNumber: Number(seat?.columnNumber),
       }));
     } catch (matrixError) {
-      console.warn("Unable to load current seat layout before save:", matrixError);
+      console.warn(
+        "Unable to load current seat layout before save:",
+        matrixError,
+      );
     }
 
     // ==========================================================
@@ -2289,7 +2325,9 @@ const RegisterLibrary = () => {
     );
 
     const seatsToSave = generatedSeats.map((seat) => {
-      const rowLabel = String(seat?.rowLabel ?? "").trim().toUpperCase();
+      const rowLabel = String(seat?.rowLabel ?? "")
+        .trim()
+        .toUpperCase();
       const columnNumber = Number(seat?.columnNumber);
 
       const existingSeat = existingByPosition.get(
@@ -2310,15 +2348,9 @@ const RegisterLibrary = () => {
 
         columnNumber,
 
-        seatType:
-          existingSeat?.seatType ??
-          seat?.seatType ??
-          "NORMAL",
+        seatType: existingSeat?.seatType ?? seat?.seatType ?? "NORMAL",
 
-        status:
-          existingSeat?.status ??
-          seat?.status ??
-          "AVAILABLE",
+        status: existingSeat?.status ?? seat?.status ?? "AVAILABLE",
       };
     });
 
@@ -2388,8 +2420,7 @@ const RegisterLibrary = () => {
 
     let totalPersistedSeats = 0;
 
-    const refreshedFloorsResponse =
-      await libraryRegistrationApi.getFloors(id);
+    const refreshedFloorsResponse = await libraryRegistrationApi.getFloors(id);
 
     const refreshedFloors = Array.isArray(refreshedFloorsResponse)
       ? refreshedFloorsResponse
@@ -2479,11 +2510,7 @@ const RegisterLibrary = () => {
         };
 
         if (typeof slotApi.updateSlot === "function") {
-          const updatedSlot = await slotApi.updateSlot(
-            id,
-            slot.id,
-            payload,
-          );
+          const updatedSlot = await slotApi.updateSlot(id, slot.id, payload);
 
           const updatedSlotId =
             updatedSlot?.id ?? updatedSlot?.slotId ?? slot.id;
@@ -2552,9 +2579,7 @@ const RegisterLibrary = () => {
         ? slotsAfterSaveResponse.content
         : [];
 
-    const hasActiveSlot = slotsAfterSave.some(
-      (slot) => slot?.active !== false,
-    );
+    const hasActiveSlot = slotsAfterSave.some((slot) => slot?.active !== false);
 
     if (!hasActiveSlot) {
       throw new Error(
@@ -2614,9 +2639,9 @@ const RegisterLibrary = () => {
 
     return Boolean(
       samePlan &&
-        payment.paymentTransactionId &&
-        payment.gatewayOrderId &&
-        Number(payment.totalAmount ?? payment.amount ?? 0) > 0,
+      payment.paymentTransactionId &&
+      payment.gatewayOrderId &&
+      Number(payment.totalAmount ?? payment.amount ?? 0) > 0,
     );
   };
 
@@ -2769,9 +2794,7 @@ const RegisterLibrary = () => {
         email: contextBeforePayment?.email ?? previous?.email,
         role: "LIBRARY_OWNER",
         onboardingStep: "REVIEW",
-        onboardingCompleted: Boolean(
-          contextBeforePayment?.onboardingCompleted,
-        ),
+        onboardingCompleted: Boolean(contextBeforePayment?.onboardingCompleted),
         libraryId: contextBeforePayment?.libraryId ?? libraryId,
       }));
 
@@ -2792,9 +2815,7 @@ const RegisterLibrary = () => {
     // subscriptions and duplicate Razorpay orders.
     // ==========================================================
 
-    let payment = canResumePayment(paymentResult)
-      ? paymentResult
-      : null;
+    let payment = canResumePayment(paymentResult) ? paymentResult : null;
 
     if (!payment) {
       payment = await savePlatformPlanStep();
@@ -2851,8 +2872,7 @@ const RegisterLibrary = () => {
         formData: {
           ...formData,
           platformPlanId:
-            successfulPayment?.platformPlanId ??
-            formData.platformPlanId,
+            successfulPayment?.platformPlanId ?? formData.platformPlanId,
         },
         createdSlots,
         libraryId,
@@ -3024,7 +3044,10 @@ const RegisterLibrary = () => {
      * must not silently create another payment order from the Review
      * screen. Plan changes belong to subscription management.
      */
-    if (step === STEP_INDEX.PLATFORM_PLAN && currentStep === STEP_INDEX.REVIEW) {
+    if (
+      step === STEP_INDEX.PLATFORM_PLAN &&
+      currentStep === STEP_INDEX.REVIEW
+    ) {
       setError(
         "The selected plan has already been paid. Complete setup first, then manage plan changes from Subscription & Billing.",
       );
@@ -3060,9 +3083,7 @@ const RegisterLibrary = () => {
       if (reviewEditSnapshot?.formData) {
         setFormData({
           ...reviewEditSnapshot.formData,
-          amenityIds: [
-            ...(reviewEditSnapshot.formData.amenityIds ?? []),
-          ],
+          amenityIds: [...(reviewEditSnapshot.formData.amenityIds ?? [])],
         });
       }
 
@@ -4158,9 +4179,7 @@ const RegisterLibrary = () => {
                     if (!seatLimitExceeded) {
                       const nextPlanId = Number(plan.id);
 
-                      if (
-                        Number(formData.platformPlanId) !== nextPlanId
-                      ) {
+                      if (Number(formData.platformPlanId) !== nextPlanId) {
                         setPaymentResult(null);
                         setPaymentState("IDLE");
                         setPaymentMessage("");
@@ -4296,11 +4315,7 @@ const RegisterLibrary = () => {
       />
 
       <Stack spacing={2.5}>
-        <ReviewSection
-          title="Owner Details"
-          icon={<Person />}
-          onEdit={null}
-        >
+        <ReviewSection title="Owner Details" icon={<Person />} onEdit={null}>
           <ReviewValue label="Owner" value={formData.ownerName} />
 
           <ReviewValue label="Email" value={formData.email} />
@@ -4439,10 +4454,7 @@ const RegisterLibrary = () => {
           />
 
           {platformSubscriptionError && (
-            <Alert
-              severity="warning"
-              sx={{ mt: 1, borderRadius: 2 }}
-            >
+            <Alert severity="warning" sx={{ mt: 1, borderRadius: 2 }}>
               {platformSubscriptionError}
             </Alert>
           )}
