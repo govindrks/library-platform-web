@@ -10,48 +10,130 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  LinearProgress,
   MenuItem,
   Pagination,
   Select,
+  Skeleton,
   Stack,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from "@mui/material";
 
 import {
-  AccessTime,
-  CheckCircle,
-  DoneAll,
-  EventSeat,
-  Groups,
-  Info,
-  NotificationsActive,
-  Payment,
-  ReceiptLong,
-  Refresh,
-  Warning,
+  AccessTimeRounded,
+  AutoAwesomeRounded,
+  CheckCircleRounded,
+  DoneAllRounded,
+  EventSeatRounded,
+  GroupsRounded,
+  InfoRounded,
+  LibraryBooksRounded,
+  NotificationsActiveRounded,
+  PaymentRounded,
+  ReceiptLongRounded,
+  RefreshRounded,
+  ReviewsRounded,
+  SmartToyRounded,
+  WarningAmberRounded,
+  ArrowForwardRounded,
 } from "@mui/icons-material";
 
 import { useNavigate } from "react-router-dom";
 
 import notificationApi from "../../api/notificationApi";
-
 import { useNotifications } from "../../context/NotificationContext";
-
-// ============================================================
-// CONSTANTS
-// ============================================================
 
 const PAGE_SIZE = 10;
 
-// ============================================================
-// HELPERS
-// ============================================================
+const TYPE_OPTIONS = [
+  { value: "ALL", label: "All Types" },
+  { value: "BOOKING", label: "Bookings" },
+  { value: "PAYMENT", label: "Payments" },
+  { value: "MEMBERSHIP", label: "Memberships" },
+  { value: "SUBSCRIPTION", label: "Subscriptions" },
+  { value: "SEAT_CHANGE", label: "Seat Changes" },
+  { value: "SEAT_TRANSFER", label: "Seat Transfers" },
+  { value: "LIBRARY", label: "Library" },
+  { value: "REVIEW", label: "Reviews" },
+  { value: "REPORT", label: "Reports" },
+  { value: "SYSTEM", label: "System" },
+  { value: "AI_ASSISTANT", label: "AI Assistant" },
+];
+
+const TYPE_META = {
+  BOOKING: {
+    label: "Booking",
+    icon: <CheckCircleRounded />,
+    tone: "success",
+  },
+  PAYMENT: {
+    label: "Payment",
+    icon: <PaymentRounded />,
+    tone: "info",
+  },
+  MEMBERSHIP: {
+    label: "Membership",
+    icon: <GroupsRounded />,
+    tone: "primary",
+  },
+  SUBSCRIPTION: {
+    label: "Subscription",
+    icon: <GroupsRounded />,
+    tone: "primary",
+  },
+  SEAT: {
+    label: "Seat",
+    icon: <EventSeatRounded />,
+    tone: "secondary",
+  },
+  SEAT_CHANGE: {
+    label: "Seat Change",
+    icon: <EventSeatRounded />,
+    tone: "secondary",
+  },
+  SEAT_TRANSFER: {
+    label: "Seat Transfer",
+    icon: <EventSeatRounded />,
+    tone: "secondary",
+  },
+  LIBRARY: {
+    label: "Library",
+    icon: <LibraryBooksRounded />,
+    tone: "primary",
+  },
+  REVIEW: {
+    label: "Review",
+    icon: <ReviewsRounded />,
+    tone: "warning",
+  },
+  REPORT: {
+    label: "Report",
+    icon: <ReceiptLongRounded />,
+    tone: "info",
+  },
+  WARNING: {
+    label: "Warning",
+    icon: <WarningAmberRounded />,
+    tone: "warning",
+  },
+  SYSTEM: {
+    label: "System",
+    icon: <NotificationsActiveRounded />,
+    tone: "default",
+  },
+  AI_ASSISTANT: {
+    label: "AI Assistant",
+    icon: <SmartToyRounded />,
+    tone: "primary",
+  },
+};
 
 const formatEnum = (value) => {
   if (!value) {
-    return "-";
+    return "—";
   }
 
   return String(value)
@@ -73,10 +155,8 @@ const formatNotificationTime = (value) => {
   }
 
   const now = new Date();
-
   const diffMs = now.getTime() - date.getTime();
-
-  const minutes = Math.floor(diffMs / (1000 * 60));
+  const minutes = Math.max(0, Math.floor(diffMs / (1000 * 60)));
 
   if (minutes < 1) {
     return "Just now";
@@ -109,65 +189,114 @@ const formatNotificationTime = (value) => {
   }).format(date);
 };
 
-const getErrorMessage = (error, fallback) => {
+const getErrorMessage = (error, fallback) =>
+  error?.response?.data?.message ||
+  error?.response?.data?.error ||
+  error?.response?.data?.detail ||
+  error?.message ||
+  fallback;
+
+function NotificationSummaryCard({
+  label,
+  value,
+  description,
+  icon,
+  active = false,
+  onClick,
+}) {
   return (
-    error?.response?.data?.message ||
-    error?.response?.data?.error ||
-    error?.message ||
-    fallback
+    <Card
+      elevation={0}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      sx={{
+        height: "100%",
+        border: "1px solid",
+        borderColor: active ? "primary.main" : "divider",
+        borderRadius: 3,
+        cursor: onClick ? "pointer" : "default",
+        background: active
+          ? "linear-gradient(145deg, rgba(79,70,229,0.08), rgba(255,255,255,0.98))"
+          : "background.paper",
+        boxShadow: active ? "0 12px 30px rgba(79,70,229,0.09)" : "none",
+        transition: "all 0.2s ease",
+        "&:hover": onClick
+          ? {
+              transform: "translateY(-2px)",
+              borderColor: "primary.light",
+              boxShadow: "0 12px 28px rgba(15,23,42,0.08)",
+            }
+          : undefined,
+      }}
+    >
+      <CardContent sx={{ p: 2.4, "&:last-child": { pb: 2.4 } }}>
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="flex-start"
+          spacing={2}
+        >
+          <Box>
+            <Typography variant="body2" color="text.secondary" fontWeight={700}>
+              {label}
+            </Typography>
+
+            <Typography
+              variant="h4"
+              fontWeight={800}
+              sx={{ mt: 0.55, letterSpacing: "-0.03em" }}
+            >
+              {value}
+            </Typography>
+
+            <Typography variant="caption" color="text.secondary">
+              {description}
+            </Typography>
+          </Box>
+
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: 2.2,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              bgcolor: active ? "primary.main" : "rgba(79,70,229,0.08)",
+              color: active ? "primary.contrastText" : "primary.main",
+            }}
+          >
+            {icon}
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
   );
-};
-
-const getNotificationIcon = (type) => {
-  switch (type) {
-    case "BOOKING":
-      return <CheckCircle />;
-
-    case "PAYMENT":
-      return <Payment />;
-
-    case "MEMBERSHIP":
-
-    case "SUBSCRIPTION":
-      return <Groups />;
-
-    case "SEAT":
-
-    case "SEAT_CHANGE":
-
-    case "SEAT_TRANSFER":
-      return <EventSeat />;
-
-    case "REPORT":
-      return <ReceiptLong />;
-
-    case "WARNING":
-      return <Warning />;
-
-    case "SYSTEM":
-      return <NotificationsActive />;
-
-    default:
-      return <Info />;
-  }
-};
-
-// ============================================================
-// NOTIFICATION CARD
-// ============================================================
+}
 
 function NotificationCard({ notification, onMarkRead, onOpen, markingId }) {
   const isUnread = !notification.read;
-
   const marking = markingId === notification.id;
-
   const hasAction = Boolean(
     notification?.actionUrl && String(notification.actionUrl).trim(),
   );
 
-  // ==========================================================
-  // OPEN
-  // ==========================================================
+  const meta = TYPE_META[notification?.type] || {
+    label: formatEnum(notification?.type),
+    icon: <InfoRounded />,
+    tone: "default",
+  };
 
   const handleOpen = () => {
     if (!hasAction) {
@@ -177,10 +306,6 @@ function NotificationCard({ notification, onMarkRead, onOpen, markingId }) {
     onOpen(notification);
   };
 
-  // ==========================================================
-  // KEYBOARD OPEN
-  // ==========================================================
-
   const handleKeyDown = (event) => {
     if (!hasAction) {
       return;
@@ -188,124 +313,101 @@ function NotificationCard({ notification, onMarkRead, onOpen, markingId }) {
 
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-
       handleOpen();
     }
   };
 
-  // ==========================================================
-  // MARK READ BUTTON
-  // ==========================================================
-
   const handleMarkReadClick = (event) => {
-    /*
-     * Prevent clicking "Mark as read" from also triggering
-     * the Card deep-link navigation.
-     */
-
     event.stopPropagation();
-
     onMarkRead(notification.id);
   };
 
-  // ==========================================================
-  // UI
-  // ==========================================================
-
   return (
     <Card
-      variant="outlined"
+      elevation={0}
       onClick={hasAction ? handleOpen : undefined}
       onKeyDown={hasAction ? handleKeyDown : undefined}
       role={hasAction ? "button" : undefined}
       tabIndex={hasAction ? 0 : undefined}
       sx={{
-        borderColor: isUnread ? "primary.main" : "divider",
-
-        backgroundColor: isUnread
-          ? "rgba(79, 70, 229, 0.025)"
+        position: "relative",
+        overflow: "hidden",
+        border: "1px solid",
+        borderColor: isUnread ? "rgba(79,70,229,0.34)" : "divider",
+        borderRadius: 3.2,
+        background: isUnread
+          ? "linear-gradient(145deg, rgba(79,70,229,0.045), #ffffff 58%)"
           : "background.paper",
-
         transition: "all 0.2s ease",
-
         cursor: hasAction ? "pointer" : "default",
-
-        "&:hover": {
-          borderColor: hasAction ? "primary.main" : undefined,
-
-          boxShadow: hasAction ? 1 : undefined,
-        },
-
+        "&::before": isUnread
+          ? {
+              content: '\"\"',
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              bgcolor: "primary.main",
+            }
+          : undefined,
+        "&:hover": hasAction
+          ? {
+              transform: "translateY(-2px)",
+              borderColor: "primary.light",
+              boxShadow: "0 12px 30px rgba(15,23,42,0.08)",
+            }
+          : undefined,
         "&:focus-visible": hasAction
           ? {
               outline: "2px solid",
-
               outlineColor: "primary.main",
-
-              outlineOffset: "2px",
+              outlineOffset: 2,
             }
           : undefined,
       }}
     >
       <CardContent
         sx={{
-          p: 2.5,
+          p: { xs: 2.2, sm: 2.6 },
+          "&:last-child": { pb: { xs: 2.2, sm: 2.6 } },
         }}
       >
         <Stack direction="row" spacing={2} alignItems="flex-start">
-          {/* ================================================= */}
-          {/* ICON */}
-          {/* ================================================= */}
-
           <Box
             sx={{
-              width: 44,
-
-              height: 44,
-
-              borderRadius: 2,
-
+              width: 46,
+              height: 46,
+              minWidth: 46,
+              borderRadius: 2.4,
               display: "flex",
-
               alignItems: "center",
-
               justifyContent: "center",
-
-              flexShrink: 0,
-
-              backgroundColor: isUnread
-                ? "primary.light"
-                : "background.default",
-
+              bgcolor: isUnread
+                ? "rgba(79,70,229,0.10)"
+                : "rgba(15,23,42,0.045)",
               color: isUnread ? "primary.main" : "text.secondary",
             }}
           >
-            {getNotificationIcon(notification.type)}
+            {meta.icon}
           </Box>
 
-          {/* ================================================= */}
-          {/* CONTENT */}
-          {/* ================================================= */}
-
-          <Box
-            sx={{
-              flexGrow: 1,
-
-              minWidth: 0,
-            }}
-          >
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
             <Stack
-              direction={{
-                xs: "column",
-                sm: "row",
-              }}
+              direction={{ xs: "column", sm: "row" }}
               justifyContent="space-between"
               spacing={1}
             >
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                sx={{ minWidth: 0 }}
+              >
                 <Typography
                   variant="subtitle1"
-                  fontWeight={isUnread ? 700 : 600}
+                  fontWeight={isUnread ? 800 : 700}
+                  sx={{ lineHeight: 1.35 }}
                 >
                   {notification.title}
                 </Typography>
@@ -313,34 +415,45 @@ function NotificationCard({ notification, onMarkRead, onOpen, markingId }) {
                 {isUnread && (
                   <Box
                     sx={{
-                      width: 7,
-
-                      height: 7,
-
+                      width: 8,
+                      height: 8,
+                      minWidth: 8,
                       borderRadius: "50%",
-
-                      backgroundColor: "primary.main",
+                      bgcolor: "primary.main",
                     }}
                   />
                 )}
               </Stack>
 
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  whiteSpace: "nowrap",
-                }}
+              <Stack
+                direction="row"
+                spacing={0.8}
+                alignItems="center"
+                sx={{ flexShrink: 0 }}
               >
-                {formatNotificationTime(notification.createdAt)}
-              </Typography>
+                <AccessTimeRounded
+                  sx={{
+                    fontSize: 15,
+                    color: "text.disabled",
+                  }}
+                />
+
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ whiteSpace: "nowrap" }}
+                >
+                  {formatNotificationTime(notification.createdAt)}
+                </Typography>
+              </Stack>
             </Stack>
 
             <Typography
               variant="body2"
               color="text.secondary"
-              mt={0.7}
               sx={{
+                mt: 0.8,
+                lineHeight: 1.7,
                 whiteSpace: "pre-line",
               }}
             >
@@ -348,43 +461,50 @@ function NotificationCard({ notification, onMarkRead, onOpen, markingId }) {
             </Typography>
 
             <Stack
-              direction={{
-                xs: "column",
-                sm: "row",
-              }}
+              direction={{ xs: "column", sm: "row" }}
               spacing={1}
-              alignItems={{
-                xs: "flex-start",
-                sm: "center",
-              }}
-              mt={2}
+              alignItems={{ xs: "flex-start", sm: "center" }}
+              sx={{ mt: 2 }}
             >
-              <Chip
-                label={formatEnum(notification.type)}
-                size="small"
-                variant="outlined"
-              />
-
-              {hasAction && (
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
                 <Chip
-                  label="Open details"
                   size="small"
-                  color="primary"
+                  label={meta.label}
+                  color={meta.tone}
                   variant="outlined"
                 />
-              )}
 
-              <Box
-                sx={{
-                  flexGrow: 1,
-                }}
-              />
+                {notification?.referenceType && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={formatEnum(notification.referenceType)}
+                  />
+                )}
+
+                {hasAction && (
+                  <Chip
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    icon={<ArrowForwardRounded />}
+                    label="Open details"
+                  />
+                )}
+              </Stack>
+
+              <Box sx={{ flexGrow: 1 }} />
 
               {isUnread && (
                 <Button
                   size="small"
+                  variant="text"
                   disabled={marking}
                   onClick={handleMarkReadClick}
+                  sx={{
+                    textTransform: "none",
+                    fontWeight: 700,
+                  }}
                 >
                   {marking ? <CircularProgress size={16} /> : "Mark as read"}
                 </Button>
@@ -397,64 +517,29 @@ function NotificationCard({ notification, onMarkRead, onOpen, markingId }) {
   );
 }
 
-// ============================================================
-// COMPONENT
-// ============================================================
-
 function Notifications() {
-  // ==========================================================
-  // NAVIGATION
-  // ==========================================================
-
   const navigate = useNavigate();
-
-  // ==========================================================
-  // GLOBAL NOTIFICATION STATE
-  // ==========================================================
 
   const {
     unreadCount,
-
     latestNotification,
-
     notificationVersion,
-
     decreaseUnreadCount,
-
     clearUnreadCount,
-
     refreshUnreadCount,
   } = useNotifications();
 
-  // ==========================================================
-  // LOCAL PAGE STATE
-  // ==========================================================
-
   const [notifications, setNotifications] = useState([]);
-
   const [activeTab, setActiveTab] = useState(0);
-
   const [typeFilter, setTypeFilter] = useState("ALL");
-
   const [page, setPage] = useState(0);
-
   const [totalPages, setTotalPages] = useState(0);
-
   const [totalElements, setTotalElements] = useState(0);
-
   const [loading, setLoading] = useState(true);
-
   const [refreshing, setRefreshing] = useState(false);
-
   const [markingId, setMarkingId] = useState(null);
-
   const [markingAll, setMarkingAll] = useState(false);
-
   const [error, setError] = useState("");
-
-  // ==========================================================
-  // LOAD
-  // ==========================================================
 
   const loadNotifications = useCallback(
     async ({ requestedPage = 0, showFullLoader = false } = {}) => {
@@ -472,19 +557,15 @@ function Notifications() {
             ? notificationApi.getUnread(requestedPage, PAGE_SIZE)
             : notificationApi.getAll(requestedPage, PAGE_SIZE);
 
-        const notificationResponse = await notificationPromise;
+        const response = await notificationPromise;
 
         setNotifications(
-          Array.isArray(notificationResponse?.content)
-            ? notificationResponse.content
-            : [],
+          Array.isArray(response?.content) ? response.content : [],
         );
 
-        setPage(Number(notificationResponse?.number ?? 0));
-
-        setTotalPages(Number(notificationResponse?.totalPages ?? 0));
-
-        setTotalElements(Number(notificationResponse?.totalElements ?? 0));
+        setPage(Number(response?.number ?? 0));
+        setTotalPages(Number(response?.totalPages ?? 0));
+        setTotalElements(Number(response?.totalElements ?? 0));
 
         await refreshUnreadCount();
       } catch (requestError) {
@@ -495,16 +576,11 @@ function Notifications() {
         );
       } finally {
         setLoading(false);
-
         setRefreshing(false);
       }
     },
     [activeTab, refreshUnreadCount],
   );
-
-  // ==========================================================
-  // INITIAL + TAB LOAD
-  // ==========================================================
 
   useEffect(() => {
     loadNotifications({
@@ -513,38 +589,21 @@ function Notifications() {
     });
   }, [activeTab, loadNotifications]);
 
-  // ==========================================================
-  // REAL-TIME EVENT
-  // ==========================================================
-
   useEffect(() => {
-    if (!latestNotification || notificationVersion <= 0) {
+    if (!latestNotification || notificationVersion <= 0 || page !== 0) {
       return;
     }
-
-    /*
-     * Only inject locally when viewing newest page.
-     */
-
-    if (page !== 0) {
-      return;
-    }
-
-    /*
-     * When viewing unread tab, do not inject a notification
-     * if the backend ever pushes one already marked read.
-     */
 
     if (activeTab === 1 && latestNotification.read === true) {
       return;
     }
 
     setNotifications((previous) => {
-      const alreadyExists = previous.some(
+      const exists = previous.some(
         (notification) => notification.id === latestNotification.id,
       );
 
-      if (alreadyExists) {
+      if (exists) {
         return previous;
       }
 
@@ -553,10 +612,6 @@ function Notifications() {
 
     setTotalElements((previous) => previous + 1);
   }, [notificationVersion, latestNotification, page, activeTab]);
-
-  // ==========================================================
-  // CLIENT-SIDE TYPE FILTER
-  // ==========================================================
 
   const filteredNotifications = useMemo(() => {
     if (typeFilter === "ALL") {
@@ -568,9 +623,23 @@ function Notifications() {
     );
   }, [notifications, typeFilter]);
 
-  // ==========================================================
-  // MARK ONE
-  // ==========================================================
+  const visibleUnreadCount = useMemo(
+    () =>
+      notifications.filter((notification) => notification.read !== true).length,
+    [notifications],
+  );
+
+  const actionableCount = useMemo(
+    () =>
+      notifications.filter((notification) =>
+        Boolean(
+          notification?.actionUrl && String(notification.actionUrl).trim(),
+        ),
+      ).length,
+    [notifications],
+  );
+
+  const pageReadCount = Math.max(notifications.length - visibleUnreadCount, 0);
 
   const handleMarkRead = async (notificationId) => {
     if (!notificationId) {
@@ -581,25 +650,15 @@ function Notifications() {
       (notification) => notification.id === notificationId,
     );
 
-    /*
-     * If already marked read locally, avoid an unnecessary
-     * backend request.
-     */
-
-    if (currentNotification && currentNotification.read === true) {
+    if (currentNotification?.read === true) {
       return true;
     }
 
     try {
       setMarkingId(notificationId);
-
       setError("");
 
       await notificationApi.markAsRead(notificationId);
-
-      // -----------------------------------------------------
-      // UNREAD TAB
-      // -----------------------------------------------------
 
       if (activeTab === 1) {
         setNotifications((previous) =>
@@ -608,16 +667,11 @@ function Notifications() {
 
         setTotalElements((previous) => Math.max(previous - 1, 0));
       } else {
-        // ---------------------------------------------------
-        // ALL TAB
-        // ---------------------------------------------------
-
         setNotifications((previous) =>
           previous.map((notification) =>
             notification.id === notificationId
               ? {
                   ...notification,
-
                   read: true,
                 }
               : notification,
@@ -641,10 +695,6 @@ function Notifications() {
     }
   };
 
-  // ==========================================================
-  // OPEN NOTIFICATION / DEEP LINK
-  // ==========================================================
-
   const handleNotificationOpen = async (notification) => {
     if (!notification) {
       return;
@@ -658,44 +708,23 @@ function Notifications() {
       return;
     }
 
-    /*
-     * Mark unread notification before leaving the page.
-     */
-
     if (notification.read !== true) {
       const marked = await handleMarkRead(notification.id);
-
-      /*
-       * Do not navigate if the read operation failed.
-       *
-       * This keeps backend/local unread state consistent.
-       */
 
       if (!marked) {
         return;
       }
     }
 
-    // ======================================================
-    // NAVIGATE
-    // ======================================================
-
     navigate(actionUrl, {
       state: {
         fromNotification: true,
-
         notificationId: notification.id ?? null,
-
         notificationReferenceId: notification.referenceId ?? null,
-
         notificationReferenceType: notification.referenceType ?? null,
       },
     });
   };
-
-  // ==========================================================
-  // MARK ALL
-  // ==========================================================
 
   const handleMarkAllRead = async () => {
     if (unreadCount <= 0) {
@@ -704,7 +733,6 @@ function Notifications() {
 
     try {
       setMarkingAll(true);
-
       setError("");
 
       await notificationApi.markAllAsRead();
@@ -713,17 +741,13 @@ function Notifications() {
 
       if (activeTab === 1) {
         setNotifications([]);
-
         setTotalElements(0);
-
         setTotalPages(0);
-
         setPage(0);
       } else {
         setNotifications((previous) =>
           previous.map((notification) => ({
             ...notification,
-
             read: true,
           })),
         );
@@ -740,21 +764,11 @@ function Notifications() {
     }
   };
 
-  // ==========================================================
-  // TAB
-  // ==========================================================
-
   const handleTabChange = (event, value) => {
     setPage(0);
-
     setTypeFilter("ALL");
-
     setActiveTab(value);
   };
-
-  // ==========================================================
-  // PAGE
-  // ==========================================================
 
   const handlePageChange = (event, value) => {
     const requestedPage = value - 1;
@@ -767,10 +781,6 @@ function Notifications() {
     });
   };
 
-  // ==========================================================
-  // REFRESH
-  // ==========================================================
-
   const handleRefresh = () => {
     loadNotifications({
       requestedPage: page,
@@ -778,158 +788,236 @@ function Notifications() {
     });
   };
 
-  // ==========================================================
-  // UI
-  // ==========================================================
-
   return (
-    <Box>
-      {/* ===================================================== */}
-      {/* HEADER */}
-      {/* ===================================================== */}
-
-      <Stack
-        direction={{
-          xs: "column",
-          md: "row",
+    <Box sx={{ width: "100%", pb: 5 }}>
+      <Card
+        elevation={0}
+        sx={{
+          mb: 3,
+          border: "1px solid",
+          borderColor: "rgba(79,70,229,0.13)",
+          borderRadius: 4,
+          overflow: "hidden",
+          background:
+            "linear-gradient(135deg, rgba(79,70,229,0.10), rgba(255,255,255,1) 58%, rgba(99,102,241,0.05))",
         }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "flex-start",
-          md: "center",
-        }}
-        spacing={2}
-        mb={4}
       >
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Box
-            sx={{
-              width: 52,
-
-              height: 52,
-
-              borderRadius: 2,
-
-              display: "flex",
-
-              alignItems: "center",
-
-              justifyContent: "center",
-
-              backgroundColor: "primary.light",
-
-              color: "primary.main",
-            }}
-          >
-            <Badge
-              badgeContent={unreadCount}
-              color="error"
-              max={99}
-              invisible={unreadCount <= 0}
-            >
-              <NotificationsActive />
-            </Badge>
-          </Box>
-
-          <Box>
-            <Typography variant="h4" fontWeight={800}>
-              Notifications
-            </Typography>
-
-            <Typography variant="body1" color="text.secondary" mt={0.5}>
-              Stay updated with important library activities.
-            </Typography>
-          </Box>
-        </Stack>
-
-        <Stack
-          direction={{
-            xs: "column",
-            sm: "row",
+        <CardContent
+          sx={{
+            p: { xs: 2.5, md: 3.5 },
+            "&:last-child": {
+              pb: { xs: 2.5, md: 3.5 },
+            },
           }}
-          spacing={1}
         >
-          {unreadCount > 0 && (
-            <Button
-              variant="outlined"
-              startIcon={
-                markingAll ? <CircularProgress size={16} /> : <DoneAll />
-              }
-              disabled={markingAll}
-              onClick={handleMarkAllRead}
-            >
-              Mark All as Read
-            </Button>
-          )}
-
-          <Button
-            variant="outlined"
-            startIcon={
-              refreshing ? <CircularProgress size={16} /> : <Refresh />
-            }
-            disabled={refreshing}
-            onClick={handleRefresh}
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "stretch", md: "center" }}
+            spacing={2.5}
           >
-            Refresh
-          </Button>
-        </Stack>
-      </Stack>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box
+                sx={{
+                  width: 58,
+                  height: 58,
+                  minWidth: 58,
+                  borderRadius: 3,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  bgcolor: "primary.main",
+                  color: "primary.contrastText",
+                  boxShadow: "0 10px 24px rgba(79,70,229,0.24)",
+                }}
+              >
+                <Badge
+                  badgeContent={unreadCount}
+                  color="error"
+                  max={99}
+                  invisible={unreadCount <= 0}
+                >
+                  <NotificationsActiveRounded />
+                </Badge>
+              </Box>
 
-      {/* ===================================================== */}
-      {/* ERROR */}
-      {/* ===================================================== */}
+              <Box>
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  useFlexGap
+                  flexWrap="wrap"
+                >
+                  <Typography
+                    variant="h4"
+                    fontWeight={800}
+                    sx={{ letterSpacing: "-0.03em" }}
+                  >
+                    Notifications
+                  </Typography>
+
+                  <Chip
+                    size="small"
+                    icon={<AutoAwesomeRounded />}
+                    label="Live"
+                    color="primary"
+                    variant="outlined"
+                  />
+                </Stack>
+
+                <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+                  Stay on top of bookings, payments, memberships and owner
+                  actions.
+                </Typography>
+              </Box>
+            </Stack>
+
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+              {unreadCount > 0 && (
+                <Button
+                  variant="outlined"
+                  startIcon={
+                    markingAll ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <DoneAllRounded />
+                    )
+                  }
+                  disabled={markingAll}
+                  onClick={handleMarkAllRead}
+                  sx={{
+                    minHeight: 42,
+                    borderRadius: 2.5,
+                    textTransform: "none",
+                    fontWeight: 700,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  Mark All as Read
+                </Button>
+              )}
+
+              <Button
+                variant="outlined"
+                startIcon={
+                  refreshing ? (
+                    <CircularProgress size={16} />
+                  ) : (
+                    <RefreshRounded />
+                  )
+                }
+                disabled={refreshing}
+                onClick={handleRefresh}
+                sx={{
+                  minHeight: 42,
+                  borderRadius: 2.5,
+                  textTransform: "none",
+                  fontWeight: 700,
+                  bgcolor: "background.paper",
+                }}
+              >
+                Refresh
+              </Button>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
 
       {error && (
         <Alert
           severity="error"
-          sx={{
-            mb: 3,
-          }}
+          onClose={() => setError("")}
+          sx={{ mb: 3, borderRadius: 2.5 }}
         >
           {error}
         </Alert>
       )}
 
-      {/* ===================================================== */}
-      {/* UNREAD SUMMARY */}
-      {/* ===================================================== */}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "1fr",
+            sm: "repeat(2, 1fr)",
+            lg: "repeat(4, 1fr)",
+          },
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        <NotificationSummaryCard
+          label="All Notifications"
+          value={totalElements}
+          description="Across the selected page scope"
+          icon={<NotificationsActiveRounded />}
+          active={activeTab === 0}
+          onClick={() => setActiveTab(0)}
+        />
+
+        <NotificationSummaryCard
+          label="Unread"
+          value={unreadCount}
+          description="Require your attention"
+          icon={
+            <Badge variant="dot" color="error" invisible={unreadCount <= 0}>
+              <WarningAmberRounded />
+            </Badge>
+          }
+          active={activeTab === 1}
+          onClick={() => setActiveTab(1)}
+        />
+
+        <NotificationSummaryCard
+          label="Actionable"
+          value={actionableCount}
+          description="Visible items with deep links"
+          icon={<ArrowForwardRounded />}
+        />
+
+        <NotificationSummaryCard
+          label="Read on Page"
+          value={pageReadCount}
+          description="Already reviewed in this page"
+          icon={<CheckCircleRounded />}
+        />
+      </Box>
 
       {!loading && unreadCount > 0 && (
         <Alert
           severity="info"
-          sx={{
-            mb: 3,
-          }}
+          sx={{ mb: 3, borderRadius: 2.5 }}
+          action={
+            activeTab !== 1 ? (
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() => setActiveTab(1)}
+              >
+                View Unread
+              </Button>
+            ) : undefined
+          }
         >
           You have <strong>{unreadCount}</strong> unread notification
           {unreadCount === 1 ? "" : "s"}.
         </Alert>
       )}
 
-      {/* ===================================================== */}
-      {/* FILTERS */}
-      {/* ===================================================== */}
-
       <Card
+        elevation={0}
         sx={{
           mb: 3,
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: 3.2,
         }}
       >
-        <CardContent
-          sx={{
-            pb: "16px !important",
-          }}
-        >
+        <CardContent sx={{ p: 2.2, "&:last-child": { pb: 2.2 } }}>
           <Stack
-            direction={{
-              xs: "column",
-              sm: "row",
-            }}
+            direction={{ xs: "column", md: "row" }}
             justifyContent="space-between"
-            alignItems={{
-              xs: "stretch",
-              sm: "center",
-            }}
+            alignItems={{ xs: "stretch", md: "center" }}
             spacing={2}
           >
             <Tabs
@@ -937,6 +1025,14 @@ function Notifications() {
               onChange={handleTabChange}
               variant="scrollable"
               scrollButtons="auto"
+              sx={{
+                minHeight: 42,
+                "& .MuiTab-root": {
+                  minHeight: 42,
+                  textTransform: "none",
+                  fontWeight: 700,
+                },
+              }}
             >
               <Tab label="All" />
 
@@ -953,64 +1049,59 @@ function Notifications() {
               />
             </Tabs>
 
-            <Select
-              size="small"
-              value={typeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
-              sx={{
-                minWidth: 180,
-              }}
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1}
+              alignItems={{ xs: "stretch", sm: "center" }}
             >
-              <MenuItem value="ALL">All Types</MenuItem>
+              <Select
+                size="small"
+                value={typeFilter}
+                onChange={(event) => setTypeFilter(event.target.value)}
+                sx={{
+                  minWidth: 200,
+                  borderRadius: 2.5,
+                }}
+              >
+                {TYPE_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
 
-              <MenuItem value="BOOKING">Bookings</MenuItem>
-
-              <MenuItem value="PAYMENT">Payments</MenuItem>
-
-              <MenuItem value="MEMBERSHIP">Memberships</MenuItem>
-
-              <MenuItem value="SUBSCRIPTION">Subscriptions</MenuItem>
-
-              <MenuItem value="SEAT_CHANGE">Seat Changes</MenuItem>
-
-              <MenuItem value="SEAT_TRANSFER">Seat Transfers</MenuItem>
-
-              <MenuItem value="LIBRARY">Library</MenuItem>
-
-              <MenuItem value="REVIEW">Reviews</MenuItem>
-
-              <MenuItem value="REPORT">Reports</MenuItem>
-
-              <MenuItem value="SYSTEM">System</MenuItem>
-
-              <MenuItem value="AI_ASSISTANT">AI Assistant</MenuItem>
-            </Select>
+              {typeFilter !== "ALL" && (
+                <Button
+                  variant="text"
+                  onClick={() => setTypeFilter("ALL")}
+                  sx={{
+                    textTransform: "none",
+                    fontWeight: 700,
+                  }}
+                >
+                  Clear Filter
+                </Button>
+              )}
+            </Stack>
           </Stack>
         </CardContent>
       </Card>
 
-      {/* ===================================================== */}
-      {/* CONTENT */}
-      {/* ===================================================== */}
-
       {loading ? (
-        <Card>
-          <CardContent
-            sx={{
-              py: 10,
-
-              textAlign: "center",
-            }}
-          >
-            <CircularProgress />
-
-            <Typography variant="body2" color="text.secondary" mt={2}>
-              Loading notifications...
-            </Typography>
-          </CardContent>
-        </Card>
+        <Stack spacing={2}>
+          {[1, 2, 3, 4].map((item) => (
+            <Skeleton
+              key={item}
+              variant="rounded"
+              height={174}
+              sx={{ borderRadius: 3.2 }}
+            />
+          ))}
+        </Stack>
       ) : filteredNotifications.length > 0 ? (
         <>
+          {refreshing && <LinearProgress sx={{ mb: 2, borderRadius: 999 }} />}
+
           <Stack spacing={2}>
             {filteredNotifications.map((notification) => (
               <NotificationCard
@@ -1025,17 +1116,14 @@ function Notifications() {
 
           {totalPages > 1 && (
             <Stack
-              direction={{
-                xs: "column",
-                sm: "row",
-              }}
+              direction={{ xs: "column", sm: "row" }}
               justifyContent="space-between"
               alignItems="center"
               spacing={2}
-              mt={4}
+              sx={{ mt: 4 }}
             >
               <Typography variant="body2" color="text.secondary">
-                {totalElements} notification
+                Page {page + 1} of {totalPages} · {totalElements} notification
                 {totalElements === 1 ? "" : "s"}
               </Typography>
 
@@ -1046,64 +1134,110 @@ function Notifications() {
                 onChange={handlePageChange}
                 showFirstButton
                 showLastButton
+                sx={{
+                  "& .MuiPaginationItem-root": {
+                    borderRadius: 2,
+                  },
+                }}
               />
             </Stack>
           )}
         </>
       ) : (
-        <Card>
-          <CardContent
-            sx={{
-              py: 8,
+        <Card
+          elevation={0}
+          sx={{
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 4,
+          }}
+        >
+          <CardContent>
+            <Box sx={{ py: 7, textAlign: "center" }}>
+              <Box
+                sx={{
+                  width: 70,
+                  height: 70,
+                  borderRadius: 3,
+                  mx: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  bgcolor: "rgba(79,70,229,0.07)",
+                  color: "primary.main",
+                }}
+              >
+                <NotificationsActiveRounded sx={{ fontSize: 38 }} />
+              </Box>
 
-              textAlign: "center",
-            }}
-          >
-            <NotificationsActive
-              sx={{
-                fontSize: 56,
+              <Typography variant="h6" fontWeight={800} sx={{ mt: 2 }}>
+                {activeTab === 1
+                  ? "You're all caught up"
+                  : typeFilter !== "ALL"
+                    ? "No matching notifications"
+                    : "No notifications yet"}
+              </Typography>
 
-                color: "text.disabled",
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  mt: 0.6,
+                  maxWidth: 500,
+                  mx: "auto",
+                  lineHeight: 1.65,
+                }}
+              >
+                {activeTab === 1
+                  ? "There are no unread notifications requiring your attention."
+                  : typeFilter !== "ALL"
+                    ? "Try selecting another notification type or clear the filter."
+                    : "Important LibraryHub activity will appear here as it happens."}
+              </Typography>
 
-                mb: 2,
-              }}
-            />
-
-            <Typography variant="h6" fontWeight={700}>
-              No notifications
-            </Typography>
-
-            <Typography variant="body2" color="text.secondary" mt={0.5}>
-              {activeTab === 1
-                ? "You have no unread notifications."
-                : "There are no notifications matching the selected filters."}
-            </Typography>
+              {typeFilter !== "ALL" && (
+                <Button
+                  variant="outlined"
+                  onClick={() => setTypeFilter("ALL")}
+                  sx={{
+                    mt: 2.5,
+                    borderRadius: 2.5,
+                    textTransform: "none",
+                    fontWeight: 700,
+                  }}
+                >
+                  Show All Types
+                </Button>
+              )}
+            </Box>
           </CardContent>
         </Card>
       )}
 
-      {/* ===================================================== */}
-      {/* FOOTER */}
-      {/* ===================================================== */}
+      <Divider sx={{ my: 4 }} />
 
-      <Divider
-        sx={{
-          my: 4,
-        }}
-      />
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        spacing={1.5}
+        alignItems={{ xs: "flex-start", sm: "center" }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center">
+          <AccessTimeRounded sx={{ fontSize: 18, color: "text.secondary" }} />
 
-      <Stack direction="row" spacing={1} alignItems="center">
-        <AccessTime
-          sx={{
-            fontSize: 18,
+          <Typography variant="caption" color="text.secondary">
+            Notifications are synchronized with LibraryHub in real time.
+          </Typography>
+        </Stack>
 
-            color: "text.secondary",
-          }}
-        />
-
-        <Typography variant="caption" color="text.secondary">
-          Notifications are synchronized with LibraryHub in real time.
-        </Typography>
+        <Tooltip title="New notifications can appear automatically while you stay on this page.">
+          <Chip
+            size="small"
+            icon={<NotificationsActiveRounded />}
+            label="Live synchronization"
+            variant="outlined"
+          />
+        </Tooltip>
       </Stack>
     </Box>
   );

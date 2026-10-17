@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Add,
+  CheckBoxOutlined,
   DeleteOutlineOutlined,
   DoorFrontOutlined,
+  LayersOutlined,
   EventSeat,
   MeetingRoomOutlined,
   Refresh,
@@ -14,6 +16,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -31,6 +34,9 @@ import {
   TextField,
   Tooltip,
   Typography,
+  alpha,
+  IconButton,
+  useTheme,
 } from "@mui/material";
 
 import seatApi from "../../api/seatApi";
@@ -192,6 +198,61 @@ const flattenRows = (rows) => {
 const getRowLabel = (index) => String.fromCharCode(65 + index);
 
 // ============================================================
+// FLOOR DIMENSION HELPERS
+// ============================================================
+
+const getRowIndexFromLabel = (rowLabel) => {
+  const normalized = normalizeRow(rowLabel);
+
+  if (!/^[A-Z]$/.test(normalized)) {
+    return 0;
+  }
+
+  return normalized.charCodeAt(0) - 64;
+};
+
+const calculateRequiredDimensions = ({
+  seats = [],
+  gaps = [],
+  rowCount = 0,
+  columnCount = 0,
+}) => {
+  let requiredRows = Math.max(Number(rowCount) || 0, 0);
+  let requiredColumns = Math.max(Number(columnCount) || 0, 0);
+
+  (Array.isArray(seats) ? seats : []).forEach((seat) => {
+    const rowIndex = getRowIndexFromLabel(seat?.rowLabel);
+    const column = Number(seat?.columnNumber);
+
+    if (rowIndex > requiredRows) {
+      requiredRows = rowIndex;
+    }
+
+    if (Number.isInteger(column) && column > requiredColumns) {
+      requiredColumns = column;
+    }
+  });
+
+  (Array.isArray(gaps) ? gaps : []).forEach((gap) => {
+    const rowIndex = getRowIndexFromLabel(gap?.rowLabel);
+    const column = Number(gap?.columnNumber);
+
+    if (rowIndex > requiredRows) {
+      requiredRows = rowIndex;
+    }
+
+    if (Number.isInteger(column) && column > requiredColumns) {
+      requiredColumns = column;
+    }
+  });
+
+  return {
+    rowCount: requiredRows,
+    columnCount: requiredColumns,
+  };
+};
+
+// ============================================================
 // FLOOR NAME HELPER
 // ============================================================
 
@@ -297,29 +358,25 @@ function LayoutMarker({ type }) {
     <Box
       sx={{
         minWidth: 170,
-
-        px: 3,
-        py: 1.25,
-
-        borderRadius: 3,
-
+        px: 2.5,
+        py: 1.1,
+        borderRadius: 2.6,
         border: "1px solid",
-
-        borderColor: "divider",
-
-        bgcolor: "action.hover",
-
+        borderColor: isEntrance
+          ? "rgba(79,70,229,0.18)"
+          : "rgba(14,165,233,0.18)",
+        bgcolor: isEntrance
+          ? "rgba(79,70,229,0.055)"
+          : "rgba(14,165,233,0.055)",
+        color: isEntrance ? "primary.main" : "info.main",
         display: "flex",
-
         alignItems: "center",
-
         justifyContent: "center",
-
         gap: 1,
-
-        fontWeight: 800,
-
-        letterSpacing: 1.5,
+        fontWeight: 850,
+        fontSize: "0.78rem",
+        letterSpacing: 1.15,
+        boxShadow: "0 6px 18px rgba(15,23,42,0.04)",
       }}
     >
       {isEntrance ? (
@@ -337,23 +394,36 @@ function LayoutMarker({ type }) {
 // STATISTIC CARD
 // ============================================================
 
-function StatisticCard({ label, value }) {
+function StatisticCard({ label, value, tone = "primary" }) {
+  const theme = useTheme();
+  const color = theme.palette[tone]?.main || theme.palette.primary.main;
+
   return (
     <Paper
-      variant="outlined"
+      elevation={0}
       sx={{
-        p: 2,
-
-        borderRadius: 2,
-
+        p: 1.8,
+        height: "100%",
+        borderRadius: 2.7,
         textAlign: "center",
+        border: "1px solid",
+        borderColor: alpha(color, 0.14),
+        bgcolor: alpha(color, 0.035),
       }}
     >
-      <Typography variant="h6" fontWeight={800}>
+      <Typography
+        variant="h6"
+        fontWeight={900}
+        sx={{ color, letterSpacing: "-0.02em" }}
+      >
         {value}
       </Typography>
 
-      <Typography variant="caption" color="text.secondary">
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{ fontWeight: 700 }}
+      >
         {label}
       </Typography>
     </Paper>
@@ -365,6 +435,8 @@ function StatisticCard({ label, value }) {
 // ============================================================
 
 const SeatMapping = () => {
+  const theme = useTheme();
+
   // ==========================================================
   // LIBRARY
   // ==========================================================
@@ -426,6 +498,26 @@ const SeatMapping = () => {
   const [newFloorNumber, setNewFloorNumber] = useState("");
 
   // ==========================================================
+  // DELETE FLOOR
+  // ==========================================================
+
+  const [deleteFloorDialogOpen, setDeleteFloorDialogOpen] = useState(false);
+
+  const [floorPendingDelete, setFloorPendingDelete] = useState(null);
+
+  // ==========================================================
+  // BULK SEAT EDITING
+  // ==========================================================
+
+  const [bulkMode, setBulkMode] = useState(false);
+
+  const [selectedSeatIds, setSelectedSeatIds] = useState([]);
+
+  const [bulkSeatType, setBulkSeatType] = useState("NORMAL");
+
+  const [bulkSeatStatus, setBulkSeatStatus] = useState("AVAILABLE");
+
+  // ==========================================================
   // CONFIGURE LAYOUT
   // ==========================================================
 
@@ -468,6 +560,16 @@ const SeatMapping = () => {
   const [addSeatStatus, setAddSeatStatus] = useState("AVAILABLE");
 
   // ==========================================================
+  // ADD BLANK SPACE
+  // ==========================================================
+
+  const [addSpaceDialogOpen, setAddSpaceDialogOpen] = useState(false);
+
+  const [addSpaceRow, setAddSpaceRow] = useState("");
+
+  const [addSpaceColumn, setAddSpaceColumn] = useState("");
+
+  // ==========================================================
   // ADD ROW
   // ==========================================================
 
@@ -486,6 +588,12 @@ const SeatMapping = () => {
   const [seatDialogOpen, setSeatDialogOpen] = useState(false);
 
   const [selectedSeat, setSelectedSeat] = useState(null);
+
+  const [editSeatNumber, setEditSeatNumber] = useState("");
+
+  const [editSeatRow, setEditSeatRow] = useState("");
+
+  const [editSeatColumn, setEditSeatColumn] = useState("");
 
   const [editSeatType, setEditSeatType] = useState("");
 
@@ -620,43 +728,63 @@ const SeatMapping = () => {
 
     try {
       setLoadingLayout(true);
-
       setError("");
 
       const data = await seatApi.getFloorLayout(libraryId, floorId);
 
       const loadedSeats = flattenRows(data?.rows);
-
       const loadedGaps = Array.isArray(data?.gaps) ? data.gaps : [];
 
-      const loadedRows = Number(data?.rowCount ?? 0);
+      const backendRows = Math.max(Number(data?.rowCount ?? 0), 0);
+      const backendColumns = Math.max(Number(data?.columnCount ?? 0), 0);
 
-      const loadedColumns = Number(data?.columnCount ?? 0);
+      // Existing seats and gaps define the minimum dimensions required
+      // to render the physical layout. This also repairs stale frontend
+      // state such as rowCount=6 while a persisted seat exists at G1.
+      const requiredDimensions = calculateRequiredDimensions({
+        seats: loadedSeats,
+        gaps: loadedGaps,
+        rowCount: backendRows,
+        columnCount: backendColumns,
+      });
+
+      const effectiveRows = requiredDimensions.rowCount;
+      const effectiveColumns = requiredDimensions.columnCount;
 
       setSeats(loadedSeats);
-
       setGaps(loadedGaps);
-
-      setRowCount(loadedRows);
-
-      setColumnCount(loadedColumns);
+      setRowCount(effectiveRows);
+      setColumnCount(effectiveColumns);
 
       setEntrancePosition(data?.entrancePosition || "TOP_CENTER");
-
       setReceptionPosition(data?.receptionPosition || "BOTTOM_CENTER");
 
-      setLayoutRows(loadedRows || DEFAULT_ROWS);
-
-      setLayoutColumns(loadedColumns || DEFAULT_COLUMNS);
-
+      setLayoutRows(effectiveRows || DEFAULT_ROWS);
+      setLayoutColumns(effectiveColumns || DEFAULT_COLUMNS);
       setLayoutEntrance(data?.entrancePosition || "TOP_CENTER");
-
       setLayoutReception(data?.receptionPosition || "BOTTOM_CENTER");
+
+      if (
+        effectiveRows !== backendRows ||
+        effectiveColumns !== backendColumns
+      ) {
+        console.warn(
+          "Floor layout dimensions were smaller than actual seat/gap positions.",
+          {
+            backendRows,
+            backendColumns,
+            effectiveRows,
+            effectiveColumns,
+          },
+        );
+      }
     } catch (err) {
       console.error("Failed to load complete floor layout:", err);
 
       setSeats([]);
       setGaps([]);
+      setRowCount(0);
+      setColumnCount(0);
 
       setError(getErrorMessage(err, "Failed to load floor layout."));
     } finally {
@@ -697,9 +825,19 @@ const SeatMapping = () => {
     loadFloorLayout();
   }, [libraryId, floorId, loadFloorLayout]);
 
+  useEffect(() => {
+    setSelectedSeatIds([]);
+    setBulkMode(false);
+  }, [libraryId, floorId]);
+
   // ==========================================================
-  // CURRENT FLOOR
+  // CURRENT LIBRARY / FLOOR
   // ==========================================================
+
+  const currentLibrary = useMemo(
+    () => libraries.find((library) => String(library.id) === String(libraryId)),
+    [libraries, libraryId],
+  );
 
   const currentFloor = useMemo(
     () => floors.find((floor) => String(floor.id) === String(floorId)),
@@ -759,107 +897,116 @@ const SeatMapping = () => {
   // ==========================================================
 
   // ==========================================================
-// SAVE COMPLETE FLOOR LAYOUT
-// ==========================================================
+  // SAVE COMPLETE FLOOR LAYOUT
+  // ==========================================================
 
-const saveCompleteLayout = async ({
-  nextSeats = seats,
-  nextGaps = gaps,
-  nextRowCount = rowCount,
-  nextColumnCount = columnCount,
-  nextEntrance = entrancePosition,
-  nextReception = receptionPosition,
-} = {}) => {
-  // ========================================================
-  // VALIDATE LIBRARY / FLOOR
-  // ========================================================
+  const saveCompleteLayout = async ({
+    nextSeats = seats,
+    nextGaps = gaps,
+    nextRowCount = rowCount,
+    nextColumnCount = columnCount,
+    nextEntrance = entrancePosition,
+    nextReception = receptionPosition,
+  } = {}) => {
+    // ========================================================
+    // VALIDATE LIBRARY / FLOOR
+    // ========================================================
 
-  if (!libraryId || !floorId) {
-    throw new Error("Library and floor are required.");
-  }
-
-  // ========================================================
-  // NORMALIZE DIMENSIONS
-  // ========================================================
-
-  const normalizedRowCount = Number(nextRowCount);
-
-  const normalizedColumnCount = Number(nextColumnCount);
-
-  if (
-    !Number.isInteger(normalizedRowCount) ||
-    normalizedRowCount < 0 ||
-    normalizedRowCount > 26
-  ) {
-    throw new Error("Invalid floor row count.");
-  }
-
-  if (
-    !Number.isInteger(normalizedColumnCount) ||
-    normalizedColumnCount < 0
-  ) {
-    throw new Error("Invalid floor column count.");
-  }
-
-  // ========================================================
-  // NORMALIZE SEATS
-  // ========================================================
-
-  const seatPayload = (Array.isArray(nextSeats) ? nextSeats : []).map(
-    (seat) => {
-      const seatId = seat.id ?? seat.seatId ?? null;
-
-      const seatNumber = String(seat.seatNumber || "")
-        .trim()
-        .toUpperCase();
-
-      const rowLabel = normalizeRow(seat.rowLabel);
-
-      const columnNumber = Number(seat.columnNumber);
-
-      const seatType = seat.seatType || DEFAULT_SEAT_TYPE;
-
-      const status = seat.status || DEFAULT_SEAT_STATUS;
-
-      if (!seatNumber) {
-        throw new Error("Every seat must have a seat number.");
-      }
-
-      if (!rowLabel) {
-        throw new Error(`Seat ${seatNumber} must have a valid row.`);
-      }
-
-      if (
-        !Number.isInteger(columnNumber) ||
-        columnNumber < 1
-      ) {
-        throw new Error(
-          `Seat ${seatNumber} must have a valid column number.`
-        );
-      }
-
-      return {
-        id: seatId,
-
-        seatNumber,
-
-        rowLabel,
-
-        columnNumber,
-
-        seatType,
-
-        status,
-      };
+    if (!libraryId || !floorId) {
+      throw new Error("Library and floor are required.");
     }
-  );
 
-  // ========================================================
-  // NORMALIZE GAPS
-  // ========================================================
+    // ========================================================
+    // NORMALIZE / AUTO-EXPAND DIMENSIONS
+    // ========================================================
 
-  const gapPayload = (Array.isArray(nextGaps) ? nextGaps : []).map(
-    (gap) => {
+    let normalizedRowCount = Number(nextRowCount);
+    let normalizedColumnCount = Number(nextColumnCount);
+
+    if (
+      !Number.isInteger(normalizedRowCount) ||
+      normalizedRowCount < 0 ||
+      normalizedRowCount > 26
+    ) {
+      throw new Error("Invalid floor row count.");
+    }
+
+    if (!Number.isInteger(normalizedColumnCount) || normalizedColumnCount < 0) {
+      throw new Error("Invalid floor column count.");
+    }
+
+    // Existing seats/gaps are the source of truth for the minimum
+    // physical dimensions. This prevents legacy data such as G1 with
+    // rowCount=6 from blocking every subsequent layout save.
+    const calculatedDimensions = calculateRequiredDimensions({
+      seats: nextSeats,
+      gaps: nextGaps,
+      rowCount: normalizedRowCount,
+      columnCount: normalizedColumnCount,
+    });
+
+    normalizedRowCount = calculatedDimensions.rowCount;
+    normalizedColumnCount = calculatedDimensions.columnCount;
+
+    if (normalizedRowCount > 26) {
+      throw new Error("Floor cannot contain rows beyond Z.");
+    }
+
+    // ========================================================
+    // NORMALIZE SEATS
+    // ========================================================
+
+    const seatPayload = (Array.isArray(nextSeats) ? nextSeats : []).map(
+      (seat) => {
+        const seatId = seat.id ?? seat.seatId ?? null;
+
+        const seatNumber = String(seat.seatNumber || "")
+          .trim()
+          .toUpperCase();
+
+        const rowLabel = normalizeRow(seat.rowLabel);
+
+        const columnNumber = Number(seat.columnNumber);
+
+        const seatType = seat.seatType || DEFAULT_SEAT_TYPE;
+
+        const status = seat.status || DEFAULT_SEAT_STATUS;
+
+        if (!seatNumber) {
+          throw new Error("Every seat must have a seat number.");
+        }
+
+        if (!rowLabel) {
+          throw new Error(`Seat ${seatNumber} must have a valid row.`);
+        }
+
+        if (!Number.isInteger(columnNumber) || columnNumber < 1) {
+          throw new Error(
+            `Seat ${seatNumber} must have a valid column number.`,
+          );
+        }
+
+        return {
+          id: seatId,
+
+          seatNumber,
+
+          rowLabel,
+
+          columnNumber,
+
+          seatType,
+
+          status,
+        };
+      },
+    );
+
+    // ========================================================
+    // NORMALIZE GAPS
+    // ========================================================
+
+    const gapPayload = (Array.isArray(nextGaps) ? nextGaps : []).map((gap) => {
       const rowLabel = normalizeRow(gap.rowLabel);
 
       const columnNumber = Number(gap.columnNumber);
@@ -868,12 +1015,9 @@ const saveCompleteLayout = async ({
         throw new Error("Every gap must have a valid row.");
       }
 
-      if (
-        !Number.isInteger(columnNumber) ||
-        columnNumber < 1
-      ) {
+      if (!Number.isInteger(columnNumber) || columnNumber < 1) {
         throw new Error(
-          `Gap ${rowLabel || "-"} must have a valid column number.`
+          `Gap ${rowLabel || "-"} must have a valid column number.`,
         );
       }
 
@@ -882,152 +1026,132 @@ const saveCompleteLayout = async ({
 
         columnNumber,
       };
-    }
-  );
+    });
 
-  // ========================================================
-  // VALIDATE DUPLICATE SEAT NUMBERS
-  // ========================================================
+    // ========================================================
+    // VALIDATE DUPLICATE SEAT NUMBERS
+    // ========================================================
 
-  const seatNumberSet = new Set();
+    const seatNumberSet = new Set();
 
-  for (const seat of seatPayload) {
-    if (seatNumberSet.has(seat.seatNumber)) {
-      throw new Error(
-        `Duplicate seat number detected: ${seat.seatNumber}`
-      );
-    }
+    for (const seat of seatPayload) {
+      if (seatNumberSet.has(seat.seatNumber)) {
+        throw new Error(`Duplicate seat number detected: ${seat.seatNumber}`);
+      }
 
-    seatNumberSet.add(seat.seatNumber);
-  }
-
-  // ========================================================
-  // VALIDATE DUPLICATE SEAT POSITIONS
-  // ========================================================
-
-  const seatPositionSet = new Set();
-
-  for (const seat of seatPayload) {
-    const key = positionKey(
-      seat.rowLabel,
-      seat.columnNumber
-    );
-
-    if (seatPositionSet.has(key)) {
-      throw new Error(
-        `Multiple seats cannot occupy position ${seat.rowLabel}${seat.columnNumber}.`
-      );
+      seatNumberSet.add(seat.seatNumber);
     }
 
-    seatPositionSet.add(key);
-  }
+    // ========================================================
+    // VALIDATE DUPLICATE SEAT POSITIONS
+    // ========================================================
 
-  // ========================================================
-  // VALIDATE DUPLICATE GAPS
-  // ========================================================
+    const seatPositionSet = new Set();
 
-  const gapPositionSet = new Set();
+    for (const seat of seatPayload) {
+      const key = positionKey(seat.rowLabel, seat.columnNumber);
 
-  for (const gap of gapPayload) {
-    const key = positionKey(
-      gap.rowLabel,
-      gap.columnNumber
-    );
+      if (seatPositionSet.has(key)) {
+        throw new Error(
+          `Multiple seats cannot occupy position ${seat.rowLabel}${seat.columnNumber}.`,
+        );
+      }
 
-    if (gapPositionSet.has(key)) {
-      throw new Error(
-        `Duplicate gap detected at ${gap.rowLabel}${gap.columnNumber}.`
-      );
+      seatPositionSet.add(key);
     }
 
-    gapPositionSet.add(key);
-  }
+    // ========================================================
+    // VALIDATE DUPLICATE GAPS
+    // ========================================================
 
-  // ========================================================
-  // VALIDATE SEAT / GAP COLLISION
-  // ========================================================
+    const gapPositionSet = new Set();
 
-  for (const gap of gapPayload) {
-    const key = positionKey(
-      gap.rowLabel,
-      gap.columnNumber
-    );
+    for (const gap of gapPayload) {
+      const key = positionKey(gap.rowLabel, gap.columnNumber);
 
-    if (seatPositionSet.has(key)) {
-      throw new Error(
-        `Position ${gap.rowLabel}${gap.columnNumber} cannot be both a seat and a gap.`
-      );
+      if (gapPositionSet.has(key)) {
+        throw new Error(
+          `Duplicate gap detected at ${gap.rowLabel}${gap.columnNumber}.`,
+        );
+      }
+
+      gapPositionSet.add(key);
     }
-  }
 
-  // ========================================================
-  // VALIDATE SEATS INSIDE FLOOR DIMENSIONS
-  // ========================================================
+    // ========================================================
+    // VALIDATE SEAT / GAP COLLISION
+    // ========================================================
 
-  for (const seat of seatPayload) {
-    const rowIndex =
-      seat.rowLabel.charCodeAt(0) - 64;
+    for (const gap of gapPayload) {
+      const key = positionKey(gap.rowLabel, gap.columnNumber);
 
-    if (
-      rowIndex < 1 ||
-      rowIndex > normalizedRowCount ||
-      seat.columnNumber > normalizedColumnCount
-    ) {
-      throw new Error(
-        `Seat ${seat.seatNumber} is outside the configured floor layout.`
-      );
+      if (seatPositionSet.has(key)) {
+        throw new Error(
+          `Position ${gap.rowLabel}${gap.columnNumber} cannot be both a seat and a gap.`,
+        );
+      }
     }
-  }
 
-  // ========================================================
-  // VALIDATE GAPS INSIDE FLOOR DIMENSIONS
-  // ========================================================
+    // ========================================================
+    // VALIDATE SEATS INSIDE FLOOR DIMENSIONS
+    // ========================================================
 
-  for (const gap of gapPayload) {
-    const rowIndex =
-      gap.rowLabel.charCodeAt(0) - 64;
+    for (const seat of seatPayload) {
+      const rowIndex = seat.rowLabel.charCodeAt(0) - 64;
 
-    if (
-      rowIndex < 1 ||
-      rowIndex > normalizedRowCount ||
-      gap.columnNumber > normalizedColumnCount
-    ) {
-      throw new Error(
-        `Gap ${gap.rowLabel}${gap.columnNumber} is outside the configured floor layout.`
-      );
+      if (
+        rowIndex < 1 ||
+        rowIndex > normalizedRowCount ||
+        seat.columnNumber > normalizedColumnCount
+      ) {
+        throw new Error(
+          `Seat ${seat.seatNumber} is outside the configured floor layout.`,
+        );
+      }
     }
-  }
 
-  // ========================================================
-  // CREATE FINAL REQUEST
-  // ========================================================
+    // ========================================================
+    // VALIDATE GAPS INSIDE FLOOR DIMENSIONS
+    // ========================================================
 
-  const payload = {
-    rowCount: normalizedRowCount,
+    for (const gap of gapPayload) {
+      const rowIndex = gap.rowLabel.charCodeAt(0) - 64;
 
-    columnCount: normalizedColumnCount,
+      if (
+        rowIndex < 1 ||
+        rowIndex > normalizedRowCount ||
+        gap.columnNumber > normalizedColumnCount
+      ) {
+        throw new Error(
+          `Gap ${gap.rowLabel}${gap.columnNumber} is outside the configured floor layout.`,
+        );
+      }
+    }
 
-    entrancePosition:
-      nextEntrance || "NONE",
+    // ========================================================
+    // CREATE FINAL REQUEST
+    // ========================================================
 
-    receptionPosition:
-      nextReception || "NONE",
+    const payload = {
+      rowCount: normalizedRowCount,
 
-    gaps: gapPayload,
+      columnCount: normalizedColumnCount,
 
-    seats: seatPayload,
+      entrancePosition: nextEntrance || "NONE",
+
+      receptionPosition: nextReception || "NONE",
+
+      gaps: gapPayload,
+
+      seats: seatPayload,
+    };
+
+    // ========================================================
+    // SAVE THROUGH API
+    // ========================================================
+
+    await seatApi.saveLayout(libraryId, floorId, payload);
   };
-
-  // ========================================================
-  // SAVE THROUGH API
-  // ========================================================
-
-  await seatApi.saveLayout(
-    libraryId,
-    floorId,
-    payload
-  );
-};
 
   // ==========================================================
   // CREATE FLOOR
@@ -1097,468 +1221,264 @@ const saveCompleteLayout = async ({
   };
 
   // ==========================================================
-// APPLY / UPDATE FLOOR LAYOUT CONFIGURATION
-// ==========================================================
-//
-// IMPORTANT:
-//
-// Existing floor:
-// - preserve all current seats exactly as they are
-// - preserve all current gaps
-// - update rows / columns
-// - update entrance
-// - update reception
-// - DO NOT automatically create seats in missing positions
-//
-// New empty floor:
-// - create the initial seat grid
-//
-// This prevents:
-// - duplicate seat numbers
-// - destroyed intentional spacing
-// - missing positions being automatically converted to seats
-// ==========================================================
-
-const handleApplyLayout = async () => {
-
-  const rows =
-    Number(
-      layoutRows
-    );
-
-  const columns =
-    Number(
-      layoutColumns
-    );
-
-
-  // ========================================================
-  // VALIDATE ROW COUNT
-  // ========================================================
-
-  if (
-    !Number.isInteger(
-      rows
-    ) ||
-    rows < 1 ||
-    rows > 26
-  ) {
-
-    setError(
-      "Rows must be between 1 and 26."
-    );
-
-    return;
-  }
-
-
-  // ========================================================
-  // VALIDATE COLUMN COUNT
-  // ========================================================
-
-  if (
-    !Number.isInteger(
-      columns
-    ) ||
-    columns < 1
-  ) {
-
-    setError(
-      "Columns per row must be greater than zero."
-    );
-
-    return;
-  }
-
-
-  // ========================================================
-  // CHECK EXISTING SEATS AGAINST NEW DIMENSIONS
-  // ========================================================
-
-  const seatOutsideLayout =
-    seats.find(
-      (seat) => {
-
-        const row =
-          normalizeRow(
-            seat.rowLabel
-          );
-
-
-        if (!row) {
-          return false;
-        }
-
-
-        const rowIndex =
-          row.charCodeAt(
-            0
-          ) -
-          64;
-
-
-        const column =
-          Number(
-            seat.columnNumber
-          );
-
-
-        return (
-          rowIndex >
-            rows ||
-          column >
-            columns
-        );
-      }
-    );
-
-
-  if (
-    seatOutsideLayout
-  ) {
-
-    setError(
-      `Seat ${seatOutsideLayout.seatNumber} is outside the new ${rows} × ${columns} layout. Move or delete that seat before reducing the layout size.`
-    );
-
-    return;
-  }
-
-
-  // ========================================================
-  // CHECK EXISTING GAPS AGAINST NEW DIMENSIONS
-  // ========================================================
-
-  const gapOutsideLayout =
-    gaps.find(
-      (gap) => {
-
-        const row =
-          normalizeRow(
-            gap.rowLabel
-          );
-
-
-        if (!row) {
-          return false;
-        }
-
-
-        const rowIndex =
-          row.charCodeAt(
-            0
-          ) -
-          64;
-
-
-        const column =
-          Number(
-            gap.columnNumber
-          );
-
-
-        return (
-          rowIndex >
-            rows ||
-          column >
-            columns
-        );
-      }
-    );
-
-
-  if (
-    gapOutsideLayout
-  ) {
-
-    setError(
-      `Gap ${gapOutsideLayout.rowLabel}${gapOutsideLayout.columnNumber} is outside the new ${rows} × ${columns} layout. Remove the gap before reducing the layout size.`
-    );
-
-    return;
-  }
-
-
-  // ========================================================
-  // DETERMINE WHETHER THIS IS A NEW EMPTY FLOOR
-  // ========================================================
-
-  const floorIsEmpty =
-    seats.length === 0;
-
-
-  let nextSeats;
-
-
-  // ========================================================
-  // NEW FLOOR
-  // ========================================================
+  // APPLY / UPDATE FLOOR LAYOUT CONFIGURATION
+  // ==========================================================
   //
-  // Only when the floor has ZERO seats do we generate
-  // the initial seat matrix automatically.
-  // ========================================================
+  // IMPORTANT:
+  //
+  // Existing floor:
+  // - preserve all current seats exactly as they are
+  // - preserve all current gaps
+  // - update rows / columns
+  // - update entrance
+  // - update reception
+  // - DO NOT automatically create seats in missing positions
+  //
+  // New empty floor:
+  // - create the initial seat grid
+  //
+  // This prevents:
+  // - duplicate seat numbers
+  // - destroyed intentional spacing
+  // - missing positions being automatically converted to seats
+  // ==========================================================
 
-  if (
-    floorIsEmpty
-  ) {
+  const handleApplyLayout = async () => {
+    const rows = Number(layoutRows);
 
-    nextSeats = [];
+    const columns = Number(layoutColumns);
 
+    // ========================================================
+    // VALIDATE ROW COUNT
+    // ========================================================
 
-    for (
-      let rowIndex = 0;
-      rowIndex < rows;
-      rowIndex++
-    ) {
+    if (!Number.isInteger(rows) || rows < 1 || rows > 26) {
+      setError("Rows must be between 1 and 26.");
 
-      const rowLabel =
-        getRowLabel(
-          rowIndex
-        );
-
-
-      for (
-        let column = 1;
-        column <= columns;
-        column++
-      ) {
-
-        nextSeats.push({
-          id: null,
-
-          seatNumber:
-            `${rowLabel}${column}`,
-
-          rowLabel,
-
-          columnNumber:
-            column,
-
-          seatType:
-            layoutSeatType,
-
-          status:
-            layoutSeatStatus,
-        });
-      }
+      return;
     }
 
-  } else {
+    // ========================================================
+    // VALIDATE COLUMN COUNT
+    // ========================================================
 
-    // ======================================================
-    // EXISTING FLOOR
-    // ======================================================
-    //
-    // Preserve actual seat identities and positions.
-    //
-    // DO NOT fill:
-    //
-    // B7
-    // F6
-    // F7
-    // etc.
-    //
-    // Those positions remain unconfigured until the owner
-    // explicitly chooses Add Seat or Mark as Gap.
-    // ======================================================
+    if (!Number.isInteger(columns) || columns < 1) {
+      setError("Columns per row must be greater than zero.");
 
-    nextSeats =
-      seats.map(
-        (seat) => ({
-          ...seat,
-        })
+      return;
+    }
+
+    // ========================================================
+    // CHECK EXISTING SEATS AGAINST NEW DIMENSIONS
+    // ========================================================
+
+    const seatOutsideLayout = seats.find((seat) => {
+      const row = normalizeRow(seat.rowLabel);
+
+      if (!row) {
+        return false;
+      }
+
+      const rowIndex = row.charCodeAt(0) - 64;
+
+      const column = Number(seat.columnNumber);
+
+      return rowIndex > rows || column > columns;
+    });
+
+    if (seatOutsideLayout) {
+      setError(
+        `Seat ${seatOutsideLayout.seatNumber} is outside the new ${rows} × ${columns} layout. Move or delete that seat before reducing the layout size.`,
       );
-  }
 
+      return;
+    }
 
-  // ========================================================
-  // DEFENSIVE DUPLICATE VALIDATION
-  // ========================================================
+    // ========================================================
+    // CHECK EXISTING GAPS AGAINST NEW DIMENSIONS
+    // ========================================================
 
-  const seatNumbers =
-    new Set();
+    const gapOutsideLayout = gaps.find((gap) => {
+      const row = normalizeRow(gap.rowLabel);
 
+      if (!row) {
+        return false;
+      }
 
-  const seatPositions =
-    new Set();
+      const rowIndex = row.charCodeAt(0) - 64;
 
+      const column = Number(gap.columnNumber);
 
-  for (
-    const seat of
-    nextSeats
-  ) {
+      return rowIndex > rows || column > columns;
+    });
 
-    const normalizedSeatNumber =
-      String(
-        seat.seatNumber ||
-        ""
-      )
+    if (gapOutsideLayout) {
+      setError(
+        `Gap ${gapOutsideLayout.rowLabel}${gapOutsideLayout.columnNumber} is outside the new ${rows} × ${columns} layout. Remove the gap before reducing the layout size.`,
+      );
+
+      return;
+    }
+
+    // ========================================================
+    // DETERMINE WHETHER THIS IS A NEW EMPTY FLOOR
+    // ========================================================
+
+    const floorIsEmpty = seats.length === 0;
+
+    let nextSeats;
+
+    // ========================================================
+    // NEW FLOOR
+    // ========================================================
+    //
+    // Only when the floor has ZERO seats do we generate
+    // the initial seat matrix automatically.
+    // ========================================================
+
+    if (floorIsEmpty) {
+      nextSeats = [];
+
+      for (let rowIndex = 0; rowIndex < rows; rowIndex++) {
+        const rowLabel = getRowLabel(rowIndex);
+
+        for (let column = 1; column <= columns; column++) {
+          nextSeats.push({
+            id: null,
+
+            seatNumber: `${rowLabel}${column}`,
+
+            rowLabel,
+
+            columnNumber: column,
+
+            seatType: layoutSeatType,
+
+            status: layoutSeatStatus,
+          });
+        }
+      }
+    } else {
+      // ======================================================
+      // EXISTING FLOOR
+      // ======================================================
+      //
+      // Preserve actual seat identities and positions.
+      //
+      // DO NOT fill:
+      //
+      // B7
+      // F6
+      // F7
+      // etc.
+      //
+      // Those positions remain unconfigured until the owner
+      // explicitly chooses Add Seat or Add Space.
+      // ======================================================
+
+      nextSeats = seats.map((seat) => ({
+        ...seat,
+      }));
+    }
+
+    // ========================================================
+    // DEFENSIVE DUPLICATE VALIDATION
+    // ========================================================
+
+    const seatNumbers = new Set();
+
+    const seatPositions = new Set();
+
+    for (const seat of nextSeats) {
+      const normalizedSeatNumber = String(seat.seatNumber || "")
         .trim()
         .toUpperCase();
 
+      const position = positionKey(seat.rowLabel, seat.columnNumber);
 
-    const position =
-      positionKey(
-        seat.rowLabel,
-        seat.columnNumber
-      );
+      if (!normalizedSeatNumber) {
+        setError("Every seat must have a seat number.");
 
+        return;
+      }
 
-    if (
-      !normalizedSeatNumber
-    ) {
+      if (seatNumbers.has(normalizedSeatNumber)) {
+        setError(
+          `Duplicate seat number detected before saving: ${normalizedSeatNumber}`,
+        );
 
-      setError(
-        "Every seat must have a seat number."
-      );
+        return;
+      }
 
-      return;
+      if (seatPositions.has(position)) {
+        setError(`Duplicate seat position detected before saving: ${position}`);
+
+        return;
+      }
+
+      seatNumbers.add(normalizedSeatNumber);
+
+      seatPositions.add(position);
     }
 
+    // ========================================================
+    // ENSURE A GAP DOES NOT OVERLAP A SEAT
+    // ========================================================
 
-    if (
-      seatNumbers.has(
-        normalizedSeatNumber
-      )
-    ) {
+    for (const gap of gaps) {
+      const key = positionKey(gap.rowLabel, gap.columnNumber);
 
-      setError(
-        `Duplicate seat number detected before saving: ${normalizedSeatNumber}`
-      );
+      if (seatPositions.has(key)) {
+        setError(
+          `Position ${gap.rowLabel}${gap.columnNumber} cannot be both a seat and a gap.`,
+        );
 
-      return;
+        return;
+      }
     }
 
+    // ========================================================
+    // SAVE
+    // ========================================================
 
-    if (
-      seatPositions.has(
-        position
-      )
-    ) {
+    try {
+      setSaving(true);
 
-      setError(
-        `Duplicate seat position detected before saving: ${position}`
+      setError("");
+
+      setSuccess("");
+
+      await saveCompleteLayout({
+        nextSeats,
+
+        nextGaps: gaps,
+
+        nextRowCount: rows,
+
+        nextColumnCount: columns,
+
+        nextEntrance: layoutEntrance,
+
+        nextReception: layoutReception,
+      });
+
+      setLayoutDialogOpen(false);
+
+      setSuccess(
+        floorIsEmpty
+          ? `${nextSeats.length} seats and floor layout created successfully.`
+          : "Floor layout configuration updated successfully.",
       );
 
-      return;
+      await loadFloorLayout();
+    } catch (err) {
+      console.error("Failed to save layout:", err);
+
+      setError(getErrorMessage(err, "Failed to save floor layout."));
+    } finally {
+      setSaving(false);
     }
-
-
-    seatNumbers.add(
-      normalizedSeatNumber
-    );
-
-
-    seatPositions.add(
-      position
-    );
-  }
-
-
-  // ========================================================
-  // ENSURE A GAP DOES NOT OVERLAP A SEAT
-  // ========================================================
-
-  for (
-    const gap of
-    gaps
-  ) {
-
-    const key =
-      positionKey(
-        gap.rowLabel,
-        gap.columnNumber
-      );
-
-
-    if (
-      seatPositions.has(
-        key
-      )
-    ) {
-
-      setError(
-        `Position ${gap.rowLabel}${gap.columnNumber} cannot be both a seat and a gap.`
-      );
-
-      return;
-    }
-  }
-
-
-  // ========================================================
-  // SAVE
-  // ========================================================
-
-  try {
-
-    setSaving(
-      true
-    );
-
-    setError("");
-
-    setSuccess("");
-
-
-    await saveCompleteLayout({
-      nextSeats,
-
-      nextGaps:
-        gaps,
-
-      nextRowCount:
-        rows,
-
-      nextColumnCount:
-        columns,
-
-      nextEntrance:
-        layoutEntrance,
-
-      nextReception:
-        layoutReception,
-    });
-
-
-    setLayoutDialogOpen(
-      false
-    );
-
-
-    setSuccess(
-      floorIsEmpty
-        ? `${nextSeats.length} seats and floor layout created successfully.`
-        : "Floor layout configuration updated successfully."
-    );
-
-
-    await loadFloorLayout();
-
-  } catch (
-    err
-  ) {
-
-    console.error(
-      "Failed to save layout:",
-      err
-    );
-
-
-    setError(
-      getErrorMessage(
-        err,
-        "Failed to save floor layout."
-      )
-    );
-
-  } finally {
-
-    setSaving(
-      false
-    );
-  }
-};
+  };
 
   // ==========================================================
   // OPEN POSITION ACTION
@@ -1603,13 +1523,13 @@ const handleApplyLayout = async () => {
 
       setSelectedPosition(null);
 
-      setSuccess("Gap / aisle added successfully.");
+      setSuccess("Blank space added successfully.");
 
       await loadFloorLayout();
     } catch (err) {
-      console.error("Failed to mark gap:", err);
+      console.error("Failed to add blank space:", err);
 
-      setError(getErrorMessage(err, "Failed to add gap."));
+      setError(getErrorMessage(err, "Failed to add blank space."));
     } finally {
       setSaving(false);
     }
@@ -1620,11 +1540,49 @@ const handleApplyLayout = async () => {
   // ==========================================================
 
   const handleRemoveGap = async (gap) => {
-    const nextGaps = gaps.filter(
-      (item) =>
-        positionKey(item.rowLabel, item.columnNumber) !==
-        positionKey(gap.rowLabel, gap.columnNumber),
-    );
+    const row = normalizeRow(gap.rowLabel);
+    const column = Number(gap.columnNumber);
+
+    const nextGaps = gaps
+      .filter(
+        (item) =>
+          positionKey(item.rowLabel, item.columnNumber) !==
+          positionKey(row, column),
+      )
+      .map((item) => {
+        if (
+          normalizeRow(item.rowLabel) === row &&
+          Number(item.columnNumber) > column
+        ) {
+          return {
+            ...item,
+            columnNumber: Number(item.columnNumber) - 1,
+          };
+        }
+
+        return { ...item };
+      });
+
+    const nextSeats = seats.map((seat) => {
+      if (
+        normalizeRow(seat.rowLabel) === row &&
+        Number(seat.columnNumber) > column
+      ) {
+        return {
+          ...seat,
+          columnNumber: Number(seat.columnNumber) - 1,
+        };
+      }
+
+      return { ...seat };
+    });
+
+    const usedColumns = [...nextSeats, ...nextGaps]
+      .map((item) => Number(item.columnNumber))
+      .filter((value) => Number.isInteger(value) && value > 0);
+
+    const nextColumnCount =
+      usedColumns.length > 0 ? Math.max(...usedColumns) : 1;
 
     try {
       setSaving(true);
@@ -1632,49 +1590,328 @@ const handleApplyLayout = async () => {
       setSuccess("");
 
       await saveCompleteLayout({
+        nextSeats,
         nextGaps,
+        nextColumnCount,
       });
 
-      setSuccess("Gap removed successfully.");
+      setSuccess(
+        `Blank space removed from ${row}${column}. Seats to the right were shifted left automatically.`,
+      );
 
       await loadFloorLayout();
     } catch (err) {
-      console.error("Failed to remove gap:", err);
+      console.error("Failed to remove blank space:", err);
 
-      setError(getErrorMessage(err, "Failed to remove gap."));
+      setError(getErrorMessage(err, "Failed to remove blank space."));
     } finally {
       setSaving(false);
     }
   };
 
   // ==========================================================
-// OPEN ADD SEAT
-// ==========================================================
+  // OPEN ADD BLANK SPACE ANYWHERE
+  // ==========================================================
 
-const openAddSeatForPosition = () => {
-  if (!selectedPosition) {
-    return;
-  }
+  const handleOpenAddSpaceAnywhere = () => {
+    if (!floorId) {
+      setError("Please select a floor before adding blank space.");
+      return;
+    }
 
-  const { rowLabel, columnNumber } = selectedPosition;
+    let suggestedRow = "A";
+    let suggestedColumn = 1;
+    let foundOpenPosition = false;
 
-  // Physical location
-  setAddSeatRow(rowLabel);
+    for (let rowIndex = 0; rowIndex < Math.max(rowCount, 1); rowIndex++) {
+      const rowLabel = getRowLabel(rowIndex);
 
-  setAddSeatColumn(String(columnNumber));
+      for (
+        let columnNumber = 1;
+        columnNumber <= Math.max(columnCount, 1);
+        columnNumber++
+      ) {
+        const key = positionKey(rowLabel, columnNumber);
 
-  // Seat number is independent from row / column.
-  // Owner will enter the actual seat number manually.
-  setAddSeatNumber("");
+        if (!seatByPosition.has(key) && !gapKeys.has(key)) {
+          suggestedRow = rowLabel;
+          suggestedColumn = columnNumber;
+          foundOpenPosition = true;
+          break;
+        }
+      }
 
-  setAddSeatType("NORMAL");
+      if (foundOpenPosition) {
+        break;
+      }
+    }
 
-  setAddSeatStatus("AVAILABLE");
+    if (!foundOpenPosition) {
+      suggestedRow = "A";
+      suggestedColumn = Math.max(columnCount, 0) + 1;
+    }
 
-  setPositionDialogOpen(false);
+    setAddSpaceRow(suggestedRow);
+    setAddSpaceColumn(String(suggestedColumn));
+    setAddSpaceDialogOpen(true);
+  };
 
-  setAddSeatDialogOpen(true);
-};
+  const buildLayoutWithInsertedSpace = (row, column) => {
+    const normalizedRow = normalizeRow(row);
+    const normalizedColumn = Number(column);
+
+    const existingGap = gaps.some(
+      (gap) =>
+        positionKey(gap.rowLabel, gap.columnNumber) ===
+        positionKey(normalizedRow, normalizedColumn),
+    );
+
+    if (existingGap) {
+      throw new Error(
+        `Position ${normalizedRow}${normalizedColumn} is already a blank space.`,
+      );
+    }
+
+    const positionIsOccupied =
+      seats.some(
+        (seat) =>
+          positionKey(seat.rowLabel, seat.columnNumber) ===
+          positionKey(normalizedRow, normalizedColumn),
+      ) ||
+      gaps.some(
+        (gap) =>
+          positionKey(gap.rowLabel, gap.columnNumber) ===
+          positionKey(normalizedRow, normalizedColumn),
+      );
+
+    // If the requested column is already occupied, insert a new physical
+    // position and shift everything at that column (and to its right) by 1.
+    // This lets the owner insert space BETWEEN two existing seats.
+    const shouldShift = positionIsOccupied;
+
+    const nextSeats = seats.map((seat) => {
+      if (
+        normalizeRow(seat.rowLabel) === normalizedRow &&
+        shouldShift &&
+        Number(seat.columnNumber) >= normalizedColumn
+      ) {
+        return {
+          ...seat,
+          columnNumber: Number(seat.columnNumber) + 1,
+        };
+      }
+
+      return { ...seat };
+    });
+
+    const nextGaps = gaps.map((gap) => {
+      if (
+        normalizeRow(gap.rowLabel) === normalizedRow &&
+        shouldShift &&
+        Number(gap.columnNumber) >= normalizedColumn
+      ) {
+        return {
+          ...gap,
+          columnNumber: Number(gap.columnNumber) + 1,
+        };
+      }
+
+      return { ...gap };
+    });
+
+    nextGaps.push({
+      rowLabel: normalizedRow,
+      columnNumber: normalizedColumn,
+    });
+
+    const required = calculateRequiredDimensions({
+      seats: nextSeats,
+      gaps: nextGaps,
+      rowCount: Math.max(rowCount, getRowIndexFromLabel(normalizedRow)),
+      columnCount: shouldShift
+        ? Math.max(columnCount + 1, normalizedColumn)
+        : Math.max(columnCount, normalizedColumn),
+    });
+
+    return {
+      nextSeats,
+      nextGaps,
+      nextRowCount: required.rowCount,
+      nextColumnCount: required.columnCount,
+      shifted: shouldShift,
+    };
+  };
+
+  const insertBlankSpaceAt = async (row, column, options = {}) => {
+    const normalizedRow = normalizeRow(row);
+    const normalizedColumn = Number(column);
+
+    if (!/^[A-Z]$/.test(normalizedRow)) {
+      throw new Error("Row must be a single letter between A and Z.");
+    }
+
+    if (!Number.isInteger(normalizedColumn) || normalizedColumn < 1) {
+      throw new Error("Valid column is required.");
+    }
+
+    const { nextSeats, nextGaps, nextRowCount, nextColumnCount, shifted } =
+      buildLayoutWithInsertedSpace(normalizedRow, normalizedColumn);
+
+    await saveCompleteLayout({
+      nextSeats,
+      nextGaps,
+      nextRowCount,
+      nextColumnCount,
+    });
+
+    if (options.closeSeatDialog) {
+      setSeatDialogOpen(false);
+      setSelectedSeat(null);
+    }
+
+    if (options.closeSpaceDialog) {
+      setAddSpaceDialogOpen(false);
+    }
+
+    setSuccess(
+      shifted
+        ? `Blank space inserted at ${normalizedRow}${normalizedColumn}. Seats to the right were shifted automatically.`
+        : `Blank space added at ${normalizedRow}${normalizedColumn}.`,
+    );
+
+    await loadFloorLayout();
+  };
+
+  const handleAddSpace = async () => {
+    const row = normalizeRow(addSpaceRow);
+    const column = Number(addSpaceColumn);
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      await insertBlankSpaceAt(row, column, {
+        closeSpaceDialog: true,
+      });
+    } catch (err) {
+      console.error("Failed to add blank space:", err);
+      setError(getErrorMessage(err, "Failed to add blank space."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleInsertSpaceRelativeToSeat = async (side) => {
+    if (!selectedSeat) {
+      return;
+    }
+
+    const row = normalizeRow(selectedSeat.rowLabel);
+    const currentColumn = Number(selectedSeat.columnNumber);
+    const insertColumn = side === "after" ? currentColumn + 1 : currentColumn;
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      await insertBlankSpaceAt(row, insertColumn, {
+        closeSeatDialog: true,
+      });
+    } catch (err) {
+      console.error("Failed to insert blank space near seat:", err);
+      setError(getErrorMessage(err, "Failed to insert blank space."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ==========================================================
+  // OPEN ADD SEAT
+  // ==========================================================
+
+  /**
+   * Opens Add Seat independently from the visual grid.
+   *
+   * The owner can choose any row A-Z and any positive column.
+   * If the selected position is outside the current configured
+   * dimensions, handleAddSeat() automatically expands the
+   * persisted rowCount / columnCount.
+   */
+  const handleOpenAddSeatAnywhere = () => {
+    if (!floorId) {
+      setError("Please select a floor before adding a seat.");
+      return;
+    }
+
+    let suggestedRow = "A";
+    let suggestedColumn = 1;
+    let foundOpenPosition = false;
+
+    for (let rowIndex = 0; rowIndex < Math.max(rowCount, 1); rowIndex++) {
+      const rowLabel = getRowLabel(rowIndex);
+
+      for (
+        let columnNumber = 1;
+        columnNumber <= Math.max(columnCount, 1);
+        columnNumber++
+      ) {
+        const key = positionKey(rowLabel, columnNumber);
+
+        if (!seatByPosition.has(key) && !gapKeys.has(key)) {
+          suggestedRow = rowLabel;
+          suggestedColumn = columnNumber;
+          foundOpenPosition = true;
+          break;
+        }
+      }
+
+      if (foundOpenPosition) {
+        break;
+      }
+    }
+
+    if (!foundOpenPosition) {
+      suggestedRow = "A";
+      suggestedColumn = Math.max(columnCount, 0) + 1;
+    }
+
+    setSelectedPosition(null);
+
+    setAddSeatRow(suggestedRow);
+    setAddSeatColumn(String(suggestedColumn));
+    setAddSeatNumber(`${suggestedRow}${suggestedColumn}`);
+    setAddSeatType("NORMAL");
+    setAddSeatStatus("AVAILABLE");
+
+    setAddSeatDialogOpen(true);
+  };
+
+  const openAddSeatForPosition = () => {
+    if (!selectedPosition) {
+      return;
+    }
+
+    const { rowLabel, columnNumber } = selectedPosition;
+
+    // Physical location
+    setAddSeatRow(rowLabel);
+
+    setAddSeatColumn(String(columnNumber));
+
+    // Seat number is independent from row / column.
+    // Owner will enter the actual seat number manually.
+    setAddSeatNumber("");
+
+    setAddSeatType("NORMAL");
+
+    setAddSeatStatus("AVAILABLE");
+
+    setPositionDialogOpen(false);
+
+    setAddSeatDialogOpen(true);
+  };
 
   // ==========================================================
   // ADD SEAT
@@ -1691,6 +1928,12 @@ const openAddSeatForPosition = () => {
       return;
     }
 
+    if (!/^[A-Z]$/.test(row)) {
+      setError("Row must be a single letter between A and Z.");
+
+      return;
+    }
+
     if (!Number.isInteger(column) || column < 1) {
       setError("Valid column is required.");
 
@@ -1699,6 +1942,23 @@ const openAddSeatForPosition = () => {
 
     if (!addSeatNumber.trim()) {
       setError("Seat number is required.");
+
+      return;
+    }
+
+    const normalizedSeatNumber = addSeatNumber.trim().toUpperCase();
+
+    const duplicateSeatNumber = seats.find(
+      (seat) =>
+        String(seat.seatNumber || "")
+          .trim()
+          .toUpperCase() === normalizedSeatNumber,
+    );
+
+    if (duplicateSeatNumber) {
+      setError(
+        `Seat number ${normalizedSeatNumber} already exists on this floor.`,
+      );
 
       return;
     }
@@ -1721,7 +1981,7 @@ const openAddSeatForPosition = () => {
       {
         id: null,
 
-        seatNumber: addSeatNumber.trim().toUpperCase(),
+        seatNumber: normalizedSeatNumber,
 
         rowLabel: row,
 
@@ -1733,7 +1993,7 @@ const openAddSeatForPosition = () => {
       },
     ];
 
-    const nextRowCount = Math.max(rowCount, row.charCodeAt(0) - 64);
+    const nextRowCount = Math.max(rowCount, getRowIndexFromLabel(row));
 
     const nextColumnCount = Math.max(columnCount, column);
 
@@ -1757,7 +2017,7 @@ const openAddSeatForPosition = () => {
       setSelectedPosition(null);
 
       setSuccess(
-        `Seat ${addSeatNumber.trim().toUpperCase()} added successfully.`,
+        `Seat ${normalizedSeatNumber} added successfully at ${row}${column}.`,
       );
 
       await loadFloorLayout();
@@ -1783,13 +2043,22 @@ const openAddSeatForPosition = () => {
       return;
     }
 
-    if (rowCount >= 26) {
+    const actualDimensions = calculateRequiredDimensions({
+      seats,
+      gaps,
+      rowCount,
+      columnCount,
+    });
+
+    const currentActualRowCount = actualDimensions.rowCount;
+
+    if (currentActualRowCount >= 26) {
       setError("Maximum row Z has already been reached.");
 
       return;
     }
 
-    const nextRowCount = rowCount + 1;
+    const nextRowCount = currentActualRowCount + 1;
 
     const rowLabel = getRowLabel(nextRowCount - 1);
 
@@ -1845,6 +2114,12 @@ const openAddSeatForPosition = () => {
   const handleSeatClick = (seat) => {
     setSelectedSeat(seat);
 
+    setEditSeatNumber(String(seat.seatNumber || ""));
+
+    setEditSeatRow(normalizeRow(seat.rowLabel));
+
+    setEditSeatColumn(String(seat.columnNumber || ""));
+
     setEditSeatType(seat.seatType || "NORMAL");
 
     setEditSeatStatus(seat.status || "AVAILABLE");
@@ -1855,32 +2130,108 @@ const openAddSeatForPosition = () => {
   const handleUpdateSeat = async () => {
     if (!selectedSeat?.id) {
       setError("Seat ID not found.");
-
       return;
     }
+
+    const normalizedSeatNumber = String(editSeatNumber || "")
+      .trim()
+      .toUpperCase();
+
+    const normalizedRow = normalizeRow(editSeatRow);
+    const normalizedColumn = Number(editSeatColumn);
+
+    if (!normalizedSeatNumber) {
+      setError("Seat name / number is required.");
+      return;
+    }
+
+    if (!/^[A-Z]$/.test(normalizedRow)) {
+      setError("Row must be a single letter between A and Z.");
+      return;
+    }
+
+    if (!Number.isInteger(normalizedColumn) || normalizedColumn < 1) {
+      setError("Position / column must be a positive whole number.");
+      return;
+    }
+
+    const duplicateSeatName = seats.find(
+      (seat) =>
+        Number(seat.id) !== Number(selectedSeat.id) &&
+        String(seat.seatNumber || "")
+          .trim()
+          .toUpperCase() === normalizedSeatNumber,
+    );
+
+    if (duplicateSeatName) {
+      setError(
+        `Seat name ${normalizedSeatNumber} already exists on this floor.`,
+      );
+      return;
+    }
+
+    const occupiedByAnotherSeat = seats.find(
+      (seat) =>
+        Number(seat.id) !== Number(selectedSeat.id) &&
+        positionKey(seat.rowLabel, seat.columnNumber) ===
+          positionKey(normalizedRow, normalizedColumn),
+    );
+
+    if (occupiedByAnotherSeat) {
+      setError(
+        `Row ${normalizedRow}, position ${normalizedColumn} already contains seat ${occupiedByAnotherSeat.seatNumber}.`,
+      );
+      return;
+    }
+
+    // Moving a seat onto an intentionally blank position converts that
+    // position back into a seat automatically.
+    const nextGaps = gaps.filter(
+      (gap) =>
+        positionKey(gap.rowLabel, gap.columnNumber) !==
+        positionKey(normalizedRow, normalizedColumn),
+    );
+
+    const nextSeats = seats.map((seat) => {
+      if (Number(seat.id) !== Number(selectedSeat.id)) {
+        return { ...seat };
+      }
+
+      return {
+        ...seat,
+        seatNumber: normalizedSeatNumber,
+        rowLabel: normalizedRow,
+        columnNumber: normalizedColumn,
+        seatType: editSeatType,
+        status: editSeatStatus,
+      };
+    });
+
+    const nextRowCount = Math.max(
+      rowCount,
+      getRowIndexFromLabel(normalizedRow),
+    );
+
+    const nextColumnCount = Math.max(columnCount, normalizedColumn);
 
     try {
       setSaving(true);
       setError("");
       setSuccess("");
 
-      if (editSeatType !== selectedSeat.seatType) {
-        await seatApi.updateSeatType(libraryId, selectedSeat.id, editSeatType);
-      }
-
-      if (editSeatStatus !== selectedSeat.status) {
-        await seatApi.updateSeatStatus(
-          libraryId,
-          selectedSeat.id,
-          editSeatStatus,
-        );
-      }
+      await saveCompleteLayout({
+        nextSeats,
+        nextGaps,
+        nextRowCount,
+        nextColumnCount,
+      });
 
       setSeatDialogOpen(false);
-
       setSelectedSeat(null);
 
-      setSuccess("Seat updated successfully.");
+      setSuccess(
+        `Seat ${normalizedSeatNumber} updated successfully at row ${normalizedRow}, position ${normalizedColumn}.`,
+      );
 
       await loadFloorLayout();
     } catch (err) {
@@ -1935,6 +2286,254 @@ const openAddSeatForPosition = () => {
       setSaving(false);
     }
   };
+
+  // ==========================================================
+  // DELETE FLOOR
+  // ==========================================================
+
+  const handleOpenDeleteFloor = (floor) => {
+    if (!floor) {
+      return;
+    }
+
+    setFloorPendingDelete(floor);
+    setDeleteFloorDialogOpen(true);
+  };
+
+  const handleDeleteFloor = async () => {
+    if (!libraryId || !floorPendingDelete?.id) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      await seatApi.deleteFloor(libraryId, floorPendingDelete.id);
+
+      const deletedFloorId = String(floorPendingDelete.id);
+
+      setDeleteFloorDialogOpen(false);
+      setFloorPendingDelete(null);
+
+      if (String(floorId) === deletedFloorId) {
+        setFloorId("");
+        setSeats([]);
+        setGaps([]);
+        setRowCount(0);
+        setColumnCount(0);
+      }
+
+      await loadFloors();
+
+      setSuccess("Floor deleted successfully.");
+    } catch (err) {
+      console.error("Failed to delete floor:", err);
+
+      setError(
+        getErrorMessage(
+          err,
+          "Unable to delete this floor. Remove active bookings or protected seat allocations first.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ==========================================================
+  // BULK SEAT SELECTION
+  // ==========================================================
+
+  const handleSeatPrimaryAction = (seat) => {
+    if (!seat) {
+      return;
+    }
+
+    if (!bulkMode) {
+      handleSeatClick(seat);
+      return;
+    }
+
+    setSelectedSeatIds((previous) => {
+      const seatId = Number(seat.id);
+
+      if (!Number.isFinite(seatId)) {
+        return previous;
+      }
+
+      return previous.includes(seatId)
+        ? previous.filter((id) => id !== seatId)
+        : [...previous, seatId];
+    });
+  };
+
+  const handleSelectAllEditableSeats = () => {
+    const editableSeatIds = seats
+      .filter((seat) => seat.status !== "BOOKED")
+      .map((seat) => Number(seat.id))
+      .filter(Number.isFinite);
+
+    setSelectedSeatIds(editableSeatIds);
+  };
+
+  const handleClearSeatSelection = () => {
+    setSelectedSeatIds([]);
+  };
+
+  const handleBulkUpdateType = async () => {
+    if (!libraryId || selectedSeatIds.length === 0) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      await seatApi.bulkUpdateSeatType(
+        libraryId,
+        selectedSeatIds,
+        bulkSeatType,
+      );
+
+      setSuccess(
+        `${selectedSeatIds.length} seat${
+          selectedSeatIds.length === 1 ? "" : "s"
+        } updated to ${SEAT_TYPE_LABELS[bulkSeatType] || bulkSeatType}.`,
+      );
+
+      setSelectedSeatIds([]);
+      await loadFloorLayout();
+    } catch (err) {
+      console.error("Bulk seat type update failed:", err);
+
+      setError(getErrorMessage(err, "Failed to update selected seat types."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleBulkUpdateStatus = async () => {
+    if (!libraryId || selectedSeatIds.length === 0) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      await seatApi.bulkUpdateSeatStatus(
+        libraryId,
+        selectedSeatIds,
+        bulkSeatStatus,
+      );
+
+      setSuccess(
+        `${selectedSeatIds.length} seat${
+          selectedSeatIds.length === 1 ? "" : "s"
+        } updated to ${SEAT_STATUS_LABELS[bulkSeatStatus] || bulkSeatStatus}.`,
+      );
+
+      setSelectedSeatIds([]);
+      await loadFloorLayout();
+    } catch (err) {
+      console.error("Bulk seat status update failed:", err);
+
+      setError(
+        getErrorMessage(err, "Failed to update selected seat statuses."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ==========================================================
+  // ADD SEAT POSITION PREVIEW
+  // ==========================================================
+
+  const addSeatNormalizedRow = normalizeRow(addSeatRow);
+
+  const addSeatNormalizedColumn = Number(addSeatColumn);
+
+  const addSeatPositionKey =
+    addSeatNormalizedRow &&
+    Number.isInteger(addSeatNormalizedColumn) &&
+    addSeatNormalizedColumn > 0
+      ? positionKey(addSeatNormalizedRow, addSeatNormalizedColumn)
+      : null;
+
+  const seatAtAddPosition = addSeatPositionKey
+    ? seatByPosition.get(addSeatPositionKey)
+    : null;
+
+  const gapAtAddPosition = addSeatPositionKey
+    ? gaps.find(
+        (gap) =>
+          positionKey(gap.rowLabel, gap.columnNumber) === addSeatPositionKey,
+      )
+    : null;
+
+  const addSeatRowIndex =
+    addSeatNormalizedRow && /^[A-Z]$/.test(addSeatNormalizedRow)
+      ? addSeatNormalizedRow.charCodeAt(0) - 64
+      : 0;
+
+  const addSeatWouldExpandLayout =
+    addSeatRowIndex > rowCount ||
+    (Number.isInteger(addSeatNormalizedColumn) &&
+      addSeatNormalizedColumn > columnCount);
+
+  const addSeatNextRowCount = Math.max(rowCount, addSeatRowIndex || 0);
+
+  const addSeatNextColumnCount = Math.max(
+    columnCount,
+    Number.isInteger(addSeatNormalizedColumn) ? addSeatNormalizedColumn : 0,
+  );
+
+  // ==========================================================
+  // ADD SPACE POSITION PREVIEW
+  // ==========================================================
+
+  const addSpaceNormalizedRow = normalizeRow(addSpaceRow);
+
+  const addSpaceNormalizedColumn = Number(addSpaceColumn);
+
+  const addSpacePositionKey =
+    addSpaceNormalizedRow &&
+    Number.isInteger(addSpaceNormalizedColumn) &&
+    addSpaceNormalizedColumn > 0
+      ? positionKey(addSpaceNormalizedRow, addSpaceNormalizedColumn)
+      : null;
+
+  const seatAtAddSpacePosition = addSpacePositionKey
+    ? seatByPosition.get(addSpacePositionKey)
+    : null;
+
+  const spaceAlreadyExists = addSpacePositionKey
+    ? gapKeys.has(addSpacePositionKey)
+    : false;
+
+  const addSpaceWillInsertAndShift = Boolean(seatAtAddSpacePosition);
+
+  const addSpaceRowIndex =
+    addSpaceNormalizedRow && /^[A-Z]$/.test(addSpaceNormalizedRow)
+      ? getRowIndexFromLabel(addSpaceNormalizedRow)
+      : 0;
+
+  const addSpaceWouldExpandLayout =
+    addSpaceRowIndex > rowCount ||
+    (Number.isInteger(addSpaceNormalizedColumn) &&
+      addSpaceNormalizedColumn > columnCount);
+
+  const addSpaceNextRowCount = Math.max(rowCount, addSpaceRowIndex || 0);
+
+  const addSpaceNextColumnCount = Math.max(
+    columnCount,
+    Number.isInteger(addSpaceNormalizedColumn) ? addSpaceNormalizedColumn : 0,
+  );
 
   // ==========================================================
   // POSITION MARKERS
@@ -2057,85 +2656,168 @@ const openAddSeatForPosition = () => {
   return (
     <Box
       sx={{
-        p: {
-          xs: 2,
-          md: 3,
-        },
+        width: "100%",
+        maxWidth: 1500,
+        mx: "auto",
+        px: { xs: 1.5, md: 2.5 },
+        pb: 5,
       }}
     >
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{ mb: 1.5, fontWeight: 500 }}
+      >
+        Dashboard
+        {"  ›  "}
+        Library Setup
+        {"  ›  "}
+        <Box component="span" sx={{ color: "primary.main", fontWeight: 700 }}>
+          Seat Mapping
+        </Box>
+      </Typography>
 
-      <Stack
-        direction={{
-          xs: "column",
-          md: "row",
-        }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "stretch",
-          md: "center",
-        }}
-        spacing={2}
+      <Paper
+        elevation={0}
         sx={{
           mb: 3,
+          p: { xs: 2.5, md: 3.5 },
+          position: "relative",
+          overflow: "hidden",
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+          background: `linear-gradient(
+            135deg,
+            ${alpha(theme.palette.primary.main, 0.1)} 0%,
+            ${theme.palette.background.paper} 52%,
+            ${alpha(theme.palette.info.main, 0.055)} 100%
+          )`,
+          boxShadow: "0 18px 50px rgba(15,23,42,0.055)",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            width: 280,
+            height: 280,
+            borderRadius: "50%",
+            right: -110,
+            top: -170,
+            bgcolor: alpha(theme.palette.primary.main, 0.065),
+          },
         }}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={700}>
-            Seat Mapping
-          </Typography>
-
-          <Typography
-            color="text.secondary"
-            sx={{
-              mt: 0.5,
-            }}
-          >
-            Design the physical layout of your library, including seats, aisles,
-            entrance and reception.
-          </Typography>
-        </Box>
-
         <Stack
-          direction={{
-            xs: "column",
-            sm: "row",
-          }}
-          spacing={1}
+          direction={{ xs: "column", lg: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "stretch", lg: "center" }}
+          spacing={3}
+          sx={{ position: "relative", zIndex: 1 }}
         >
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={loadFloorLayout}
-            disabled={!floorId || loadingLayout}
-          >
-            Refresh
-          </Button>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box
+              sx={{
+                width: 64,
+                height: 64,
+                borderRadius: 3.2,
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                boxShadow: `0 12px 28px ${alpha(
+                  theme.palette.primary.main,
+                  0.28,
+                )}`,
+              }}
+            >
+              <EventSeat sx={{ fontSize: 33 }} />
+            </Box>
 
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            disabled={!libraryId}
-            onClick={() => setFloorDialogOpen(true)}
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                variant="h4"
+                fontWeight={900}
+                sx={{ letterSpacing: "-0.025em", lineHeight: 1.12 }}
+              >
+                Seat Mapping
+              </Typography>
+
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                sx={{ mt: 0.7, maxWidth: 760 }}
+              >
+                Design and manage your physical seating layout, aisles,
+                entrance, reception, seat types and availability.
+              </Typography>
+
+              {currentLibrary?.name && (
+                <Chip
+                  size="small"
+                  label={currentLibrary.name}
+                  variant="outlined"
+                  sx={{
+                    mt: 1.3,
+                    fontWeight: 750,
+                    bgcolor: alpha(theme.palette.background.paper, 0.7),
+                  }}
+                />
+              )}
+            </Box>
+          </Stack>
+
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1.2}
+            sx={{ flexShrink: 0 }}
           >
-            Add Floor
-          </Button>
+            <Button
+              variant="outlined"
+              startIcon={
+                loadingLayout ? <CircularProgress size={17} /> : <Refresh />
+              }
+              onClick={loadFloorLayout}
+              disabled={!floorId || loadingLayout}
+              sx={{
+                minHeight: 46,
+                px: 2.2,
+                textTransform: "none",
+                borderRadius: 2.4,
+                fontWeight: 750,
+                bgcolor: "background.paper",
+              }}
+            >
+              Refresh
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              disabled={!libraryId}
+              onClick={() => setFloorDialogOpen(true)}
+              sx={{
+                minHeight: 46,
+                px: 2.4,
+                textTransform: "none",
+                borderRadius: 2.4,
+                fontWeight: 850,
+                boxShadow: `0 8px 22px ${alpha(
+                  theme.palette.primary.main,
+                  0.22,
+                )}`,
+              }}
+            >
+              Add Floor
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
-
-      {/* ======================================================
-          ALERTS
-      ====================================================== */}
+      </Paper>
 
       {error && (
         <Alert
           severity="error"
           onClose={() => setError("")}
-          sx={{
-            mb: 2,
-          }}
+          sx={{ mb: 2.5, borderRadius: 2.5 }}
         >
           {error}
         </Alert>
@@ -2145,772 +2827,1165 @@ const openAddSeatForPosition = () => {
         <Alert
           severity="success"
           onClose={() => setSuccess("")}
-          sx={{
-            mb: 2,
-          }}
+          sx={{ mb: 2.5, borderRadius: 2.5 }}
         >
           {success}
         </Alert>
       )}
 
-      {/* ======================================================
-          LIBRARY / FLOOR / ACTION BAR
-      ====================================================== */}
-
       <Paper
-        variant="outlined"
+        elevation={0}
         sx={{
-          p: 2,
+          p: { xs: 2, md: 2.4 },
           mb: 3,
-          borderRadius: 3,
+          borderRadius: 3.5,
+          border: "1px solid",
+          borderColor: "divider",
+          boxShadow: "0 8px 26px rgba(15,23,42,0.04)",
         }}
       >
-        <Grid container spacing={2} alignItems="center">
-          <Grid
-            size={{
-              xs: 12,
-              md: 4,
-            }}
-          >
-            <FormControl
-              fullWidth
-              size="small"
-              disabled={loadingLibraries || libraries.length === 0}
-            >
-              <InputLabel>Library</InputLabel>
-
-              <Select
-                value={libraryId}
-                label="Library"
-                onChange={(event) => {
-                  const id = event.target.value;
-
-                  setLibraryId(id);
-
-                  storeOwnerLibraryId(id);
-
-                  setFloorId("");
-                  setSeats([]);
-                  setGaps([]);
-
-                  window.dispatchEvent(
-                    new CustomEvent("owner-library-changed", {
-                      detail: {
-                        libraryId: Number(id),
-                      },
-                    }),
-                  );
-                }}
+        <Stack
+          direction={{ xs: "column", lg: "row" }}
+          alignItems={{ xs: "stretch", lg: "center" }}
+          justifyContent="space-between"
+          spacing={2}
+        >
+          <Grid container spacing={1.6} sx={{ flex: 1 }}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControl
+                fullWidth
+                size="small"
+                disabled={loadingLibraries || libraries.length === 0}
               >
-                {libraries.map((library) => (
-                  <MenuItem key={library.id} value={String(library.id)}>
-                    {library.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                <InputLabel>Library</InputLabel>
+
+                <Select
+                  value={libraryId}
+                  label="Library"
+                  onChange={(event) => {
+                    const id = event.target.value;
+
+                    setLibraryId(id);
+                    storeOwnerLibraryId(id);
+
+                    setFloorId("");
+                    setSeats([]);
+                    setGaps([]);
+
+                    window.dispatchEvent(
+                      new CustomEvent("owner-library-changed", {
+                        detail: {
+                          libraryId: Number(id),
+                        },
+                      }),
+                    );
+                  }}
+                  sx={{ borderRadius: 2.2 }}
+                >
+                  {libraries.map((library) => (
+                    <MenuItem key={library.id} value={String(library.id)}>
+                      {library.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControl
+                fullWidth
+                size="small"
+                disabled={!libraryId || loadingFloors || floors.length === 0}
+              >
+                <InputLabel>Floor</InputLabel>
+
+                <Select
+                  value={floorId}
+                  label="Floor"
+                  onChange={(event) => {
+                    setFloorId(event.target.value);
+                    setSeats([]);
+                    setGaps([]);
+                  }}
+                  sx={{ borderRadius: 2.2 }}
+                >
+                  {floors.map((floor) => (
+                    <MenuItem key={floor.id} value={String(floor.id)}>
+                      {floor.name || getFloorName(floor.floorNumber)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
           </Grid>
 
-          <Grid
-            size={{
-              xs: 12,
-              md: 4,
-            }}
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            sx={{ flexShrink: 0 }}
           >
-            <FormControl
-              fullWidth
-              size="small"
-              disabled={!libraryId || loadingFloors || floors.length === 0}
-            >
-              <InputLabel>Floor</InputLabel>
-
-              <Select
-                value={floorId}
-                label="Floor"
-                onChange={(event) => {
-                  setFloorId(event.target.value);
-
-                  setSeats([]);
-                  setGaps([]);
-                }}
-              >
-                {floors.map((floor) => (
-                  <MenuItem key={floor.id} value={String(floor.id)}>
-                    {floor.name || getFloorName(floor.floorNumber)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-
-          <Grid
-            size={{
-              xs: 12,
-              md: 4,
-            }}
-          >
-            <Stack
-              direction={{
-                xs: "column",
-                sm: "row",
+            <Button
+              variant="outlined"
+              startIcon={<Settings />}
+              disabled={!floorId}
+              onClick={() => {
+                setLayoutRows(rowCount || DEFAULT_ROWS);
+                setLayoutColumns(columnCount || DEFAULT_COLUMNS);
+                setLayoutEntrance(entrancePosition || "TOP_CENTER");
+                setLayoutReception(receptionPosition || "BOTTOM_CENTER");
+                setLayoutDialogOpen(true);
               }}
-              spacing={1}
-              justifyContent={{
-                md: "flex-end",
+              sx={{
+                minHeight: 42,
+                textTransform: "none",
+                borderRadius: 2.2,
+                fontWeight: 750,
               }}
             >
-              <Button
-                variant="outlined"
-                startIcon={<Settings />}
-                disabled={!floorId}
-                onClick={() => {
-                  setLayoutRows(rowCount || DEFAULT_ROWS);
+              Configure Layout
+            </Button>
 
-                  setLayoutColumns(columnCount || DEFAULT_COLUMNS);
+            <Button
+              variant="contained"
+              startIcon={<EventSeat />}
+              disabled={!floorId || saving}
+              onClick={handleOpenAddSeatAnywhere}
+              sx={{
+                minHeight: 42,
+                textTransform: "none",
+                borderRadius: 2.2,
+                fontWeight: 800,
+                boxShadow: "none",
+              }}
+            >
+              Add Seat
+            </Button>
 
-                  setLayoutEntrance(entrancePosition || "TOP_CENTER");
+            <Button
+              variant="outlined"
+              startIcon={<Add />}
+              disabled={!floorId || saving}
+              onClick={handleOpenAddSpaceAnywhere}
+              sx={{
+                minHeight: 42,
+                textTransform: "none",
+                borderRadius: 2.2,
+                fontWeight: 750,
+              }}
+            >
+              Add Space
+            </Button>
 
-                  setLayoutReception(receptionPosition || "BOTTOM_CENTER");
-
-                  setLayoutDialogOpen(true);
-                }}
-              >
-                Configure Layout
-              </Button>
-
-              <Button
-                variant="outlined"
-                startIcon={<Add />}
-                disabled={!floorId || rowCount === 0}
-                onClick={() => setAddRowDialogOpen(true)}
-              >
-                Add Row
-              </Button>
-            </Stack>
-          </Grid>
-        </Grid>
+            <Button
+              variant="outlined"
+              startIcon={<Add />}
+              disabled={!floorId || rowCount === 0}
+              onClick={() => setAddRowDialogOpen(true)}
+              sx={{
+                minHeight: 42,
+                textTransform: "none",
+                borderRadius: 2.2,
+                fontWeight: 750,
+              }}
+            >
+              Add Row
+            </Button>
+          </Stack>
+        </Stack>
       </Paper>
 
-      {/* ======================================================
-          NO FLOOR
-      ====================================================== */}
-
-      {!loadingFloors && libraryId && floors.length === 0 && (
+      {libraryId && floors.length > 0 && (
         <Paper
-          variant="outlined"
+          elevation={0}
           sx={{
-            p: 6,
-
-            textAlign: "center",
-
-            borderRadius: 3,
-          }}
-        >
-          <EventSeat
-            sx={{
-              fontSize: 55,
-              color: "text.disabled",
-            }}
-          />
-
-          <Typography
-            variant="h6"
-            sx={{
-              mt: 2,
-            }}
-          >
-            No floors configured
-          </Typography>
-
-          <Typography
-            color="text.secondary"
-            sx={{
-              mb: 3,
-            }}
-          >
-            Create your first floor to start configuring the physical layout.
-          </Typography>
-
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => setFloorDialogOpen(true)}
-          >
-            Create Floor
-          </Button>
-        </Paper>
-      )}
-
-      {/* ======================================================
-          FLOOR LAYOUT
-      ====================================================== */}
-
-      {floorId && (
-        <Paper
-          variant="outlined"
-          sx={{
-            p: {
-              xs: 2,
-              md: 4,
-            },
-
-            borderRadius: 3,
+            p: { xs: 1.5, md: 2 },
+            mb: 3,
+            borderRadius: 3.5,
+            border: "1px solid",
+            borderColor: "divider",
+            boxShadow: "0 8px 26px rgba(15,23,42,0.035)",
           }}
         >
           <Stack
-            direction={{
-              xs: "column",
-              md: "row",
-            }}
+            direction={{ xs: "column", sm: "row" }}
             justifyContent="space-between"
-            spacing={2}
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            spacing={1.5}
+            sx={{ mb: 1.6 }}
+          >
+            <Stack direction="row" spacing={1} alignItems="center">
+              <LayersOutlined color="primary" />
+
+              <Box>
+                <Typography variant="subtitle1" fontWeight={850}>
+                  Floors
+                </Typography>
+
+                <Typography variant="caption" color="text.secondary">
+                  Switch floors instantly or add/remove floors as your library
+                  changes.
+                </Typography>
+              </Box>
+            </Stack>
+
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setFloorDialogOpen(true)}
+              disabled={saving}
+              sx={{
+                textTransform: "none",
+                borderRadius: 2.2,
+                fontWeight: 800,
+              }}
+            >
+              Add Floor
+            </Button>
+          </Stack>
+
+          <Box
             sx={{
-              mb: 3,
+              display: "flex",
+              gap: 1.2,
+              overflowX: "auto",
+              pb: 0.5,
+              scrollbarWidth: "thin",
             }}
           >
-            <Box>
-              <Typography variant="h6" fontWeight={700}>
-                {currentFloor?.name ||
-                  getFloorName(currentFloor?.floorNumber) ||
-                  "Floor"}
-              </Typography>
+            {floors.map((floor) => {
+              const active = String(floor.id) === String(floorId);
 
-              <Typography variant="body2" color="text.secondary">
+              return (
+                <Paper
+                  key={floor.id}
+                  elevation={0}
+                  onClick={() => {
+                    setFloorId(String(floor.id));
+                    setSeats([]);
+                    setGaps([]);
+                  }}
+                  sx={{
+                    minWidth: 190,
+                    p: 1.5,
+                    borderRadius: 2.8,
+                    border: "1px solid",
+                    borderColor: active
+                      ? alpha(theme.palette.primary.main, 0.45)
+                      : "divider",
+                    bgcolor: active
+                      ? alpha(theme.palette.primary.main, 0.055)
+                      : "background.paper",
+                    cursor: "pointer",
+                    transition: "all 0.18s ease",
+                    "&:hover": {
+                      transform: "translateY(-2px)",
+                      borderColor: alpha(theme.palette.primary.main, 0.35),
+                      boxShadow: "0 8px 20px rgba(15,23,42,0.06)",
+                    },
+                  }}
+                >
+                  <Stack
+                    direction="row"
+                    alignItems="flex-start"
+                    justifyContent="space-between"
+                    spacing={1}
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography
+                        variant="body2"
+                        fontWeight={850}
+                        noWrap
+                        color={active ? "primary.main" : "text.primary"}
+                      >
+                        {floor.name || getFloorName(floor.floorNumber)}
+                      </Typography>
+
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: "block", mt: 0.25 }}
+                      >
+                        Floor {floor.floorNumber}
+                      </Typography>
+                    </Box>
+
+                    <Tooltip title="Delete floor">
+                      <IconButton
+                        size="small"
+                        color="error"
+                        disabled={saving}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleOpenDeleteFloor(floor);
+                        }}
+                        sx={{
+                          width: 30,
+                          height: 30,
+                          border: "1px solid",
+                          borderColor: alpha(theme.palette.error.main, 0.14),
+                          bgcolor: alpha(theme.palette.error.main, 0.025),
+                        }}
+                      >
+                        <DeleteOutlineOutlined sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+
+                  {active && (
+                    <Chip
+                      size="small"
+                      label="Selected"
+                      color="primary"
+                      sx={{
+                        mt: 1.1,
+                        height: 22,
+                        fontWeight: 750,
+                      }}
+                    />
+                  )}
+                </Paper>
+              );
+            })}
+          </Box>
+        </Paper>
+      )}
+
+      {floorId && (
+        <Grid container spacing={1.6} sx={{ mb: 3 }}>
+          <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+            <StatisticCard label="Total Seats" value={statistics.total} />
+          </Grid>
+
+          <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+            <StatisticCard
+              label="Available"
+              value={statistics.available}
+              tone="success"
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+            <StatisticCard
+              label="Booked"
+              value={statistics.booked}
+              tone="error"
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+            <StatisticCard
+              label="Reserved"
+              value={statistics.reserved}
+              tone="info"
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+            <StatisticCard
+              label="Girls Reserved"
+              value={statistics.girlsReserved}
+              tone="secondary"
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+            <StatisticCard
+              label="Maintenance"
+              value={statistics.maintenance}
+              tone="warning"
+            />
+          </Grid>
+        </Grid>
+      )}
+
+      {!loadingFloors && libraryId && floors.length === 0 && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 4, md: 7 },
+            minHeight: 340,
+            textAlign: "center",
+            borderRadius: 4,
+            border: "1.5px dashed",
+            borderColor: alpha(theme.palette.primary.main, 0.28),
+            bgcolor: alpha(theme.palette.primary.main, 0.018),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Box>
+            <Box
+              sx={{
+                width: 76,
+                height: 76,
+                borderRadius: "50%",
+                mx: "auto",
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                color: "primary.main",
+              }}
+            >
+              <EventSeat sx={{ fontSize: 38 }} />
+            </Box>
+
+            <Typography variant="h5" fontWeight={850} sx={{ mt: 2 }}>
+              No floors configured
+            </Typography>
+
+            <Typography
+              color="text.secondary"
+              sx={{ mt: 0.75, mb: 2.5, maxWidth: 500 }}
+            >
+              Create your first floor and then configure its rows, columns,
+              seats, gaps, entrance and reception.
+            </Typography>
+
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<Add />}
+              onClick={() => setFloorDialogOpen(true)}
+              sx={{
+                textTransform: "none",
+                borderRadius: 2.5,
+                fontWeight: 800,
+              }}
+            >
+              Create Floor
+            </Button>
+          </Box>
+        </Paper>
+      )}
+
+      {floorId && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: { xs: 2, md: 3 },
+            borderRadius: 4,
+            border: "1px solid",
+            borderColor: "divider",
+            boxShadow: "0 12px 34px rgba(15,23,42,0.045)",
+          }}
+        >
+          <Stack
+            direction={{ xs: "column", md: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", md: "center" }}
+            spacing={2}
+            sx={{ mb: 2.5 }}
+          >
+            <Box>
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Typography variant="h6" fontWeight={850}>
+                  {currentFloor?.name ||
+                    getFloorName(currentFloor?.floorNumber) ||
+                    "Floor"}
+                </Typography>
+
+                <Chip
+                  size="small"
+                  label="Live Layout"
+                  color="primary"
+                  variant="outlined"
+                  sx={{ fontWeight: 700 }}
+                />
+              </Stack>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
                 {statistics.total} seats
-                {" • "}
+                {"  •  "}
                 {rowCount} rows
-                {" • "}
-                {columnCount} columns / row
-                {" • "}
+                {"  •  "}
+                {columnCount} columns
+                {"  •  "}
                 {statistics.gaps} gaps
               </Typography>
             </Box>
 
-            <Stack
-              direction="row"
-              spacing={1}
-              sx={{
-                flexWrap: "wrap",
-                gap: 1,
-              }}
-            >
-              <Chip label={`Seats: ${statistics.total}`} />
-
-              <Chip label={`Available: ${statistics.available}`} />
-
-              <Chip label={`Booked: ${statistics.booked}`} />
-
-              <Chip label={`Gaps: ${statistics.gaps}`} />
+            <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
+              <Chip
+                size="small"
+                label={`${statistics.available} Available`}
+                sx={{
+                  fontWeight: 700,
+                  bgcolor: "#dcfce7",
+                  color: "#166534",
+                }}
+              />
+              <Chip
+                size="small"
+                label={`${statistics.booked} Booked`}
+                sx={{
+                  fontWeight: 700,
+                  bgcolor: "#fee2e2",
+                  color: "#991b1b",
+                }}
+              />
+              <Chip
+                size="small"
+                label={`${statistics.gaps} Gaps`}
+                variant="outlined"
+                sx={{ fontWeight: 700 }}
+              />
             </Stack>
           </Stack>
 
-          <Divider
+          <Paper
+            elevation={0}
             sx={{
-              mb: 3,
+              mb: 2.5,
+              p: 1.4,
+              borderRadius: 2.8,
+              border: "1px solid",
+              borderColor: bulkMode
+                ? alpha(theme.palette.primary.main, 0.22)
+                : "divider",
+              bgcolor: bulkMode
+                ? alpha(theme.palette.primary.main, 0.028)
+                : alpha(theme.palette.text.primary, 0.012),
             }}
-          />
+          >
+            <Stack
+              direction={{ xs: "column", lg: "row" }}
+              alignItems={{ xs: "stretch", lg: "center" }}
+              justifyContent="space-between"
+              spacing={1.3}
+            >
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Button
+                  variant={bulkMode ? "contained" : "outlined"}
+                  size="small"
+                  startIcon={<CheckBoxOutlined />}
+                  onClick={() => {
+                    setBulkMode((previous) => !previous);
+                    setSelectedSeatIds([]);
+                  }}
+                  sx={{
+                    textTransform: "none",
+                    borderRadius: 2,
+                    fontWeight: 800,
+                  }}
+                >
+                  {bulkMode ? "Exit Bulk Edit" : "Bulk Edit Seats"}
+                </Button>
+
+                {bulkMode && (
+                  <Chip
+                    size="small"
+                    label={`${selectedSeatIds.length} selected`}
+                    color="primary"
+                    variant="outlined"
+                    sx={{ fontWeight: 750 }}
+                  />
+                )}
+              </Stack>
+
+              {bulkMode && (
+                <Stack
+                  direction={{ xs: "column", md: "row" }}
+                  spacing={1}
+                  alignItems={{ xs: "stretch", md: "center" }}
+                >
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleSelectAllEditableSeats}
+                    sx={{ textTransform: "none", fontWeight: 700 }}
+                  >
+                    Select editable seats
+                  </Button>
+
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={handleClearSeatSelection}
+                    disabled={selectedSeatIds.length === 0}
+                    sx={{ textTransform: "none", fontWeight: 700 }}
+                  >
+                    Clear
+                  </Button>
+
+                  <FormControl size="small" sx={{ minWidth: 150 }}>
+                    <InputLabel>Seat Type</InputLabel>
+                    <Select
+                      value={bulkSeatType}
+                      label="Seat Type"
+                      onChange={(event) => setBulkSeatType(event.target.value)}
+                    >
+                      {SEAT_TYPES.map((type) => (
+                        <MenuItem key={type} value={type}>
+                          {SEAT_TYPE_LABELS[type]}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={saving || selectedSeatIds.length === 0}
+                    onClick={handleBulkUpdateType}
+                    sx={{ textTransform: "none", fontWeight: 750 }}
+                  >
+                    Apply Type
+                  </Button>
+
+                  <FormControl size="small" sx={{ minWidth: 160 }}>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      value={bulkSeatStatus}
+                      label="Status"
+                      onChange={(event) =>
+                        setBulkSeatStatus(event.target.value)
+                      }
+                    >
+                      {MANAGEMENT_STATUSES.map((status) => (
+                        <MenuItem key={status} value={status}>
+                          {SEAT_STATUS_LABELS[status]}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    disabled={saving || selectedSeatIds.length === 0}
+                    onClick={handleBulkUpdateStatus}
+                    sx={{ textTransform: "none", fontWeight: 750 }}
+                  >
+                    Apply Status
+                  </Button>
+                </Stack>
+              )}
+            </Stack>
+          </Paper>
+
+          <Divider sx={{ mb: 3 }} />
 
           {loadingLayout ? (
             <Box
               sx={{
-                minHeight: 320,
-
+                minHeight: 360,
                 display: "flex",
-
                 alignItems: "center",
-
                 justifyContent: "center",
               }}
             >
-              <CircularProgress />
+              <Stack alignItems="center" spacing={1.5}>
+                <CircularProgress />
+                <Typography color="text.secondary">
+                  Loading seat layout...
+                </Typography>
+              </Stack>
             </Box>
           ) : rowCount === 0 || columnCount === 0 ? (
-            <Box
-              sx={{
-                py: 8,
-
-                textAlign: "center",
-              }}
-            >
-              <Settings
+            <Box sx={{ py: 8, textAlign: "center" }}>
+              <Box
                 sx={{
-                  fontSize: 58,
-
-                  color: "text.disabled",
-                }}
-              />
-
-              <Typography
-                variant="h6"
-                sx={{
-                  mt: 2,
+                  width: 68,
+                  height: 68,
+                  borderRadius: "50%",
+                  mx: "auto",
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: alpha(theme.palette.primary.main, 0.07),
+                  color: "primary.main",
                 }}
               >
+                <Settings sx={{ fontSize: 34 }} />
+              </Box>
+
+              <Typography variant="h6" fontWeight={850} sx={{ mt: 2 }}>
                 Layout not configured
               </Typography>
 
-              <Typography
-                color="text.secondary"
-                sx={{
-                  mb: 3,
-                }}
-              >
-                Configure the number of rows, columns, entrance and reception.
+              <Typography color="text.secondary" sx={{ mt: 0.5, mb: 2.5 }}>
+                Configure rows, columns, entrance and reception to build the
+                seat map.
               </Typography>
 
               <Button
                 variant="contained"
                 startIcon={<Settings />}
                 onClick={() => setLayoutDialogOpen(true)}
+                sx={{
+                  textTransform: "none",
+                  borderRadius: 2.4,
+                  fontWeight: 800,
+                }}
               >
                 Configure Layout
               </Button>
             </Box>
           ) : (
             <>
-              {/* TOP MARKERS */}
-
               {renderTopMarkers()}
-
-              {/* MAIN ROOM */}
 
               <Box
                 sx={{
-                  display: "grid",
-
-                  gridTemplateColumns:
-                    entrancePosition === "LEFT_CENTER" ||
-                    receptionPosition === "LEFT_CENTER" ||
-                    entrancePosition === "RIGHT_CENTER" ||
-                    receptionPosition === "RIGHT_CENTER"
-                      ? "190px minmax(0, 1fr) 190px"
-                      : "1fr",
-
-                  gap: 2,
-
-                  alignItems: "center",
+                  p: { xs: 1.5, md: 2.5 },
+                  borderRadius: 3.2,
+                  border: "1px solid",
+                  borderColor: alpha(theme.palette.primary.main, 0.09),
+                  bgcolor: alpha(theme.palette.primary.main, 0.012),
                 }}
               >
-                {/* LEFT SIDE MARKER */}
-
-                {(entrancePosition === "LEFT_CENTER" ||
-                  receptionPosition === "LEFT_CENTER") && (
-                  <Stack spacing={2} alignItems="center">
-                    {entrancePosition === "LEFT_CENTER" && (
-                      <LayoutMarker type="ENTRANCE" />
-                    )}
-
-                    {receptionPosition === "LEFT_CENTER" && (
-                      <LayoutMarker type="RECEPTION" />
-                    )}
-                  </Stack>
-                )}
-
-                {/* SEAT GRID */}
-
                 <Box
                   sx={{
-                    overflowX: "auto",
-
-                    py: 2,
+                    display: "grid",
+                    gridTemplateColumns:
+                      entrancePosition === "LEFT_CENTER" ||
+                      receptionPosition === "LEFT_CENTER" ||
+                      entrancePosition === "RIGHT_CENTER" ||
+                      receptionPosition === "RIGHT_CENTER"
+                        ? "190px minmax(0, 1fr) 190px"
+                        : "1fr",
+                    gap: 2,
+                    alignItems: "center",
                   }}
                 >
-                  <Stack
-                    spacing={2.5}
-                    sx={{
-                      minWidth: columnCount * 78 + 80,
-                    }}
-                  >
-                    {Array.from({
-                      length: rowCount,
-                    }).map((_, rowIndex) => {
-                      const rowLabel = getRowLabel(rowIndex);
+                  {(entrancePosition === "LEFT_CENTER" ||
+                    receptionPosition === "LEFT_CENTER") && (
+                    <Stack spacing={2} alignItems="center">
+                      {entrancePosition === "LEFT_CENTER" && (
+                        <LayoutMarker type="ENTRANCE" />
+                      )}
 
-                      return (
-                        <Stack
-                          key={rowLabel}
-                          direction="row"
-                          spacing={1.5}
-                          alignItems="center"
-                        >
-                          <Box
-                            sx={{
-                              width: 42,
-                              minWidth: 42,
+                      {receptionPosition === "LEFT_CENTER" && (
+                        <LayoutMarker type="RECEPTION" />
+                      )}
+                    </Stack>
+                  )}
 
-                              height: 58,
+                  <Box sx={{ overflowX: "auto", py: 1.5, px: 0.5 }}>
+                    <Stack spacing={2} sx={{ minWidth: columnCount * 78 + 80 }}>
+                      {Array.from({ length: rowCount }).map((_, rowIndex) => {
+                        const rowLabel = getRowLabel(rowIndex);
 
-                              display: "flex",
-
-                              alignItems: "center",
-
-                              justifyContent: "center",
-
-                              borderRadius: 2,
-
-                              bgcolor: "action.hover",
-
-                              fontWeight: 800,
-                            }}
+                        return (
+                          <Stack
+                            key={rowLabel}
+                            direction="row"
+                            spacing={1.5}
+                            alignItems="center"
                           >
-                            {rowLabel}
-                          </Box>
+                            <Box
+                              sx={{
+                                width: 42,
+                                minWidth: 42,
+                                height: 58,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: 2,
+                                bgcolor: alpha(
+                                  theme.palette.primary.main,
+                                  0.07,
+                                ),
+                                color: "primary.main",
+                                border: "1px solid",
+                                borderColor: alpha(
+                                  theme.palette.primary.main,
+                                  0.1,
+                                ),
+                                fontWeight: 900,
+                              }}
+                            >
+                              {rowLabel}
+                            </Box>
 
-                          {Array.from({
-                            length: columnCount,
-                          }).map((__, columnIndex) => {
-                            const columnNumber = columnIndex + 1;
+                            {Array.from({ length: columnCount }).map(
+                              (__, columnIndex) => {
+                                const columnNumber = columnIndex + 1;
+                                const key = positionKey(rowLabel, columnNumber);
 
-                            const key = positionKey(rowLabel, columnNumber);
+                                const seat = seatByPosition.get(key);
 
-                            const seat = seatByPosition.get(key);
+                                const gap = gaps.find(
+                                  (item) =>
+                                    positionKey(
+                                      item.rowLabel,
+                                      item.columnNumber,
+                                    ) === key,
+                                );
 
-                            const gap = gaps.find(
-                              (item) =>
-                                positionKey(
-                                  item.rowLabel,
-                                  item.columnNumber,
-                                ) === key,
-                            );
+                                if (seat) {
+                                  const style = getSeatStyle(seat.status);
 
-                            // ===============================
-                            // SEAT
-                            // ===============================
-
-                            if (seat) {
-                              const style = getSeatStyle(seat.status);
-
-                              return (
-                                <Tooltip
-                                  key={key}
-                                  title={`${seat.seatNumber} • ${
-                                    SEAT_TYPE_LABELS[seat.seatType] ||
-                                    seat.seatType
-                                  } • ${
-                                    SEAT_STATUS_LABELS[seat.status] ||
-                                    seat.status
-                                  }`}
-                                >
-                                  <Box
-                                    onClick={() => handleSeatClick(seat)}
-                                    sx={{
-                                      width: 64,
-
-                                      minWidth: 64,
-
-                                      height: 60,
-
-                                      display: "flex",
-
-                                      flexDirection: "column",
-
-                                      alignItems: "center",
-
-                                      justifyContent: "center",
-
-                                      cursor: "pointer",
-
-                                      border: "2px solid",
-
-                                      borderColor: style.borderColor,
-
-                                      bgcolor: style.backgroundColor,
-
-                                      color: style.color,
-
-                                      borderRadius: 2,
-
-                                      transition: "0.2s",
-
-                                      "&:hover": {
-                                        transform: "translateY(-3px)",
-
-                                        boxShadow: 3,
-                                      },
-                                    }}
-                                  >
-                                    <EventSeat fontSize="small" />
-
-                                    <Typography
-                                      variant="caption"
-                                      fontWeight={700}
+                                  return (
+                                    <Tooltip
+                                      key={key}
+                                      arrow
+                                      title={`${seat.seatNumber} • ${
+                                        SEAT_TYPE_LABELS[seat.seatType] ||
+                                        seat.seatType
+                                      } • ${
+                                        SEAT_STATUS_LABELS[seat.status] ||
+                                        seat.status
+                                      }`}
                                     >
-                                      {seat.seatNumber}
-                                    </Typography>
-                                  </Box>
-                                </Tooltip>
-                              );
-                            }
+                                      <Box
+                                        onClick={() =>
+                                          handleSeatPrimaryAction(seat)
+                                        }
+                                        sx={{
+                                          width: 64,
+                                          minWidth: 64,
+                                          height: 60,
+                                          position: "relative",
+                                          display: "flex",
+                                          flexDirection: "column",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          cursor: "pointer",
+                                          border: "1.5px solid",
+                                          borderColor: selectedSeatIds.includes(
+                                            Number(seat.id),
+                                          )
+                                            ? "primary.main"
+                                            : style.borderColor,
+                                          bgcolor: selectedSeatIds.includes(
+                                            Number(seat.id),
+                                          )
+                                            ? alpha(
+                                                theme.palette.primary.main,
+                                                0.11,
+                                              )
+                                            : style.backgroundColor,
+                                          color: style.color,
+                                          borderRadius: 2.3,
+                                          boxShadow:
+                                            "0 4px 12px rgba(15,23,42,0.035)",
+                                          transition:
+                                            "transform 0.18s ease, box-shadow 0.18s ease",
+                                          "&:hover": {
+                                            transform: "translateY(-3px)",
+                                            boxShadow:
+                                              "0 9px 20px rgba(15,23,42,0.10)",
+                                          },
+                                        }}
+                                      >
+                                        <EventSeat fontSize="small" />
 
-                            // ===============================
-                            // INTENTIONAL GAP / AISLE
-                            // ===============================
+                                        <Typography
+                                          variant="caption"
+                                          fontWeight={800}
+                                          sx={{ mt: 0.15 }}
+                                        >
+                                          {seat.seatNumber}
+                                        </Typography>
+                                      </Box>
+                                    </Tooltip>
+                                  );
+                                }
 
-                            if (gap) {
-                              return (
-                                <Tooltip
-                                  key={key}
-                                  title="Intentional gap / aisle • Click to remove"
-                                >
-                                  <Box
-                                    onClick={() => handleRemoveGap(gap)}
-                                    sx={{
-                                      width: 64,
+                                if (gap) {
+                                  return (
+                                    <Tooltip
+                                      key={key}
+                                      arrow
+                                      title="Blank space • Click to remove"
+                                    >
+                                      <Box
+                                        onClick={() => handleRemoveGap(gap)}
+                                        sx={{
+                                          width: 64,
+                                          minWidth: 64,
+                                          height: 60,
+                                          cursor: "pointer",
+                                          borderRadius: 2.3,
+                                          border: "1.5px solid transparent",
+                                          bgcolor: "transparent",
+                                          transition: "all 0.18s ease",
+                                          "&:hover": {
+                                            borderColor: alpha(
+                                              theme.palette.text.primary,
+                                              0.12,
+                                            ),
+                                            bgcolor: alpha(
+                                              theme.palette.text.primary,
+                                              0.025,
+                                            ),
+                                          },
+                                        }}
+                                      />
+                                    </Tooltip>
+                                  );
+                                }
 
-                                      minWidth: 64,
-
-                                      height: 60,
-
-                                      cursor: "pointer",
-
-                                      display: "flex",
-
-                                      alignItems: "center",
-
-                                      justifyContent: "center",
-
-                                      borderRadius: 2,
-
-                                      border: "1px dashed",
-
-                                      borderColor: "divider",
-
-                                      color: "text.disabled",
-
-                                      bgcolor: "transparent",
-
-                                      "&:hover": {
-                                        bgcolor: "action.hover",
-                                      },
-                                    }}
+                                return (
+                                  <Tooltip
+                                    key={key}
+                                    arrow
+                                    title={`Row ${rowLabel}, Position ${columnNumber} • Configure`}
                                   >
-                                    <Typography variant="caption">
-                                      GAP
-                                    </Typography>
-                                  </Box>
-                                </Tooltip>
-                              );
-                            }
+                                    <Box
+                                      onClick={() =>
+                                        handleEmptyPositionClick(
+                                          rowLabel,
+                                          columnNumber,
+                                        )
+                                      }
+                                      sx={{
+                                        width: 64,
+                                        minWidth: 64,
+                                        height: 60,
+                                        display: "grid",
+                                        placeItems: "center",
+                                        cursor: "pointer",
+                                        border: "1.5px solid transparent",
+                                        bgcolor: "transparent",
+                                        color: "primary.main",
+                                        borderRadius: 2.3,
+                                        transition: "all 0.18s ease",
+                                        "& .empty-position-add": {
+                                          opacity: 0,
+                                          transform: "scale(0.85)",
+                                          transition: "all 0.18s ease",
+                                        },
+                                        "&:hover": {
+                                          borderColor: alpha(
+                                            theme.palette.primary.main,
+                                            0.28,
+                                          ),
+                                          bgcolor: alpha(
+                                            theme.palette.primary.main,
+                                            0.035,
+                                          ),
+                                        },
+                                        "&:hover .empty-position-add": {
+                                          opacity: 1,
+                                          transform: "scale(1)",
+                                        },
+                                      }}
+                                    >
+                                      <Add
+                                        className="empty-position-add"
+                                        fontSize="small"
+                                      />
+                                    </Box>
+                                  </Tooltip>
+                                );
+                              },
+                            )}
+                          </Stack>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
 
-                            // ===============================
-                            // UNCONFIGURED POSITION
-                            // ===============================
+                  {(entrancePosition === "RIGHT_CENTER" ||
+                    receptionPosition === "RIGHT_CENTER") && (
+                    <Stack spacing={2} alignItems="center">
+                      {entrancePosition === "RIGHT_CENTER" && (
+                        <LayoutMarker type="ENTRANCE" />
+                      )}
 
-                            return (
-                              <Tooltip
-                                key={key}
-                                title={`Row ${rowLabel}, Position ${columnNumber} • Configure`}
-                              >
-                                <Box
-                                  onClick={() =>
-                                    handleEmptyPositionClick(
-                                      rowLabel,
-                                      columnNumber,
-                                    )
-                                  }
-                                  sx={{
-                                    width: 64,
-
-                                    minWidth: 64,
-
-                                    height: 60,
-
-                                    display: "flex",
-
-                                    flexDirection: "column",
-
-                                    alignItems: "center",
-
-                                    justifyContent: "center",
-
-                                    cursor: "pointer",
-
-                                    border: "2px dashed",
-
-                                    borderColor: "grey.300",
-
-                                    bgcolor: "grey.50",
-
-                                    color: "text.disabled",
-
-                                    borderRadius: 2,
-
-                                    "&:hover": {
-                                      borderColor: "primary.main",
-
-                                      color: "primary.main",
-
-                                      bgcolor: "action.hover",
-                                    },
-                                  }}
-                                >
-                                  <Add fontSize="small" />
-
-                                  <Typography variant="caption">
-                                    {rowLabel}
-                                    {columnNumber}
-                                  </Typography>
-                                </Box>
-                              </Tooltip>
-                            );
-                          })}
-                        </Stack>
-                      );
-                    })}
-                  </Stack>
+                      {receptionPosition === "RIGHT_CENTER" && (
+                        <LayoutMarker type="RECEPTION" />
+                      )}
+                    </Stack>
+                  )}
                 </Box>
-
-                {/* RIGHT SIDE MARKER */}
-
-                {(entrancePosition === "RIGHT_CENTER" ||
-                  receptionPosition === "RIGHT_CENTER") && (
-                  <Stack spacing={2} alignItems="center">
-                    {entrancePosition === "RIGHT_CENTER" && (
-                      <LayoutMarker type="ENTRANCE" />
-                    )}
-
-                    {receptionPosition === "RIGHT_CENTER" && (
-                      <LayoutMarker type="RECEPTION" />
-                    )}
-                  </Stack>
-                )}
               </Box>
-
-              {/* BOTTOM MARKERS */}
 
               {renderBottomMarkers()}
 
-              {/* LEGEND */}
-
-              <Divider
-                sx={{
-                  my: 4,
-                }}
-              />
+              <Divider sx={{ my: 3 }} />
 
               <Stack
                 direction="row"
-                sx={{
-                  flexWrap: "wrap",
-                  gap: 1.5,
-                }}
-                justifyContent="center"
+                flexWrap="wrap"
+                useFlexGap
+                gap={1}
+                alignItems="center"
               >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    mr: 0.5,
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  Legend
+                </Typography>
+
                 {SEAT_STATUSES.map((status) => {
                   const style = getSeatStyle(status);
 
                   return (
                     <Chip
                       key={status}
+                      size="small"
                       label={SEAT_STATUS_LABELS[status]}
                       sx={{
+                        fontWeight: 700,
                         bgcolor: style.backgroundColor,
-
                         color: style.color,
-
                         border: "1px solid",
-
                         borderColor: style.borderColor,
                       }}
                     />
                   );
                 })}
 
-                <Chip label="Gap / Aisle" variant="outlined" />
+                <Chip
+                  size="small"
+                  label="Blank Space"
+                  variant="outlined"
+                  sx={{ fontWeight: 700 }}
+                />
               </Stack>
-
-              {/* STATISTICS */}
-
-              <Grid
-                container
-                spacing={2}
-                sx={{
-                  mt: 3,
-                }}
-              >
-                <Grid
-                  size={{
-                    xs: 6,
-                    md: 2,
-                  }}
-                >
-                  <StatisticCard
-                    label="Available"
-                    value={statistics.available}
-                  />
-                </Grid>
-
-                <Grid
-                  size={{
-                    xs: 6,
-                    md: 2,
-                  }}
-                >
-                  <StatisticCard label="Booked" value={statistics.booked} />
-                </Grid>
-
-                <Grid
-                  size={{
-                    xs: 6,
-                    md: 2,
-                  }}
-                >
-                  <StatisticCard label="Reserved" value={statistics.reserved} />
-                </Grid>
-
-                <Grid
-                  size={{
-                    xs: 6,
-                    md: 2,
-                  }}
-                >
-                  <StatisticCard
-                    label="Girls"
-                    value={statistics.girlsReserved}
-                  />
-                </Grid>
-
-                <Grid
-                  size={{
-                    xs: 6,
-                    md: 2,
-                  }}
-                >
-                  <StatisticCard
-                    label="Maintenance"
-                    value={statistics.maintenance}
-                  />
-                </Grid>
-
-                <Grid
-                  size={{
-                    xs: 6,
-                    md: 2,
-                  }}
-                >
-                  <StatisticCard label="Gaps" value={statistics.gaps} />
-                </Grid>
-              </Grid>
             </>
           )}
         </Paper>
       )}
 
-      {/* ======================================================
-          CREATE FLOOR DIALOG
-      ====================================================== */}
+      <Dialog
+        open={deleteFloorDialogOpen}
+        onClose={() => {
+          if (!saving) {
+            setDeleteFloorDialogOpen(false);
+            setFloorPendingDelete(null);
+          }
+        }}
+        fullWidth
+        maxWidth="xs"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Stack direction="row" spacing={1.4} alignItems="center">
+            <Box
+              sx={{
+                width: 42,
+                height: 42,
+                borderRadius: 2.3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.error.main, 0.08),
+                color: "error.main",
+              }}
+            >
+              <DeleteOutlineOutlined />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Delete Floor
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                {floorPendingDelete?.name ||
+                  getFloorName(floorPendingDelete?.floorNumber)}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
+          <Alert severity="warning" sx={{ borderRadius: 2.2 }}>
+            Deleting a floor removes its physical layout and seats. The backend
+            should reject this action when protected bookings or active seat
+            allocations still depend on the floor.
+          </Alert>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
+          <Button
+            variant="outlined"
+            disabled={saving}
+            onClick={() => {
+              setDeleteFloorDialogOpen(false);
+              setFloorPendingDelete(null);
+            }}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            color="error"
+            variant="contained"
+            startIcon={<DeleteOutlineOutlined />}
+            disabled={saving}
+            onClick={handleDeleteFloor}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 800 }}
+          >
+            {saving ? "Deleting..." : "Delete Floor"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={floorDialogOpen}
         onClose={() => !saving && setFloorDialogOpen(false)}
         fullWidth
         maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Add Floor</DialogTitle>
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 42,
+                height: 42,
+                borderRadius: 2.3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                color: "primary.main",
+              }}
+            >
+              <Add />
+            </Box>
 
-        <DialogContent>
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Add Floor
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Create a new floor for this library.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <Alert severity="info">
+            <Alert severity="info" sx={{ borderRadius: 2.2 }}>
               Select the floor number. LibraryHub will automatically generate
               the floor name.
             </Alert>
@@ -2936,7 +4011,7 @@ const openAddSeatForPosition = () => {
             )}
 
             {newFloorNumber !== "" && (
-              <Alert severity="success">
+              <Alert severity="success" sx={{ borderRadius: 2.2 }}>
                 <strong>{getFloorName(newFloorNumber)}</strong> will be created.
                 After creating it, configure rows, columns, seats, gaps,
                 entrance and reception.
@@ -2945,13 +4020,15 @@ const openAddSeatForPosition = () => {
           </Stack>
         </DialogContent>
 
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
           <Button
             disabled={saving}
             onClick={() => {
               setFloorDialogOpen(false);
               setNewFloorNumber("");
             }}
+            variant="outlined"
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
           >
             Cancel
           </Button>
@@ -2960,51 +4037,73 @@ const openAddSeatForPosition = () => {
             variant="contained"
             disabled={saving || newFloorNumber === ""}
             onClick={handleCreateFloor}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 800 }}
           >
             {saving ? "Creating..." : "Create Floor"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ======================================================
-          CONFIGURE LAYOUT DIALOG
-      ====================================================== */}
-
       <Dialog
         open={layoutDialogOpen}
         onClose={() => !saving && setLayoutDialogOpen(false)}
         fullWidth
         maxWidth="lg"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              overflow: "hidden",
+              boxShadow: "0 28px 80px rgba(15,23,42,0.20)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Configure Library Layout</DialogTitle>
-
-        <DialogContent>
-          <Grid
-            container
-            spacing={3}
-            sx={{
-              mt: 0.5,
-            }}
-          >
-            {/* CONFIGURATION */}
-
-            <Grid
-              size={{
-                xs: 12,
-                md: 5,
+        <DialogTitle
+          sx={{
+            px: { xs: 2.5, md: 3.2 },
+            pt: 3,
+            pb: 2,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: 2.4,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.primary.main, 0.09),
+                color: "primary.main",
               }}
             >
-              <Stack spacing={2.25}>
+              <Settings />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Configure Library Layout
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Define the floor dimensions and physical reference points.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: { xs: 2.5, md: 3.2 }, py: 3 }}>
+          <Grid container spacing={3}>
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Stack spacing={2.1}>
                 <TextField
                   label="Rows"
                   type="number"
                   value={layoutRows}
-                  slotProps={{
-                    htmlInput: {
-                      min: 1,
-                      max: 26,
-                    },
-                  }}
+                  slotProps={{ htmlInput: { min: 1, max: 26 } }}
                   onChange={(event) => setLayoutRows(event.target.value)}
                   fullWidth
                 />
@@ -3013,11 +4112,7 @@ const openAddSeatForPosition = () => {
                   label="Columns / Row"
                   type="number"
                   value={layoutColumns}
-                  slotProps={{
-                    htmlInput: {
-                      min: 1,
-                    },
-                  }}
+                  slotProps={{ htmlInput: { min: 1 } }}
                   onChange={(event) => setLayoutColumns(event.target.value)}
                   fullWidth
                 />
@@ -3088,43 +4183,33 @@ const openAddSeatForPosition = () => {
                   </Select>
                 </FormControl>
 
-                <Alert severity="info">
-                  After applying the layout, click any empty position to add a
-                  seat or mark it as an intentional gap / aisle.
+                <Alert severity="info" sx={{ borderRadius: 2.2 }}>
+                  Empty positions remain configurable. Click one later to add a
+                  seat or mark an intentional gap / aisle.
                 </Alert>
               </Stack>
             </Grid>
 
-            {/* LIVE PREVIEW */}
-
-            <Grid
-              size={{
-                xs: 12,
-                md: 7,
-              }}
-            >
+            <Grid size={{ xs: 12, md: 7 }}>
               <Paper
-                variant="outlined"
+                elevation={0}
                 sx={{
                   p: 3,
-
                   height: "100%",
-
-                  borderRadius: 3,
-
-                  bgcolor: "grey.50",
+                  borderRadius: 3.2,
+                  border: "1px solid",
+                  borderColor: alpha(theme.palette.primary.main, 0.1),
+                  bgcolor: alpha(theme.palette.primary.main, 0.018),
                 }}
               >
-                <Typography variant="h6" fontWeight={700}>
+                <Typography variant="h6" fontWeight={850}>
                   Layout Preview
                 </Typography>
 
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  sx={{
-                    mb: 3,
-                  }}
+                  sx={{ mb: 3 }}
                 >
                   {Number(layoutRows) || 0} rows × {Number(layoutColumns) || 0}{" "}
                   positions
@@ -3139,19 +4224,13 @@ const openAddSeatForPosition = () => {
                           ? "flex-end"
                           : "center"
                     }
-                    sx={{
-                      mb: 2,
-                    }}
+                    sx={{ mb: 2 }}
                   >
                     <LayoutMarker type="ENTRANCE" />
                   </Stack>
                 )}
 
-                <Box
-                  sx={{
-                    overflowX: "auto",
-                  }}
-                >
+                <Box sx={{ overflowX: "auto" }}>
                   <Stack
                     spacing={1}
                     sx={{
@@ -3174,8 +4253,8 @@ const openAddSeatForPosition = () => {
                           <Typography
                             sx={{
                               width: 25,
-
-                              fontWeight: 700,
+                              fontWeight: 800,
+                              color: "primary.main",
                             }}
                           >
                             {row}
@@ -3188,35 +4267,28 @@ const openAddSeatForPosition = () => {
                               key={columnIndex}
                               sx={{
                                 width: 44,
-
                                 height: 44,
-
-                                borderRadius: 1.5,
-
+                                borderRadius: 1.7,
                                 border: "1px solid",
-
-                                borderColor: "divider",
-
-                                bgcolor: "background.paper",
-
+                                borderColor: alpha(
+                                  theme.palette.success.main,
+                                  0.25,
+                                ),
+                                bgcolor: alpha(
+                                  theme.palette.success.main,
+                                  0.06,
+                                ),
                                 display: "flex",
-
                                 flexDirection: "column",
-
                                 alignItems: "center",
-
                                 justifyContent: "center",
                               }}
                             >
                               <EventSeat
-                                sx={{
-                                  fontSize: 18,
-
-                                  color: "success.main",
-                                }}
+                                sx={{ fontSize: 18, color: "success.main" }}
                               />
 
-                              <Typography variant="caption">
+                              <Typography variant="caption" fontWeight={700}>
                                 {row}
                                 {columnIndex + 1}
                               </Typography>
@@ -3237,9 +4309,7 @@ const openAddSeatForPosition = () => {
                           ? "flex-end"
                           : "center"
                     }
-                    sx={{
-                      mt: 3,
-                    }}
+                    sx={{ mt: 3 }}
                   >
                     <LayoutMarker type="RECEPTION" />
                   </Stack>
@@ -3249,8 +4319,20 @@ const openAddSeatForPosition = () => {
           </Grid>
         </DialogContent>
 
-        <DialogActions>
-          <Button disabled={saving} onClick={() => setLayoutDialogOpen(false)}>
+        <DialogActions
+          sx={{
+            px: { xs: 2.5, md: 3.2 },
+            py: 2.2,
+            borderTop: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Button
+            disabled={saving}
+            onClick={() => setLayoutDialogOpen(false)}
+            variant="outlined"
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
+          >
             Cancel
           </Button>
 
@@ -3258,46 +4340,64 @@ const openAddSeatForPosition = () => {
             variant="contained"
             disabled={saving}
             onClick={handleApplyLayout}
+            sx={{
+              textTransform: "none",
+              borderRadius: 2.2,
+              fontWeight: 800,
+              minWidth: 140,
+            }}
           >
             {saving ? "Applying..." : "Apply Layout"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ======================================================
-          POSITION ACTION DIALOG
-      ====================================================== */}
-
       <Dialog
         open={positionDialogOpen}
         onClose={() => !saving && setPositionDialogOpen(false)}
         fullWidth
         maxWidth="xs"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Configure Position</DialogTitle>
-
-        <DialogContent>
-          <Typography
-            color="text.secondary"
-            sx={{
-              mb: 2,
-            }}
-          >
-            Row <strong>{selectedPosition?.rowLabel}</strong>
-            {" • "}
-            Position <strong>{selectedPosition?.columnNumber}</strong>
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Typography variant="h6" fontWeight={850}>
+            Configure Position
           </Typography>
 
-          <Alert severity="info">
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
+            Row {selectedPosition?.rowLabel} • Position{" "}
+            {selectedPosition?.columnNumber}
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
+          <Alert severity="info" sx={{ borderRadius: 2.2 }}>
             Choose whether this physical position should contain a seat or
-            remain empty as a gap / aisle.
+            remain intentionally empty as blank space.
           </Alert>
         </DialogContent>
 
-        <DialogActions>
-          <Button onClick={() => setPositionDialogOpen(false)}>Cancel</Button>
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
+          <Button
+            onClick={() => setPositionDialogOpen(false)}
+            sx={{ textTransform: "none", fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
 
-          <Button variant="outlined" disabled={saving} onClick={handleMarkGap}>
+          <Button
+            variant="outlined"
+            disabled={saving}
+            onClick={handleMarkGap}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
+          >
             Mark as Gap
           </Button>
 
@@ -3305,106 +4405,373 @@ const openAddSeatForPosition = () => {
             variant="contained"
             startIcon={<EventSeat />}
             onClick={openAddSeatForPosition}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 800 }}
           >
             Add Seat
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ======================================================
-          ADD SEAT DIALOG
-      ====================================================== */}
+      <Dialog
+        open={addSpaceDialogOpen}
+        onClose={() => !saving && setAddSpaceDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Typography variant="h6" fontWeight={850}>
+            Add Blank Space
+          </Typography>
+
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
+            Reserve a physical position as empty space between seats.
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ borderRadius: 2.2 }}>
+              Blank spaces are saved in the layout but rendered without any
+              label. Use consecutive blank positions to create wider aisles.
+            </Alert>
+
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Row</InputLabel>
+                  <Select
+                    value={addSpaceRow}
+                    label="Row"
+                    onChange={(event) => setAddSpaceRow(event.target.value)}
+                  >
+                    {Array.from({ length: 26 }).map((_, index) => {
+                      const rowLabel = getRowLabel(index);
+                      return (
+                        <MenuItem key={rowLabel} value={rowLabel}>
+                          Row {rowLabel}
+                          {index + 1 > rowCount ? " • New row" : ""}
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Column"
+                  type="number"
+                  value={addSpaceColumn}
+                  onChange={(event) => setAddSpaceColumn(event.target.value)}
+                  inputProps={{ min: 1, step: 1 }}
+                  helperText={
+                    Number(addSpaceColumn) > columnCount
+                      ? "This will extend the current column count."
+                      : "Choose the physical column for the blank space."
+                  }
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+
+            {addSpaceWillInsertAndShift ? (
+              <Alert severity="info" sx={{ borderRadius: 2.2 }}>
+                Position {addSpaceNormalizedRow}
+                {addSpaceNormalizedColumn} currently contains seat{" "}
+                <strong>{seatAtAddSpacePosition?.seatNumber}</strong>. A new
+                blank space will be inserted here and this seat, plus every
+                seat/space to its right in row {addSpaceNormalizedRow}, will
+                shift one position to the right.
+              </Alert>
+            ) : spaceAlreadyExists ? (
+              <Alert severity="warning" sx={{ borderRadius: 2.2 }}>
+                Position {addSpaceNormalizedRow}
+                {addSpaceNormalizedColumn} is already blank space.
+              </Alert>
+            ) : addSpaceWouldExpandLayout ? (
+              <Alert severity="success" sx={{ borderRadius: 2.2 }}>
+                The layout will expand to{" "}
+                <strong>
+                  {addSpaceNextRowCount} rows × {addSpaceNextColumnCount}{" "}
+                  columns
+                </strong>
+                .
+              </Alert>
+            ) : addSpacePositionKey ? (
+              <Alert severity="success" sx={{ borderRadius: 2.2 }}>
+                Position {addSpaceNormalizedRow}
+                {addSpaceNormalizedColumn} can be used as blank space.
+              </Alert>
+            ) : null}
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
+          <Button
+            disabled={saving}
+            onClick={() => setAddSpaceDialogOpen(false)}
+            variant="outlined"
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            disabled={
+              saving ||
+              !/^[A-Z]$/.test(addSpaceNormalizedRow) ||
+              !Number.isInteger(addSpaceNormalizedColumn) ||
+              addSpaceNormalizedColumn < 1 ||
+              spaceAlreadyExists
+            }
+            onClick={handleAddSpace}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 800 }}
+          >
+            {saving ? "Adding..." : "Add Space"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog
         open={addSeatDialogOpen}
         onClose={() => !saving && setAddSeatDialogOpen(false)}
         fullWidth
         maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Add Seat</DialogTitle>
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 42,
+                height: 42,
+                borderRadius: 2.3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.success.main, 0.09),
+                color: "success.main",
+              }}
+            >
+              <EventSeat />
+            </Box>
 
-        <DialogContent>
-          <Stack
-            spacing={2}
-            sx={{
-              mt: 1,
-            }}
-          >
-            <TextField label="Row" value={addSeatRow} disabled />
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Add Seat
+              </Typography>
 
-            <TextField label="Position" value={addSeatColumn} disabled />
+              <Typography variant="body2" color="text.secondary">
+                Row {addSeatRow || "-"} • Position {addSeatColumn || "-"}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ borderRadius: 2.2 }}>
+              Select any row from A-Z and any positive column. If the position
+              is outside the current floor dimensions, LibraryHub will expand
+              the layout automatically when the seat is saved.
+            </Alert>
+
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Row</InputLabel>
+
+                  <Select
+                    value={addSeatRow}
+                    label="Row"
+                    onChange={(event) => {
+                      const nextRow = event.target.value;
+                      setAddSeatRow(nextRow);
+                    }}
+                  >
+                    {Array.from({ length: 26 }).map((_, index) => {
+                      const rowLabel = getRowLabel(index);
+
+                      return (
+                        <MenuItem key={rowLabel} value={rowLabel}>
+                          Row {rowLabel}
+                          {index + 1 > rowCount ? " • New row" : ""}
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Column"
+                  type="number"
+                  value={addSeatColumn}
+                  onChange={(event) => setAddSeatColumn(event.target.value)}
+                  inputProps={{
+                    min: 1,
+                    step: 1,
+                  }}
+                  helperText={
+                    Number(addSeatColumn) > columnCount
+                      ? "This will extend the current column count."
+                      : "Choose any column in the floor."
+                  }
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
+
+            {seatAtAddPosition ? (
+              <Alert severity="error" sx={{ borderRadius: 2.2 }}>
+                Position {addSeatNormalizedRow}
+                {addSeatNormalizedColumn} already contains seat{" "}
+                <strong>{seatAtAddPosition.seatNumber}</strong>. Choose another
+                row or column.
+              </Alert>
+            ) : gapAtAddPosition ? (
+              <Alert severity="warning" sx={{ borderRadius: 2.2 }}>
+                Position {addSeatNormalizedRow}
+                {addSeatNormalizedColumn} is currently marked as blank space.
+                Adding the seat will replace that space.
+              </Alert>
+            ) : addSeatWouldExpandLayout ? (
+              <Alert severity="success" sx={{ borderRadius: 2.2 }}>
+                The floor layout will expand to{" "}
+                <strong>
+                  {addSeatNextRowCount} rows × {addSeatNextColumnCount} columns
+                </strong>{" "}
+                to include this seat.
+              </Alert>
+            ) : addSeatPositionKey ? (
+              <Alert severity="success" sx={{ borderRadius: 2.2 }}>
+                Position {addSeatNormalizedRow}
+                {addSeatNormalizedColumn} is available.
+              </Alert>
+            ) : null}
 
             <TextField
               label="Seat Number"
               value={addSeatNumber}
               onChange={(event) => setAddSeatNumber(event.target.value)}
+              placeholder="e.g. A1, W12, P-101"
+              helperText="Seat number is independent from its physical row and column."
+              fullWidth
+              autoFocus
             />
 
-            <FormControl fullWidth>
-              <InputLabel>Seat Type</InputLabel>
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Seat Type</InputLabel>
 
-              <Select
-                value={addSeatType}
-                label="Seat Type"
-                onChange={(event) => setAddSeatType(event.target.value)}
-              >
-                {SEAT_TYPES.map((type) => (
-                  <MenuItem key={type} value={type}>
-                    {SEAT_TYPE_LABELS[type]}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                  <Select
+                    value={addSeatType}
+                    label="Seat Type"
+                    onChange={(event) => setAddSeatType(event.target.value)}
+                  >
+                    {SEAT_TYPES.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        {SEAT_TYPE_LABELS[type]}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
 
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Status</InputLabel>
 
-              <Select
-                value={addSeatStatus}
-                label="Status"
-                onChange={(event) => setAddSeatStatus(event.target.value)}
-              >
-                {MANAGEMENT_STATUSES.map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {SEAT_STATUS_LABELS[status]}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                  <Select
+                    value={addSeatStatus}
+                    label="Status"
+                    onChange={(event) => setAddSeatStatus(event.target.value)}
+                  >
+                    {MANAGEMENT_STATUSES.map((status) => (
+                      <MenuItem key={status} value={status}>
+                        {SEAT_STATUS_LABELS[status]}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
           </Stack>
         </DialogContent>
 
-        <DialogActions>
-          <Button disabled={saving} onClick={() => setAddSeatDialogOpen(false)}>
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
+          <Button
+            disabled={saving}
+            onClick={() => setAddSeatDialogOpen(false)}
+            variant="outlined"
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
+          >
             Cancel
           </Button>
 
-          <Button variant="contained" disabled={saving} onClick={handleAddSeat}>
+          <Button
+            variant="contained"
+            disabled={
+              saving ||
+              !addSeatNormalizedRow ||
+              !/^[A-Z]$/.test(addSeatNormalizedRow) ||
+              !Number.isInteger(addSeatNormalizedColumn) ||
+              addSeatNormalizedColumn < 1 ||
+              !addSeatNumber.trim() ||
+              Boolean(seatAtAddPosition)
+            }
+            onClick={handleAddSeat}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 800 }}
+          >
             {saving ? "Adding..." : "Add Seat"}
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* ======================================================
-          ADD ROW DIALOG
-      ====================================================== */}
 
       <Dialog
         open={addRowDialogOpen}
         onClose={() => !saving && setAddRowDialogOpen(false)}
         fullWidth
         maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Add New Row</DialogTitle>
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Typography variant="h6" fontWeight={850}>
+            Add New Row
+          </Typography>
 
-        <DialogContent>
-          <Stack
-            spacing={2}
-            sx={{
-              mt: 1,
-            }}
-          >
-            <Alert severity="info">
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
+            Extend the current floor layout with another row of seats.
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ borderRadius: 2.2 }}>
               New row:{" "}
               <strong>
                 {rowCount < 26 ? getRowLabel(rowCount) : "No row available"}
@@ -3415,18 +4782,13 @@ const openAddSeatForPosition = () => {
               label="Number of Seats"
               type="number"
               value={addRowSeats}
-              slotProps={{
-                htmlInput: {
-                  min: 1,
-                },
-              }}
+              slotProps={{ htmlInput: { min: 1 } }}
               onChange={(event) => setAddRowSeats(event.target.value)}
               fullWidth
             />
 
             <FormControl fullWidth>
               <InputLabel>Seat Type</InputLabel>
-
               <Select
                 value={addRowSeatType}
                 label="Seat Type"
@@ -3442,7 +4804,6 @@ const openAddSeatForPosition = () => {
 
             <FormControl fullWidth>
               <InputLabel>Status</InputLabel>
-
               <Select
                 value={addRowSeatStatus}
                 label="Status"
@@ -3458,45 +4819,127 @@ const openAddSeatForPosition = () => {
           </Stack>
         </DialogContent>
 
-        <DialogActions>
-          <Button disabled={saving} onClick={() => setAddRowDialogOpen(false)}>
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
+          <Button
+            disabled={saving}
+            onClick={() => setAddRowDialogOpen(false)}
+            variant="outlined"
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
+          >
             Cancel
           </Button>
 
-          <Button variant="contained" disabled={saving} onClick={handleAddRow}>
+          <Button
+            variant="contained"
+            disabled={saving}
+            onClick={handleAddRow}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 800 }}
+          >
             {saving ? "Adding..." : "Add Row"}
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* ======================================================
-          EDIT SEAT DIALOG
-      ====================================================== */}
 
       <Dialog
         open={seatDialogOpen}
         onClose={() => !saving && setSeatDialogOpen(false)}
         fullWidth
         maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
       >
-        <DialogTitle>Manage Seat {selectedSeat?.seatNumber || ""}</DialogTitle>
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 42,
+                height: 42,
+                borderRadius: 2.3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                color: "primary.main",
+              }}
+            >
+              <EventSeat />
+            </Box>
 
-        <DialogContent>
-          <Stack
-            spacing={2}
-            sx={{
-              mt: 1,
-            }}
-          >
-            <Alert severity="info">
-              Row {selectedSeat?.rowLabel}
-              {" • "}
-              Position {selectedSeat?.columnNumber}
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Manage Seat {selectedSeat?.seatNumber || ""}
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Row {selectedSeat?.rowLabel || "-"} • Position{" "}
+                {selectedSeat?.columnNumber || "-"}
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ borderRadius: 2.2 }}>
+              Seat name and physical position are independent. You can rename
+              this seat or move it to any row/column without changing its seat
+              ID.
             </Alert>
+
+            <TextField
+              label="Seat Name / Number"
+              value={editSeatNumber}
+              onChange={(event) => setEditSeatNumber(event.target.value)}
+              helperText="Example: E8, WINDOW-1, P12"
+              fullWidth
+            />
+
+            <Grid container spacing={1.5}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Row</InputLabel>
+                  <Select
+                    value={editSeatRow}
+                    label="Row"
+                    onChange={(event) => setEditSeatRow(event.target.value)}
+                  >
+                    {Array.from({ length: 26 }).map((_, index) => {
+                      const rowLabel = getRowLabel(index);
+                      return (
+                        <MenuItem key={rowLabel} value={rowLabel}>
+                          Row {rowLabel}
+                          {index + 1 > rowCount ? " • New row" : ""}
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Position / Column"
+                  type="number"
+                  value={editSeatColumn}
+                  onChange={(event) => setEditSeatColumn(event.target.value)}
+                  inputProps={{ min: 1, step: 1 }}
+                  helperText={
+                    Number(editSeatColumn) > columnCount
+                      ? "Layout will expand automatically."
+                      : "Physical position in this row."
+                  }
+                  fullWidth
+                />
+              </Grid>
+            </Grid>
 
             <FormControl fullWidth>
               <InputLabel>Seat Type</InputLabel>
-
               <Select
                 value={editSeatType}
                 label="Seat Type"
@@ -3512,7 +4955,6 @@ const openAddSeatForPosition = () => {
 
             <FormControl fullWidth>
               <InputLabel>Physical Status</InputLabel>
-
               <Select
                 value={editSeatStatus}
                 label="Physical Status"
@@ -3525,26 +4967,62 @@ const openAddSeatForPosition = () => {
                 ))}
               </Select>
             </FormControl>
+
+            {selectedSeat?.status === "BOOKED" && (
+              <Alert severity="warning" sx={{ borderRadius: 2.2 }}>
+                This seat is currently booked and cannot be deleted.
+              </Alert>
+            )}
           </Stack>
         </DialogContent>
 
-        <DialogActions>
+        <DialogActions
+          sx={{
+            px: 3,
+            pb: 3,
+            pt: 1.5,
+            flexWrap: "wrap",
+            gap: 1,
+          }}
+        >
+          <Button
+            variant="outlined"
+            startIcon={<Add />}
+            disabled={saving}
+            onClick={() => handleInsertSpaceRelativeToSeat("before")}
+            sx={{ textTransform: "none", fontWeight: 750 }}
+          >
+            Space Before
+          </Button>
+
+          <Button
+            variant="outlined"
+            startIcon={<Add />}
+            disabled={saving}
+            onClick={() => handleInsertSpaceRelativeToSeat("after")}
+            sx={{ textTransform: "none", fontWeight: 750 }}
+          >
+            Space After
+          </Button>
+
           <Button
             color="error"
             startIcon={<DeleteOutlineOutlined />}
-            disabled={saving}
+            disabled={saving || selectedSeat?.status === "BOOKED"}
             onClick={handleDeleteSeat}
+            sx={{ textTransform: "none", fontWeight: 750 }}
           >
             Delete Seat
           </Button>
 
-          <Box
-            sx={{
-              flexGrow: 1,
-            }}
-          />
+          <Box sx={{ flexGrow: 1 }} />
 
-          <Button disabled={saving} onClick={() => setSeatDialogOpen(false)}>
+          <Button
+            disabled={saving}
+            onClick={() => setSeatDialogOpen(false)}
+            variant="outlined"
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 700 }}
+          >
             Cancel
           </Button>
 
@@ -3552,6 +5030,7 @@ const openAddSeatForPosition = () => {
             variant="contained"
             disabled={saving}
             onClick={handleUpdateSeat}
+            sx={{ textTransform: "none", borderRadius: 2.2, fontWeight: 800 }}
           >
             {saving ? "Saving..." : "Save Changes"}
           </Button>

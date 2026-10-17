@@ -3,9 +3,11 @@ import {
   AdminPanelSettingsOutlined,
   AssessmentOutlined,
   DashboardOutlined,
+  ForumOutlined,
   LocalLibraryOutlined,
   PaymentsOutlined,
   PeopleOutlineOutlined,
+  SupportAgentOutlined,
   WorkspacePremiumOutlined,
 } from "@mui/icons-material";
 
@@ -82,6 +84,28 @@ const adminMenu = [
         label: "Payments",
         path: "/admin/payments",
         icon: PaymentsOutlined,
+      },
+    ],
+  },
+
+  // =========================================================
+  // SUPPORT
+  // =========================================================
+
+  {
+    section: "SUPPORT",
+
+    items: [
+      {
+        label: "Support Dashboard",
+        path: "/admin/support",
+        icon: SupportAgentOutlined,
+      },
+
+      {
+        label: "Support Tickets",
+        path: "/admin/support/tickets",
+        icon: ForumOutlined,
       },
     ],
   },

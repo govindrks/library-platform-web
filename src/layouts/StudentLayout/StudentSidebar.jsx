@@ -11,9 +11,13 @@ import {
   Typography,
 } from "@mui/material";
 
-import { useLocation, useNavigate } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 
 import studentMenu from "./studentMenu";
+
 
 // ============================================================
 // CONSTANTS
@@ -21,11 +25,15 @@ import studentMenu from "./studentMenu";
 
 const drawerWidth = 260;
 
+
 // ============================================================
 // STUDENT SIDEBAR
 // ============================================================
 
-function StudentSidebar({ mobileOpen, onMobileClose }) {
+function StudentSidebar({
+  mobileOpen,
+  onMobileClose,
+}) {
   // ==========================================================
   // ROUTER
   // ==========================================================
@@ -33,6 +41,7 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
   const location = useLocation();
 
   const navigate = useNavigate();
+
 
   // ==========================================================
   // NAVIGATION
@@ -48,20 +57,30 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
     onMobileClose?.();
   };
 
+
   // ==========================================================
   // ACTIVE ROUTE
   // ==========================================================
 
   const isActive = (path) => {
-    const currentPath = location.pathname;
+    const currentPath =
+      location.pathname;
+
 
     // ------------------------------------------------------
     // DASHBOARD
     // ------------------------------------------------------
 
-    if (path === "/student/dashboard") {
-      return currentPath === "/student/dashboard";
+    if (
+      path ===
+      "/student/dashboard"
+    ) {
+      return (
+        currentPath ===
+        "/student/dashboard"
+      );
     }
+
 
     // ------------------------------------------------------
     // BROWSE LIBRARIES
@@ -77,100 +96,182 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
     // that menu item later receives its own route.
     // ------------------------------------------------------
 
-    if (path === "/student/libraries") {
+    if (
+      path ===
+      "/student/libraries"
+    ) {
       return (
-        currentPath === "/student/libraries" ||
-        currentPath.startsWith("/student/libraries/")
+        currentPath ===
+          "/student/libraries" ||
+        currentPath.startsWith(
+          "/student/libraries/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // MEMBERSHIP
     // ------------------------------------------------------
 
-    if (path === "/student/membership") {
+    if (
+      path ===
+      "/student/membership"
+    ) {
       return (
-        currentPath === path || currentPath.startsWith("/student/membership/")
+        currentPath === path ||
+        currentPath.startsWith(
+          "/student/membership/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // BOOKINGS
     // ------------------------------------------------------
 
-    if (path === "/student/bookings") {
+    if (
+      path ===
+      "/student/bookings"
+    ) {
       return (
-        currentPath === path || currentPath.startsWith("/student/bookings/")
+        currentPath === path ||
+        currentPath.startsWith(
+          "/student/bookings/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // SEAT CHANGE
     // ------------------------------------------------------
 
-    if (path === "/student/seat-change") {
+    if (
+      path ===
+      "/student/seat-change"
+    ) {
       return (
-        currentPath === path || currentPath.startsWith("/student/seat-change/")
+        currentPath === path ||
+        currentPath.startsWith(
+          "/student/seat-change/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // PAYMENTS
     // ------------------------------------------------------
 
-    if (path === "/student/payments") {
+    if (
+      path ===
+      "/student/payments"
+    ) {
       return (
-        currentPath === path || currentPath.startsWith("/student/payments/")
+        currentPath === path ||
+        currentPath.startsWith(
+          "/student/payments/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // INVOICES
     // ------------------------------------------------------
 
-    if (path === "/student/invoices") {
+    if (
+      path ===
+      "/student/invoices"
+    ) {
       return (
-        currentPath === path || currentPath.startsWith("/student/invoices/")
+        currentPath === path ||
+        currentPath.startsWith(
+          "/student/invoices/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // NOTIFICATIONS
     // ------------------------------------------------------
 
-    if (path === "/student/notifications") {
+    if (
+      path ===
+      "/student/notifications"
+    ) {
       return (
         currentPath === path ||
-        currentPath.startsWith("/student/notifications/")
+        currentPath.startsWith(
+          "/student/notifications/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // PROFILE
     // ------------------------------------------------------
 
-    if (path === "/student/profile") {
+    if (
+      path ===
+      "/student/profile"
+    ) {
       return (
-        currentPath === path || currentPath.startsWith("/student/profile/")
+        currentPath === path ||
+        currentPath.startsWith(
+          "/student/profile/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // HELP & SUPPORT
     // ------------------------------------------------------
+    //
+    // Keep Help & Support active for both:
+    //
+    // /student/help-support
+    //
+    // and:
+    //
+    // /student/support/tickets/:ticketId
+    //
+    // ------------------------------------------------------
 
-    if (path === "/student/help-support") {
+    if (
+      path ===
+      "/student/help-support"
+    ) {
       return (
-        currentPath === path || currentPath.startsWith("/student/help-support/")
+        currentPath ===
+          "/student/help-support" ||
+        currentPath.startsWith(
+          "/student/help-support/",
+        ) ||
+        currentPath.startsWith(
+          "/student/support/tickets/",
+        )
       );
     }
+
 
     // ------------------------------------------------------
     // DEFAULT
     // ------------------------------------------------------
 
-    return currentPath === path || currentPath.startsWith(`${path}/`);
+    return (
+      currentPath === path ||
+      currentPath.startsWith(
+        `${path}/`,
+      )
+    );
   };
+
 
   // ==========================================================
   // SIDEBAR CONTENT
@@ -185,16 +286,19 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
         flexDirection: "column",
 
-        bgcolor: "background.paper",
+        bgcolor:
+          "background.paper",
       }}
     >
+
       {/* ===================================================== */}
       {/* LOGO */}
       {/* ===================================================== */}
 
       <Toolbar
         sx={{
-          minHeight: "76px !important",
+          minHeight:
+            "76px !important",
 
           px: 2.5,
 
@@ -209,15 +313,18 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
             borderRadius: 2.7,
 
-            background: "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
+            background:
+              "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
 
-            color: "primary.contrastText",
+            color:
+              "primary.contrastText",
 
             display: "flex",
 
             alignItems: "center",
 
-            justifyContent: "center",
+            justifyContent:
+              "center",
 
             fontWeight: 900,
 
@@ -225,7 +332,8 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
             flexShrink: 0,
 
-            boxShadow: "0 7px 18px rgba(79,70,229,0.24)",
+            boxShadow:
+              "0 7px 18px rgba(79,70,229,0.24)",
           }}
         >
           L
@@ -238,17 +346,27 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
             minWidth: 0,
           }}
         >
-          <Typography variant="h6" fontWeight={800} lineHeight={1.1} noWrap>
+          <Typography
+            variant="h6"
+            fontWeight={800}
+            lineHeight={1.1}
+            noWrap
+          >
             LibraryHub
           </Typography>
 
-          <Typography variant="caption" color="text.secondary" noWrap>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            noWrap
+          >
             Member Portal
           </Typography>
         </Box>
       </Toolbar>
 
       <Divider />
+
 
       {/* ===================================================== */}
       {/* MENU */}
@@ -266,198 +384,286 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
           px: 1.25,
 
-          scrollbarWidth: "thin",
+          scrollbarWidth:
+            "thin",
 
-          "&::-webkit-scrollbar": {
-            width: 5,
-          },
+          "&::-webkit-scrollbar":
+            {
+              width: 5,
+            },
 
-          "&::-webkit-scrollbar-thumb": {
-            bgcolor: "action.disabled",
+          "&::-webkit-scrollbar-thumb":
+            {
+              bgcolor:
+                "action.disabled",
 
-            borderRadius: 20,
-          },
+              borderRadius: 20,
+            },
         }}
       >
-        {studentMenu.map((section, sectionIndex) => (
-          <Box
-            key={section.title || section.section || sectionIndex}
-            sx={{
-              mb: 2,
-            }}
-          >
-            {/* ============================================= */}
-            {/* SECTION TITLE */}
-            {/* ============================================= */}
-
-            <Typography
-              variant="caption"
-              fontWeight={700}
-              color="text.secondary"
+        {studentMenu.map(
+          (
+            section,
+            sectionIndex,
+          ) => (
+            <Box
+              key={
+                section.title ||
+                section.section ||
+                sectionIndex
+              }
               sx={{
-                display: "block",
-
-                px: 1.5,
-
-                mb: 0.75,
-
-                letterSpacing: 0.65,
-
-                fontSize: 11.5,
+                mb: 2,
               }}
             >
-              {section.title || section.section}
-            </Typography>
 
-            {/* ============================================= */}
-            {/* MENU ITEMS */}
-            {/* ============================================= */}
+              {/* ============================================= */}
+              {/* SECTION TITLE */}
+              {/* ============================================= */}
 
-            <List disablePadding>
-              {section.items.map((item) => {
-                const Icon = item.icon;
+              <Typography
+                variant="caption"
+                fontWeight={700}
+                color="text.secondary"
+                sx={{
+                  display: "block",
 
-                const active = isActive(item.path);
+                  px: 1.5,
 
-                return (
-                  <Tooltip key={item.label} title="" placement="right">
-                    <ListItemButton
-                      selected={active}
-                      onClick={() => handleNavigation(item.path)}
-                      sx={{
-                        position: "relative",
+                  mb: 0.75,
 
-                        borderRadius: 2.5,
+                  letterSpacing:
+                    0.65,
 
-                        mb: 0.5,
+                  fontSize: 11.5,
+                }}
+              >
+                {section.title ||
+                  section.section}
+              </Typography>
 
-                        minHeight: 48,
 
-                        px: 1.5,
+              {/* ============================================= */}
+              {/* MENU ITEMS */}
+              {/* ============================================= */}
 
-                        overflow: "hidden",
+              <List disablePadding>
+                {section.items.map(
+                  (item) => {
+                    const Icon =
+                      item.icon;
 
-                        color: active ? "primary.main" : "text.primary",
+                    const active =
+                      isActive(
+                        item.path,
+                      );
 
-                        transition: "all 0.18s ease",
-
-                        "&::before": {
-                          content: '""',
-
-                          position: "absolute",
-
-                          left: 0,
-
-                          top: "50%",
-
-                          transform: "translateY(-50%)",
-
-                          width: active ? 4 : 0,
-
-                          height: "58%",
-
-                          borderRadius: "0 6px 6px 0",
-
-                          bgcolor: "primary.main",
-
-                          transition: "width 0.18s ease",
-                        },
-
-                        "&:hover": {
-                          bgcolor: active
-                            ? "rgba(79,70,229,0.10)"
-                            : "action.hover",
-
-                          transform: "translateX(2px)",
-                        },
-
-                        "&.Mui-selected": {
-                          bgcolor: "rgba(79,70,229,0.09)",
-
-                          color: "primary.main",
-
-                          "& .MuiListItemIcon-root": {
-                            color: "primary.main",
-                          },
-                        },
-
-                        "&.Mui-selected:hover": {
-                          bgcolor: "rgba(79,70,229,0.12)",
-                        },
-                      }}
-                    >
-                      {/* ================================= */}
-                      {/* ICON */}
-                      {/* ================================= */}
-
-                      <ListItemIcon
-                        sx={{
-                          minWidth: 40,
-
-                          color: active ? "primary.main" : "text.secondary",
-
-                          transition: "color 0.18s ease",
-                        }}
+                    return (
+                      <Tooltip
+                        key={`${section.title || section.section}-${item.label}-${item.path}`}
+                        title=""
+                        placement="right"
                       >
-                        <Icon fontSize="small" />
-                      </ListItemIcon>
-
-                      {/* ================================= */}
-                      {/* LABEL */}
-                      {/* ================================= */}
-
-                      <ListItemText
-                        primary={item.label}
-                        primaryTypographyProps={{
-                          fontSize: 15,
-
-                          lineHeight: 1.35,
-
-                          fontWeight: active ? 700 : 500,
-                        }}
-                      />
-
-                      {/* ================================= */}
-                      {/* OPTIONAL BADGE */}
-                      {/* ================================= */}
-
-                      {item.badge != null && (
-                        <Box
+                        <ListItemButton
+                          selected={
+                            active
+                          }
+                          onClick={() =>
+                            handleNavigation(
+                              item.path,
+                            )
+                          }
                           sx={{
-                            minWidth: 22,
+                            position:
+                              "relative",
 
-                            height: 22,
+                            borderRadius:
+                              2.5,
 
-                            px: 0.75,
+                            mb: 0.5,
 
-                            borderRadius: 50,
+                            minHeight: 48,
 
-                            bgcolor: "primary.main",
+                            px: 1.5,
 
-                            color: "primary.contrastText",
+                            overflow:
+                              "hidden",
 
-                            display: "flex",
+                            color: active
+                              ? "primary.main"
+                              : "text.primary",
 
-                            alignItems: "center",
+                            transition:
+                              "all 0.18s ease",
 
-                            justifyContent: "center",
+                            "&::before":
+                              {
+                                content:
+                                  '""',
 
-                            fontSize: 11,
+                                position:
+                                  "absolute",
 
-                            fontWeight: 800,
+                                left: 0,
+
+                                top: "50%",
+
+                                transform:
+                                  "translateY(-50%)",
+
+                                width:
+                                  active
+                                    ? 4
+                                    : 0,
+
+                                height:
+                                  "58%",
+
+                                borderRadius:
+                                  "0 6px 6px 0",
+
+                                bgcolor:
+                                  "primary.main",
+
+                                transition:
+                                  "width 0.18s ease",
+                              },
+
+                            "&:hover": {
+                              bgcolor:
+                                active
+                                  ? "rgba(79,70,229,0.10)"
+                                  : "action.hover",
+
+                              transform:
+                                "translateX(2px)",
+                            },
+
+                            "&.Mui-selected":
+                              {
+                                bgcolor:
+                                  "rgba(79,70,229,0.09)",
+
+                                color:
+                                  "primary.main",
+
+                                "& .MuiListItemIcon-root":
+                                  {
+                                    color:
+                                      "primary.main",
+                                  },
+                              },
+
+                            "&.Mui-selected:hover":
+                              {
+                                bgcolor:
+                                  "rgba(79,70,229,0.12)",
+                              },
                           }}
                         >
-                          {item.badge}
-                        </Box>
-                      )}
-                    </ListItemButton>
-                  </Tooltip>
-                );
-              })}
-            </List>
-          </Box>
-        ))}
+
+                          {/* ================================= */}
+                          {/* ICON */}
+                          {/* ================================= */}
+
+                          <ListItemIcon
+                            sx={{
+                              minWidth:
+                                40,
+
+                              color:
+                                active
+                                  ? "primary.main"
+                                  : "text.secondary",
+
+                              transition:
+                                "color 0.18s ease",
+                            }}
+                          >
+                            <Icon fontSize="small" />
+                          </ListItemIcon>
+
+
+                          {/* ================================= */}
+                          {/* LABEL */}
+                          {/* ================================= */}
+
+                          <ListItemText
+                            primary={
+                              item.label
+                            }
+                            primaryTypographyProps={{
+                              fontSize:
+                                15,
+
+                              lineHeight:
+                                1.35,
+
+                              fontWeight:
+                                active
+                                  ? 700
+                                  : 500,
+                            }}
+                          />
+
+
+                          {/* ================================= */}
+                          {/* OPTIONAL BADGE */}
+                          {/* ================================= */}
+
+                          {item.badge !=
+                            null && (
+                            <Box
+                              sx={{
+                                minWidth:
+                                  22,
+
+                                height:
+                                  22,
+
+                                px: 0.75,
+
+                                borderRadius:
+                                  50,
+
+                                bgcolor:
+                                  "primary.main",
+
+                                color:
+                                  "primary.contrastText",
+
+                                display:
+                                  "flex",
+
+                                alignItems:
+                                  "center",
+
+                                justifyContent:
+                                  "center",
+
+                                fontSize:
+                                  11,
+
+                                fontWeight:
+                                  800,
+                              }}
+                            >
+                              {
+                                item.badge
+                              }
+                            </Box>
+                          )}
+                        </ListItemButton>
+                      </Tooltip>
+                    );
+                  },
+                )}
+              </List>
+            </Box>
+          ),
+        )}
       </Box>
+
 
       {/* ===================================================== */}
       {/* FOOTER */}
@@ -473,15 +679,21 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
           flexShrink: 0,
 
-          bgcolor: "rgba(248,250,252,0.5)",
+          bgcolor:
+            "rgba(248,250,252,0.5)",
         }}
       >
-        <Typography variant="caption" color="text.secondary" fontWeight={500}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          fontWeight={500}
+        >
           LibraryHub v1.0.0
         </Typography>
       </Box>
     </Box>
   );
+
 
   // ==========================================================
   // RENDER
@@ -489,6 +701,7 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
   return (
     <>
+
       {/* ===================================================== */}
       {/* DESKTOP */}
       {/* ===================================================== */}
@@ -506,22 +719,29 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
           flexShrink: 0,
 
-          "& .MuiDrawer-paper": {
-            width: drawerWidth,
+          "& .MuiDrawer-paper":
+            {
+              width:
+                drawerWidth,
 
-            boxSizing: "border-box",
+              boxSizing:
+                "border-box",
 
-            borderRight: "1px solid",
+              borderRight:
+                "1px solid",
 
-            borderColor: "divider",
+              borderColor:
+                "divider",
 
-            backgroundImage: "none",
-          },
+              backgroundImage:
+                "none",
+            },
         }}
         open
       >
         {content}
       </Drawer>
+
 
       {/* ===================================================== */}
       {/* MOBILE */}
@@ -529,8 +749,12 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
 
       <Drawer
         variant="temporary"
-        open={Boolean(mobileOpen)}
-        onClose={onMobileClose}
+        open={Boolean(
+          mobileOpen,
+        )}
+        onClose={
+          onMobileClose
+        }
         ModalProps={{
           keepMounted: true,
         }}
@@ -541,13 +765,17 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
             md: "none",
           },
 
-          "& .MuiDrawer-paper": {
-            width: drawerWidth,
+          "& .MuiDrawer-paper":
+            {
+              width:
+                drawerWidth,
 
-            boxSizing: "border-box",
+              boxSizing:
+                "border-box",
 
-            backgroundImage: "none",
-          },
+              backgroundImage:
+                "none",
+            },
         }}
       >
         {content}
@@ -555,6 +783,7 @@ function StudentSidebar({ mobileOpen, onMobileClose }) {
     </>
   );
 }
+
 
 export default StudentSidebar;
 

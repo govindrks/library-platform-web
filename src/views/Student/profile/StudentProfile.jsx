@@ -18,6 +18,7 @@ import {
   MenuItem,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 
@@ -32,12 +33,15 @@ import {
   LockOutlined,
   PersonOutlineOutlined,
   PhoneOutlined,
-  SecurityOutlined,
+  ShieldOutlined,
   VerifiedUserOutlined,
   Visibility,
   VisibilityOff,
   WcOutlined,
+  WorkspacePremiumOutlined,
 } from "@mui/icons-material";
+
+import { alpha, useTheme } from "@mui/material/styles";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -134,6 +138,8 @@ const getErrorMessage = (requestError, fallback) => {
 // ============================================================
 
 function StudentProfile() {
+  const theme = useTheme();
+
   const navigate = useNavigate();
 
   // ==========================================================
@@ -729,22 +735,72 @@ function StudentProfile() {
   };
 
   // ==========================================================
+  // DIALOG PAPER STYLE
+  // ==========================================================
+
+  const dialogPaperSx = {
+    borderRadius: 4,
+
+    border: "1px solid",
+
+    borderColor: alpha(theme.palette.divider, 0.9),
+
+    overflow: "hidden",
+
+    boxShadow: `0 28px 80px ${alpha(
+      theme.palette.common.black,
+      theme.palette.mode === "dark" ? 0.4 : 0.18,
+    )}`,
+  };
+
+  // ==========================================================
   // LOADING
   // ==========================================================
 
   if (loading) {
     return (
-      <Stack
-        alignItems="center"
-        spacing={2}
+      <Box
         sx={{
-          py: 8,
+          minHeight: 420,
+
+          display: "grid",
+
+          placeItems: "center",
         }}
       >
-        <CircularProgress />
+        <Stack alignItems="center" spacing={2}>
+          <Box
+            sx={{
+              width: 68,
+              height: 68,
 
-        <Typography color="text.secondary">Loading profile...</Typography>
-      </Stack>
+              borderRadius: "50%",
+
+              display: "grid",
+
+              placeItems: "center",
+
+              bgcolor: alpha(theme.palette.primary.main, 0.08),
+            }}
+          >
+            <CircularProgress size={32} />
+          </Box>
+
+          <Box textAlign="center">
+            <Typography fontWeight={800}>Loading your profile</Typography>
+
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                mt: 0.4,
+              }}
+            >
+              Preparing your LibraryHub account.
+            </Typography>
+          </Box>
+        </Stack>
+      </Box>
     );
   }
 
@@ -753,7 +809,16 @@ function StudentProfile() {
   // ==========================================================
 
   if (!profile) {
-    return <Alert severity="error">{error || "Profile unavailable."}</Alert>;
+    return (
+      <Alert
+        severity="error"
+        sx={{
+          borderRadius: 3,
+        }}
+      >
+        {error || "Profile unavailable."}
+      </Alert>
+    );
   }
 
   // ==========================================================
@@ -763,101 +828,248 @@ function StudentProfile() {
   return (
     <Box
       sx={{
-        maxWidth: 1050,
+        width: "100%",
+
+        maxWidth: 1180,
+
+        mx: "auto",
+
+        pb: 5,
       }}
     >
-      {/* ===================================================== */}
+      {/* ====================================================== */}
       {/* PAGE HEADER */}
-      {/* ===================================================== */}
+      {/* ====================================================== */}
 
-      <Typography variant="h4" fontWeight={800}>
-        My Profile
-      </Typography>
-
-      <Typography
-        color="text.secondary"
+      <Stack
+        direction={{
+          xs: "column",
+          sm: "row",
+        }}
+        justifyContent="space-between"
+        alignItems={{
+          xs: "flex-start",
+          sm: "center",
+        }}
+        spacing={2}
         sx={{
-          mt: 0.5,
-
           mb: 3,
         }}
       >
-        Manage your personal information and LibraryHub account.
-      </Typography>
+        <Box>
+          <Typography
+            variant="h4"
+            fontWeight={900}
+            sx={{
+              letterSpacing: "-0.035em",
+            }}
+          >
+            My Profile
+          </Typography>
 
-      {/* ===================================================== */}
+          <Typography
+            color="text.secondary"
+            sx={{
+              mt: 0.6,
+
+              maxWidth: 620,
+
+              lineHeight: 1.65,
+            }}
+          >
+            Manage your identity, personal details and LibraryHub account
+            security from one place.
+          </Typography>
+        </Box>
+
+        <Chip
+          icon={<VerifiedUserOutlined />}
+          label="Verified LibraryHub Member"
+          variant="outlined"
+          sx={{
+            height: 38,
+
+            px: 0.5,
+
+            borderRadius: 2.5,
+
+            fontWeight: 700,
+
+            borderColor: alpha(theme.palette.primary.main, 0.24),
+
+            bgcolor: alpha(theme.palette.primary.main, 0.045),
+
+            color: "primary.main",
+
+            "& .MuiChip-icon": {
+              color: "primary.main",
+            },
+          }}
+        />
+      </Stack>
+
+      {/* ====================================================== */}
       {/* SUCCESS */}
-      {/* ===================================================== */}
+      {/* ====================================================== */}
 
       {success && (
         <Alert
           severity="success"
-          sx={{
-            mb: 3,
-          }}
           onClose={() => setSuccess("")}
+          sx={{
+            mb: 2.5,
+
+            borderRadius: 3,
+
+            border: "1px solid",
+
+            borderColor: alpha(theme.palette.success.main, 0.2),
+
+            boxShadow: `0 8px 24px ${alpha(theme.palette.success.main, 0.06)}`,
+          }}
         >
           {success}
         </Alert>
       )}
 
-      {/* ===================================================== */}
+      {/* ====================================================== */}
       {/* ERROR */}
-      {/* ===================================================== */}
+      {/* ====================================================== */}
 
       {error && (
         <Alert
           severity="error"
-          sx={{
-            mb: 3,
-          }}
           onClose={() => setError("")}
+          sx={{
+            mb: 2.5,
+
+            borderRadius: 3,
+          }}
         >
           {error}
         </Alert>
       )}
 
-      {/* ===================================================== */}
-      {/* PROFILE HEADER */}
-      {/* ===================================================== */}
+      {/* ====================================================== */}
+      {/* PREMIUM PROFILE HERO */}
+      {/* ====================================================== */}
 
       <Card
         elevation={0}
         sx={{
+          position: "relative",
+
+          overflow: "hidden",
+
           mb: 3,
+
+          borderRadius: 4,
 
           border: "1px solid",
 
-          borderColor: "divider",
+          borderColor: alpha(theme.palette.primary.main, 0.13),
 
-          borderRadius: 3,
+          background: `
+            linear-gradient(
+              135deg,
+              ${alpha(
+                theme.palette.primary.main,
+                theme.palette.mode === "dark" ? 0.19 : 0.095,
+              )} 0%,
+              ${alpha(theme.palette.background.paper, 0.98)} 48%,
+              ${alpha(theme.palette.primary.main, 0.025)} 100%
+            )
+          `,
+
+          boxShadow: `0 18px 50px ${alpha(
+            theme.palette.common.black,
+            theme.palette.mode === "dark" ? 0.2 : 0.055,
+          )}`,
+
+          "&::before": {
+            content: '""',
+
+            position: "absolute",
+
+            width: 300,
+
+            height: 300,
+
+            borderRadius: "50%",
+
+            top: -190,
+
+            right: -80,
+
+            background: alpha(theme.palette.primary.main, 0.075),
+          },
+
+          "&::after": {
+            content: '""',
+
+            position: "absolute",
+
+            width: 180,
+
+            height: 180,
+
+            borderRadius: "50%",
+
+            right: 180,
+
+            bottom: -135,
+
+            background: alpha(theme.palette.primary.main, 0.035),
+          },
         }}
       >
         <CardContent
           sx={{
+            position: "relative",
+
+            zIndex: 1,
+
             p: {
               xs: 2.5,
+              sm: 3,
+              md: 4,
+            },
 
-              md: 3.5,
+            "&:last-child": {
+              pb: {
+                xs: 2.5,
+                sm: 3,
+                md: 4,
+              },
             },
           }}
         >
           <Stack
             direction={{
               xs: "column",
-
-              sm: "row",
+              md: "row",
             }}
             alignItems={{
               xs: "flex-start",
-
-              sm: "center",
+              md: "center",
             }}
             justifyContent="space-between"
             spacing={3}
           >
-            <Stack direction="row" spacing={2.5} alignItems="center">
-              {/* PROFILE IMAGE */}
+            <Stack
+              direction={{
+                xs: "column",
+                sm: "row",
+              }}
+              spacing={3}
+              alignItems={{
+                xs: "flex-start",
+                sm: "center",
+              }}
+            >
+              {/* ============================================== */}
+              {/* AVATAR */}
+              {/* ============================================== */}
 
               <Box
                 sx={{
@@ -866,131 +1078,233 @@ function StudentProfile() {
                   flexShrink: 0,
                 }}
               >
-                <Avatar
-                  src={profile?.profileImageUrl || undefined}
-                  alt={profile?.fullName || "Profile picture"}
+                <Box
                   sx={{
-                    width: {
-                      xs: 72,
+                    p: "5px",
 
-                      sm: 88,
-                    },
+                    borderRadius: "50%",
 
-                    height: {
-                      xs: 72,
+                    background: `linear-gradient(
+                        135deg,
+                        ${theme.palette.primary.main},
+                        ${alpha(theme.palette.primary.main, 0.38)}
+                      )`,
 
-                      sm: 88,
-                    },
-
-                    fontSize: 30,
-
-                    bgcolor: "primary.main",
-
-                    color: "primary.contrastText",
-
-                    border: "2px solid",
-
-                    borderColor: "background.paper",
-
-                    boxShadow: 1,
+                    boxShadow: `0 14px 34px ${alpha(
+                      theme.palette.primary.main,
+                      0.22,
+                    )}`,
                   }}
                 >
-                  {!profile?.profileImageUrl ? initials : null}
-                </Avatar>
-
-                <IconButton
-                  size="small"
-                  aria-label="Change profile picture"
-                  onClick={handleOpenImageDialog}
-                  sx={{
-                    position: "absolute",
-
-                    right: -4,
-
-                    bottom: -4,
-
-                    width: 32,
-
-                    height: 32,
-
-                    bgcolor: "primary.main",
-
-                    color: "primary.contrastText",
-
-                    border: "3px solid",
-
-                    borderColor: "background.paper",
-
-                    "&:hover": {
-                      bgcolor: "primary.dark",
-                    },
-                  }}
-                >
-                  <CameraAltOutlined
+                  <Avatar
+                    src={profile?.profileImageUrl || undefined}
+                    alt={profile?.fullName || "Profile picture"}
                     sx={{
-                      fontSize: 17,
+                      width: {
+                        xs: 92,
+                        sm: 110,
+                      },
+
+                      height: {
+                        xs: 92,
+                        sm: 110,
+                      },
+
+                      fontSize: 34,
+
+                      bgcolor: "primary.main",
+
+                      color: "primary.contrastText",
+
+                      fontWeight: 900,
+
+                      border: "4px solid",
+
+                      borderColor: "background.paper",
                     }}
-                  />
-                </IconButton>
+                  >
+                    {!profile?.profileImageUrl ? initials : null}
+                  </Avatar>
+                </Box>
+
+                <Tooltip title="Change profile picture" arrow>
+                  <IconButton
+                    size="small"
+                    aria-label="Change profile picture"
+                    onClick={handleOpenImageDialog}
+                    sx={{
+                      position: "absolute",
+
+                      right: -2,
+                      bottom: 4,
+
+                      width: 38,
+                      height: 38,
+
+                      bgcolor: "primary.main",
+
+                      color: "primary.contrastText",
+
+                      border: "3px solid",
+
+                      borderColor: "background.paper",
+
+                      boxShadow: `0 7px 18px ${alpha(
+                        theme.palette.common.black,
+                        0.15,
+                      )}`,
+
+                      "&:hover": {
+                        bgcolor: "primary.dark",
+
+                        transform: "scale(1.04)",
+                      },
+
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <CameraAltOutlined
+                      sx={{
+                        fontSize: 18,
+                      }}
+                    />
+                  </IconButton>
+                </Tooltip>
               </Box>
+
+              {/* ============================================== */}
+              {/* IDENTITY */}
+              {/* ============================================== */}
 
               <Box>
                 <Stack
                   direction="row"
-                  spacing={1}
                   alignItems="center"
+                  spacing={1}
                   flexWrap="wrap"
                   useFlexGap
                 >
-                  <Typography variant="h5" fontWeight={800}>
+                  <Typography
+                    variant="h4"
+                    fontWeight={900}
+                    sx={{
+                      letterSpacing: "-0.035em",
+
+                      lineHeight: 1.15,
+                    }}
+                  >
                     {profile.fullName}
                   </Typography>
 
-                  <Chip
-                    label={roleLabel}
-                    color="primary"
-                    size="small"
-                    variant="outlined"
-                  />
+                  <Tooltip title="Verified account" arrow>
+                    <VerifiedUserOutlined
+                      color="primary"
+                      sx={{
+                        fontSize: 23,
+                      }}
+                    />
+                  </Tooltip>
                 </Stack>
 
                 <Typography
                   color="text.secondary"
                   sx={{
-                    mt: 0.75,
+                    mt: 0.8,
+
+                    fontWeight: 500,
                   }}
                 >
                   {profile.email}
                 </Typography>
 
-                {profile.phone && (
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{
-                      mt: 0.5,
-                    }}
-                  >
-                    {profile.phone}
-                  </Typography>
-                )}
-
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  flexWrap="wrap"
+                  useFlexGap
                   sx={{
-                    mt: 0.5,
+                    mt: 2,
                   }}
                 >
-                  Member ID: #{profile.id}
-                </Typography>
+                  <Chip
+                    size="small"
+                    icon={<WorkspacePremiumOutlined />}
+                    label={roleLabel}
+                    sx={{
+                      fontWeight: 700,
+
+                      borderRadius: 2,
+
+                      bgcolor: alpha(theme.palette.primary.main, 0.09),
+
+                      color: "primary.main",
+
+                      "& .MuiChip-icon": {
+                        color: "primary.main",
+                      },
+                    }}
+                  />
+
+                  <Chip
+                    size="small"
+                    icon={<BadgeOutlined />}
+                    label={`Member #${profile.id}`}
+                    variant="outlined"
+                    sx={{
+                      fontWeight: 700,
+
+                      borderRadius: 2,
+                    }}
+                  />
+
+                  {profile.phone && (
+                    <Chip
+                      size="small"
+                      icon={<PhoneOutlined />}
+                      label={profile.phone}
+                      variant="outlined"
+                      sx={{
+                        fontWeight: 600,
+
+                        borderRadius: 2,
+                      }}
+                    />
+                  )}
+                </Stack>
               </Box>
             </Stack>
 
+            {/* ================================================ */}
+            {/* EDIT PROFILE */}
+            {/* ================================================ */}
+
             <Button
-              variant="outlined"
+              variant="contained"
               startIcon={<EditOutlined />}
               onClick={handleOpenEdit}
+              sx={{
+                minHeight: 46,
+
+                px: 2.5,
+
+                borderRadius: 2.5,
+
+                textTransform: "none",
+
+                fontWeight: 800,
+
+                boxShadow: `0 10px 25px ${alpha(
+                  theme.palette.primary.main,
+                  0.23,
+                )}`,
+
+                "&:hover": {
+                  boxShadow: `0 12px 32px ${alpha(
+                    theme.palette.primary.main,
+                    0.3,
+                  )}`,
+                },
+              }}
             >
               Edit Profile
             </Button>
@@ -998,33 +1312,384 @@ function StudentProfile() {
         </CardContent>
       </Card>
 
-      {/* ===================================================== */}
-      {/* PERSONAL INFORMATION */}
-      {/* ===================================================== */}
+      {/* ====================================================== */}
+      {/* INFORMATION + SECURITY */}
+      {/* ====================================================== */}
 
-      <Card
-        elevation={0}
-        sx={{
-          mb: 3,
+      <Grid container spacing={3}>
+        {/* ==================================================== */}
+        {/* PERSONAL INFORMATION */}
+        {/* ==================================================== */}
 
-          border: "1px solid",
-
-          borderColor: "divider",
-
-          borderRadius: 3,
-        }}
-      >
-        <CardContent
-          sx={{
-            p: {
-              xs: 2.5,
-
-              md: 3.5,
-            },
+        <Grid
+          size={{
+            xs: 12,
+            lg: 8,
           }}
         >
-          <Typography variant="h6" fontWeight={800}>
-            Personal Information
+          <Card
+            elevation={0}
+            sx={{
+              height: "100%",
+
+              border: "1px solid",
+
+              borderColor: "divider",
+
+              borderRadius: 4,
+
+              boxShadow: `0 10px 36px ${alpha(
+                theme.palette.common.black,
+                theme.palette.mode === "dark" ? 0.12 : 0.035,
+              )}`,
+            }}
+          >
+            <CardContent
+              sx={{
+                p: {
+                  xs: 2.5,
+                  md: 3.5,
+                },
+
+                "&:last-child": {
+                  pb: {
+                    xs: 2.5,
+                    md: 3.5,
+                  },
+                },
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Box
+                  sx={{
+                    width: 48,
+                    height: 48,
+
+                    borderRadius: 2.7,
+
+                    display: "grid",
+
+                    placeItems: "center",
+
+                    bgcolor: alpha(theme.palette.primary.main, 0.085),
+
+                    color: "primary.main",
+                  }}
+                >
+                  <PersonOutlineOutlined />
+                </Box>
+
+                <Box>
+                  <Typography variant="h6" fontWeight={900}>
+                    Personal Information
+                  </Typography>
+
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{
+                      mt: 0.2,
+                    }}
+                  >
+                    Your identity and contact information.
+                  </Typography>
+                </Box>
+              </Stack>
+
+              <Divider
+                sx={{
+                  my: 3,
+                }}
+              />
+
+              <Grid container spacing={2}>
+                <Grid
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                  }}
+                >
+                  <ProfileInfo
+                    icon={<PersonOutlineOutlined />}
+                    label="Full Name"
+                    value={profile.fullName}
+                  />
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                  }}
+                >
+                  <ProfileInfo
+                    icon={<EmailOutlined />}
+                    label="Email Address"
+                    value={profile.email}
+                  />
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                  }}
+                >
+                  <ProfileInfo
+                    icon={<PhoneOutlined />}
+                    label="Phone Number"
+                    value={profile.phone || "Not provided"}
+                  />
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                  }}
+                >
+                  <ProfileInfo
+                    icon={<WcOutlined />}
+                    label="Gender"
+                    value={genderLabel}
+                  />
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                  }}
+                >
+                  <ProfileInfo
+                    icon={<BadgeOutlined />}
+                    label="Member ID"
+                    value={`#${profile.id}`}
+                  />
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                  }}
+                >
+                  <ProfileInfo
+                    icon={<VerifiedUserOutlined />}
+                    label="Account Type"
+                    value={roleLabel}
+                  />
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* ==================================================== */}
+        {/* ACCOUNT SECURITY */}
+        {/* ==================================================== */}
+
+        <Grid
+          size={{
+            xs: 12,
+            lg: 4,
+          }}
+        >
+          <Card
+            elevation={0}
+            sx={{
+              height: "100%",
+
+              border: "1px solid",
+
+              borderColor: alpha(theme.palette.primary.main, 0.14),
+
+              borderRadius: 4,
+
+              background: `linear-gradient(
+                  160deg,
+                  ${alpha(theme.palette.primary.main, 0.08)},
+                  ${alpha(theme.palette.background.paper, 0.98)} 48%
+                )`,
+
+              boxShadow: `0 10px 36px ${alpha(
+                theme.palette.common.black,
+                theme.palette.mode === "dark" ? 0.12 : 0.035,
+              )}`,
+            }}
+          >
+            <CardContent
+              sx={{
+                p: {
+                  xs: 2.5,
+                  md: 3.5,
+                },
+
+                height: "100%",
+
+                "&:last-child": {
+                  pb: {
+                    xs: 2.5,
+                    md: 3.5,
+                  },
+                },
+              }}
+            >
+              <Stack
+                sx={{
+                  height: "100%",
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 56,
+                    height: 56,
+
+                    borderRadius: 3,
+
+                    display: "grid",
+
+                    placeItems: "center",
+
+                    bgcolor: alpha(theme.palette.primary.main, 0.1),
+
+                    color: "primary.main",
+
+                    mb: 2,
+                  }}
+                >
+                  <ShieldOutlined
+                    sx={{
+                      fontSize: 29,
+                    }}
+                  />
+                </Box>
+
+                <Typography variant="h6" fontWeight={900}>
+                  Account Security
+                </Typography>
+
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    mt: 0.7,
+
+                    lineHeight: 1.75,
+                  }}
+                >
+                  Keep your LibraryHub account protected by maintaining secure
+                  sign-in credentials.
+                </Typography>
+
+                <Box
+                  sx={{
+                    mt: 3,
+
+                    p: 2,
+
+                    borderRadius: 3,
+
+                    border: "1px solid",
+
+                    borderColor: "divider",
+
+                    bgcolor: alpha(theme.palette.background.paper, 0.72),
+                  }}
+                >
+                  <Stack direction="row" spacing={1.4} alignItems="center">
+                    <Box
+                      sx={{
+                        width: 44,
+                        height: 44,
+
+                        borderRadius: 2.3,
+
+                        display: "grid",
+
+                        placeItems: "center",
+
+                        bgcolor: alpha(theme.palette.success.main, 0.09),
+
+                        color: "success.main",
+                      }}
+                    >
+                      <LockOutlined />
+                    </Box>
+
+                    <Box>
+                      <Typography fontWeight={800}>Password</Typography>
+
+                      <Typography variant="caption" color="text.secondary">
+                        Protected sign-in credentials
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Box>
+
+                <Box
+                  sx={{
+                    flexGrow: 1,
+                  }}
+                />
+
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<LockOutlined />}
+                  onClick={handleOpenPassword}
+                  sx={{
+                    mt: 3,
+
+                    minHeight: 46,
+
+                    borderRadius: 2.5,
+
+                    textTransform: "none",
+
+                    fontWeight: 800,
+
+                    borderWidth: "1.5px",
+
+                    "&:hover": {
+                      borderWidth: "1.5px",
+
+                      bgcolor: alpha(theme.palette.primary.main, 0.045),
+                    },
+                  }}
+                >
+                  Change Password
+                </Button>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* ====================================================== */}
+      {/* PROFILE IMAGE DIALOG */}
+      {/* ====================================================== */}
+
+      <Dialog
+        open={imageDialogOpen}
+        onClose={handleCloseImageDialog}
+        fullWidth
+        maxWidth="xs"
+        slotProps={{
+          paper: {
+            sx: dialogPaperSx,
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            px: 3,
+            pt: 3,
+            pb: 1,
+          }}
+        >
+          <Typography variant="h6" fontWeight={900}>
+            Profile Picture
           </Typography>
 
           <Typography
@@ -1034,250 +1699,61 @@ function StudentProfile() {
               mt: 0.5,
             }}
           >
-            Your basic LibraryHub account details.
+            Personalize your LibraryHub account with a clear profile photo.
           </Typography>
+        </DialogTitle>
 
-          <Divider
-            sx={{
-              my: 3,
-            }}
-          />
-
-          <Grid container spacing={3}>
-            <Grid
-              size={{
-                xs: 12,
-
-                md: 6,
-              }}
-            >
-              <ProfileInfo
-                icon={<PersonOutlineOutlined />}
-                label="Full Name"
-                value={profile.fullName}
-              />
-            </Grid>
-
-            <Grid
-              size={{
-                xs: 12,
-
-                md: 6,
-              }}
-            >
-              <ProfileInfo
-                icon={<EmailOutlined />}
-                label="Email Address"
-                value={profile.email}
-              />
-            </Grid>
-
-            <Grid
-              size={{
-                xs: 12,
-
-                md: 6,
-              }}
-            >
-              <ProfileInfo
-                icon={<PhoneOutlined />}
-                label="Phone Number"
-                value={profile.phone || "Not provided"}
-              />
-            </Grid>
-
-            <Grid
-              size={{
-                xs: 12,
-
-                md: 6,
-              }}
-            >
-              <ProfileInfo
-                icon={<WcOutlined />}
-                label="Gender"
-                value={genderLabel}
-              />
-            </Grid>
-
-            <Grid
-              size={{
-                xs: 12,
-
-                md: 6,
-              }}
-            >
-              <ProfileInfo
-                icon={<BadgeOutlined />}
-                label="Member ID"
-                value={`#${profile.id}`}
-              />
-            </Grid>
-
-            <Grid
-              size={{
-                xs: 12,
-
-                md: 6,
-              }}
-            >
-              <ProfileInfo
-                icon={<VerifiedUserOutlined />}
-                label="Account Type"
-                value={roleLabel}
-              />
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
-
-      {/* ===================================================== */}
-      {/* ACCOUNT & SECURITY */}
-      {/* ===================================================== */}
-
-      <Card
-        elevation={0}
-        sx={{
-          border: "1px solid",
-
-          borderColor: "divider",
-
-          borderRadius: 3,
-        }}
-      >
-        <CardContent
+        <DialogContent
           sx={{
-            p: {
-              xs: 2.5,
-
-              md: 3.5,
-            },
+            px: 3,
+            pt: "20px !important",
           }}
         >
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <SecurityOutlined color="primary" />
-
-            <Box>
-              <Typography variant="h6" fontWeight={800}>
-                Account & Security
-              </Typography>
-
-              <Typography variant="body2" color="text.secondary">
-                Manage your account security and sign-in information.
-              </Typography>
-            </Box>
-          </Stack>
-
-          <Divider
-            sx={{
-              my: 3,
-            }}
-          />
-
-          <Stack
-            direction={{
-              xs: "column",
-
-              sm: "row",
-            }}
-            justifyContent="space-between"
-            alignItems={{
-              xs: "flex-start",
-
-              sm: "center",
-            }}
-            spacing={2}
-          >
-            <Stack direction="row" spacing={2} alignItems="center">
-              <Box
-                sx={{
-                  width: 42,
-
-                  height: 42,
-
-                  display: "flex",
-
-                  alignItems: "center",
-
-                  justifyContent: "center",
-
-                  borderRadius: 2,
-
-                  bgcolor: "action.hover",
-
-                  color: "primary.main",
-                }}
-              >
-                <LockOutlined />
-              </Box>
-
-              <Box>
-                <Typography fontWeight={700}>Password</Typography>
-
-                <Typography variant="body2" color="text.secondary">
-                  Update your account password securely.
-                </Typography>
-              </Box>
-            </Stack>
-
-            <Button
-              variant="outlined"
-              startIcon={<LockOutlined />}
-              onClick={handleOpenPassword}
-            >
-              Change Password
-            </Button>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {/* ===================================================== */}
-      {/* PROFILE IMAGE DIALOG */}
-      {/* ===================================================== */}
-
-      <Dialog
-        open={imageDialogOpen}
-        onClose={handleCloseImageDialog}
-        fullWidth
-        maxWidth="xs"
-      >
-        <DialogTitle fontWeight={800}>Change profile picture</DialogTitle>
-
-        <DialogContent>
-          <Stack
-            spacing={3}
-            alignItems="center"
-            sx={{
-              pt: 1,
-            }}
-          >
-            <Avatar
-              src={imagePreview || profile?.profileImageUrl || undefined}
-              alt={profile?.fullName || "Profile picture"}
+          <Stack spacing={2.5} alignItems="center">
+            <Box
               sx={{
-                width: 128,
+                p: "5px",
 
-                height: 128,
+                borderRadius: "50%",
 
-                fontSize: 42,
-
-                bgcolor: "primary.main",
-
-                color: "primary.contrastText",
-
-                border: "1px solid",
-
-                borderColor: "divider",
+                background: `linear-gradient(
+                    135deg,
+                    ${theme.palette.primary.main},
+                    ${alpha(theme.palette.primary.main, 0.35)}
+                  )`,
               }}
             >
-              {!imagePreview && !profile?.profileImageUrl ? initials : null}
-            </Avatar>
+              <Avatar
+                src={imagePreview || profile?.profileImageUrl || undefined}
+                alt={profile?.fullName || "Profile picture"}
+                sx={{
+                  width: 132,
+                  height: 132,
+
+                  fontSize: 42,
+
+                  fontWeight: 900,
+
+                  bgcolor: "primary.main",
+
+                  color: "primary.contrastText",
+
+                  border: "4px solid",
+
+                  borderColor: "background.paper",
+                }}
+              >
+                {!imagePreview && !profile?.profileImageUrl ? initials : null}
+              </Avatar>
+            </Box>
 
             {imageError && (
               <Alert
                 severity="error"
                 sx={{
                   width: "100%",
+
+                  borderRadius: 2.5,
                 }}
               >
                 {imageError}
@@ -1297,38 +1773,65 @@ function StudentProfile() {
               startIcon={<CloudUploadOutlined />}
               onClick={handleChooseImage}
               disabled={imageUploading || imageRemoving}
+              sx={{
+                minHeight: 44,
+
+                px: 2.5,
+
+                borderRadius: 2.5,
+
+                textTransform: "none",
+
+                fontWeight: 700,
+              }}
             >
-              Upload new photo
+              Choose New Photo
             </Button>
 
             <Box textAlign="center">
               <Typography variant="body2" color="text.secondary">
-                PNG, JPG or WEBP
+                JPG, PNG or WEBP
               </Typography>
 
               <Typography variant="caption" color="text.secondary">
-                Maximum 5 MB
+                Maximum file size: 5 MB
               </Typography>
             </Box>
 
             {selectedImage && (
-              <Typography
-                variant="caption"
-                color="text.secondary"
+              <Box
                 sx={{
                   width: "100%",
 
+                  p: 1.5,
+
+                  borderRadius: 2.5,
+
+                  bgcolor: alpha(theme.palette.primary.main, 0.045),
+
+                  border: "1px solid",
+
+                  borderColor: alpha(theme.palette.primary.main, 0.12),
+
                   textAlign: "center",
-
-                  overflow: "hidden",
-
-                  whiteSpace: "nowrap",
-
-                  textOverflow: "ellipsis",
                 }}
               >
-                Selected: {selectedImage.name}
-              </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{
+                    display: "block",
+
+                    overflow: "hidden",
+
+                    whiteSpace: "nowrap",
+
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  Selected: {selectedImage.name}
+                </Typography>
+              </Box>
             )}
           </Stack>
         </DialogContent>
@@ -1336,8 +1839,8 @@ function StudentProfile() {
         <DialogActions
           sx={{
             px: 3,
-
             pb: 3,
+            pt: 2,
 
             justifyContent: "space-between",
 
@@ -1359,6 +1862,13 @@ function StudentProfile() {
             disabled={
               !profile?.profileImageUrl || imageUploading || imageRemoving
             }
+            sx={{
+              borderRadius: 2,
+
+              textTransform: "none",
+
+              fontWeight: 700,
+            }}
           >
             {imageRemoving ? "Removing..." : "Remove Photo"}
           </Button>
@@ -1367,6 +1877,11 @@ function StudentProfile() {
             <Button
               onClick={handleCloseImageDialog}
               disabled={imageUploading || imageRemoving}
+              sx={{
+                textTransform: "none",
+
+                fontWeight: 700,
+              }}
             >
               Cancel
             </Button>
@@ -1382,31 +1897,84 @@ function StudentProfile() {
                   <CameraAltOutlined />
                 )
               }
+              sx={{
+                minHeight: 42,
+
+                px: 2.3,
+
+                borderRadius: 2.3,
+
+                textTransform: "none",
+
+                fontWeight: 800,
+              }}
             >
-              {imageUploading ? "Saving..." : "Save"}
+              {imageUploading ? "Saving..." : "Save Photo"}
             </Button>
           </Stack>
         </DialogActions>
       </Dialog>
 
-      {/* ===================================================== */}
+      {/* ====================================================== */}
       {/* EDIT PROFILE DIALOG */}
-      {/* ===================================================== */}
+      {/* ====================================================== */}
 
-      <Dialog open={editOpen} onClose={handleCloseEdit} fullWidth maxWidth="sm">
-        <DialogTitle fontWeight={800}>Edit Profile</DialogTitle>
+      <Dialog
+        open={editOpen}
+        onClose={handleCloseEdit}
+        fullWidth
+        maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: dialogPaperSx,
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            px: 3,
+            pt: 3,
+            pb: 1,
+          }}
+        >
+          <Stack direction="row" spacing={1.4} alignItems="center">
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
 
-        <DialogContent>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{
-              mb: 3,
-            }}
-          >
-            Update your LibraryHub profile information.
-          </Typography>
+                display: "grid",
 
+                placeItems: "center",
+
+                borderRadius: 2.4,
+
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+
+                color: "primary.main",
+              }}
+            >
+              <EditOutlined />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={900}>
+                Edit Profile
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Keep your personal information up to date.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent
+          sx={{
+            px: 3,
+            pt: "22px !important",
+          }}
+        >
           <Stack spacing={2.5}>
             <TextField
               fullWidth
@@ -1417,6 +1985,15 @@ function StudentProfile() {
               error={Boolean(fullNameError)}
               helperText={fullNameError}
               disabled={saving}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <PersonOutlineOutlined color="action" fontSize="small" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
             />
 
             <TextField
@@ -1437,7 +2014,7 @@ function StudentProfile() {
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
-                      <PhoneOutlined color="action" />
+                      <PhoneOutlined color="action" fontSize="small" />
                     </InputAdornment>
                   ),
                 },
@@ -1451,6 +2028,15 @@ function StudentProfile() {
               value={gender}
               onChange={(event) => setGender(event.target.value)}
               disabled={saving}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <WcOutlined color="action" fontSize="small" />
+                    </InputAdornment>
+                  ),
+                },
+              }}
             >
               <MenuItem value="">Not provided</MenuItem>
 
@@ -1471,7 +2057,7 @@ function StudentProfile() {
                 input: {
                   startAdornment: (
                     <InputAdornment position="start">
-                      <EmailOutlined color="action" />
+                      <EmailOutlined color="action" fontSize="small" />
                     </InputAdornment>
                   ),
                 },
@@ -1483,11 +2069,19 @@ function StudentProfile() {
         <DialogActions
           sx={{
             px: 3,
-
             pb: 3,
+            pt: 2,
           }}
         >
-          <Button onClick={handleCloseEdit} disabled={saving}>
+          <Button
+            onClick={handleCloseEdit}
+            disabled={saving}
+            sx={{
+              textTransform: "none",
+
+              fontWeight: 700,
+            }}
+          >
             Cancel
           </Button>
 
@@ -1502,34 +2096,94 @@ function StudentProfile() {
                 <AccountCircle />
               )
             }
+            sx={{
+              minHeight: 42,
+
+              px: 2.4,
+
+              borderRadius: 2.3,
+
+              textTransform: "none",
+
+              fontWeight: 800,
+            }}
           >
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* ===================================================== */}
+      {/* ====================================================== */}
       {/* CHANGE PASSWORD DIALOG */}
-      {/* ===================================================== */}
+      {/* ====================================================== */}
 
       <Dialog
         open={passwordOpen}
         onClose={handleClosePassword}
         fullWidth
         maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: dialogPaperSx,
+          },
+        }}
       >
-        <DialogTitle fontWeight={800}>Change Password</DialogTitle>
+        <DialogTitle
+          sx={{
+            px: 3,
+            pt: 3,
+            pb: 1,
+          }}
+        >
+          <Stack direction="row" spacing={1.4} alignItems="center">
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
 
-        <DialogContent>
-          <Typography
-            variant="body2"
-            color="text.secondary"
+                display: "grid",
+
+                placeItems: "center",
+
+                borderRadius: 2.4,
+
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+
+                color: "primary.main",
+              }}
+            >
+              <ShieldOutlined />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={900}>
+                Change Password
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Update your password to keep your account secure.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent
+          sx={{
+            px: 3,
+            pt: "22px !important",
+          }}
+        >
+          <Alert
+            severity="info"
             sx={{
-              mb: 3,
+              mb: 2.5,
+
+              borderRadius: 2.5,
             }}
           >
-            Enter your current password and choose a new password.
-          </Typography>
+            You will be signed out after changing your password and will need to
+            sign in again.
+          </Alert>
 
           <Stack spacing={2.5}>
             <PasswordField
@@ -1604,11 +2258,19 @@ function StudentProfile() {
         <DialogActions
           sx={{
             px: 3,
-
             pb: 3,
+            pt: 2,
           }}
         >
-          <Button onClick={handleClosePassword} disabled={changingPassword}>
+          <Button
+            onClick={handleClosePassword}
+            disabled={changingPassword}
+            sx={{
+              textTransform: "none",
+
+              fontWeight: 700,
+            }}
+          >
             Cancel
           </Button>
 
@@ -1623,6 +2285,19 @@ function StudentProfile() {
                 <LockOutlined />
               )
             }
+            sx={{
+              minHeight: 42,
+
+              px: 2.4,
+
+              borderRadius: 2.3,
+
+              textTransform: "none",
+
+              fontWeight: 800,
+
+              boxShadow: `0 8px 22px ${alpha(theme.palette.primary.main, 0.2)}`,
+            }}
           >
             {changingPassword ? "Changing..." : "Change Password"}
           </Button>
@@ -1637,49 +2312,99 @@ function StudentProfile() {
 // ============================================================
 
 function ProfileInfo({ icon, label, value }) {
+  const theme = useTheme();
+
   return (
-    <Stack direction="row" spacing={2} alignItems="flex-start">
-      <Box
-        sx={{
-          width: 42,
+    <Box
+      sx={{
+        p: 2,
 
-          height: 42,
+        minHeight: 94,
 
-          display: "flex",
+        borderRadius: 3,
 
-          alignItems: "center",
+        border: "1px solid",
 
-          justifyContent: "center",
+        borderColor: "divider",
 
-          borderRadius: 2,
+        bgcolor: alpha(
+          theme.palette.background.default,
+          theme.palette.mode === "dark" ? 0.16 : 0.38,
+        ),
 
-          bgcolor: "action.hover",
+        transition: "all 0.2s ease",
 
-          color: "primary.main",
+        "&:hover": {
+          borderColor: alpha(theme.palette.primary.main, 0.2),
 
-          flexShrink: 0,
-        }}
-      >
-        {icon}
-      </Box>
+          bgcolor: alpha(theme.palette.primary.main, 0.028),
 
-      <Box>
-        <Typography variant="caption" color="text.secondary">
-          {label}
-        </Typography>
+          transform: "translateY(-2px)",
 
-        <Typography
-          fontWeight={700}
+          boxShadow: `0 8px 22px ${alpha(
+            theme.palette.common.black,
+            theme.palette.mode === "dark" ? 0.12 : 0.035,
+          )}`,
+        },
+      }}
+    >
+      <Stack direction="row" spacing={1.6} alignItems="center">
+        <Box
           sx={{
-            mt: 0.25,
+            width: 44,
+            height: 44,
 
-            overflowWrap: "anywhere",
+            flexShrink: 0,
+
+            display: "grid",
+
+            placeItems: "center",
+
+            borderRadius: 2.3,
+
+            bgcolor: alpha(theme.palette.primary.main, 0.075),
+
+            color: "primary.main",
+
+            "& svg": {
+              fontSize: 21,
+            },
           }}
         >
-          {value ?? "-"}
-        </Typography>
-      </Box>
-    </Stack>
+          {icon}
+        </Box>
+
+        <Box
+          sx={{
+            minWidth: 0,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            fontWeight={600}
+            sx={{
+              letterSpacing: "0.01em",
+            }}
+          >
+            {label}
+          </Typography>
+
+          <Typography
+            fontWeight={800}
+            sx={{
+              mt: 0.25,
+
+              overflowWrap: "anywhere",
+
+              lineHeight: 1.4,
+            }}
+          >
+            {value ?? "-"}
+          </Typography>
+        </Box>
+      </Stack>
+    </Box>
   );
 }
 

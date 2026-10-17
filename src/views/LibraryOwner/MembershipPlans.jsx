@@ -1,8 +1,15 @@
 import {
+  AccessTime,
   Add,
+  CalendarMonth,
   CheckCircle,
+  Close,
+  CurrencyRupee,
   Edit,
   MoreVert,
+  Replay,
+  SavingsOutlined,
+  Schedule,
   WorkspacePremium,
 } from "@mui/icons-material";
 
@@ -31,23 +38,48 @@ import {
   Switch,
   TextField,
   Typography,
+  alpha,
+  useTheme,
 } from "@mui/material";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-
 import { useNavigate } from "react-router-dom";
 
 import libraryApi from "../../api/libraryApi";
 import membershipPlanApi from "../../api/membershipPlanApi";
 
-/* =========================================================
-   EMPTY FORM
-========================================================= */
+// =========================================================
+// PRICING CONSTANTS
+// =========================================================
+
+const FEATURE_OPTIONS = [
+  { value: "WINDOW", label: "Window" },
+  { value: "QUIET_ZONE", label: "Quiet Zone" },
+  { value: "POWER_SOCKET", label: "Power Socket" },
+  { value: "BETTER_COOLING", label: "Better Cooling" },
+  { value: "PREMIUM_AMBIENCE", label: "Premium Ambience" },
+  { value: "READING_LAMP", label: "Reading Lamp" },
+  { value: "LARGE_DESK", label: "Large Desk" },
+  { value: "ERGONOMIC_CHAIR", label: "Ergonomic Chair" },
+  { value: "PERSONAL_LOCKER", label: "Personal Locker" },
+];
+
+function createEmptyFeaturePricing() {
+  return FEATURE_OPTIONS.reduce((accumulator, feature) => {
+    accumulator[feature.value] = {
+      enabled: false,
+      price: "",
+    };
+
+    return accumulator;
+  }, {});
+}
 
 const emptyPlan = {
   name: "",
   description: "",
 
+  // Legacy timing fields kept during BookingSlot migration.
   shiftName: "",
   startTime: "",
   endTime: "",
@@ -55,7 +87,13 @@ const emptyPlan = {
   planType: "MONTHLY",
   durationDays: 30,
 
-  price: "",
+  // New seat-type pricing.
+  normalPrice: "",
+  premiumEnabled: false,
+  premiumPrice: "",
+
+  // Optional additive seat-feature pricing.
+  featurePricing: createEmptyFeaturePricing(),
 
   active: true,
 
@@ -64,9 +102,9 @@ const emptyPlan = {
   partialRefundPercentage: 0,
 };
 
-/* =========================================================
-   HELPERS
-========================================================= */
+// =========================================================
+// HELPERS
+// =========================================================
 
 function formatPlanType(planType) {
   if (!planType) {
@@ -80,17 +118,24 @@ function formatPlanType(planType) {
     .join(" ");
 }
 
+function formatFeature(feature) {
+  if (!feature) {
+    return "-";
+  }
+
+  return feature
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 function formatTime(time) {
   if (!time) {
     return "";
   }
 
-  /*
-   * Handles both:
-   * 06:00
-   * 06:00:00
-   */
-  const parts = time.split(":");
+  const parts = String(time).split(":");
 
   if (parts.length < 2) {
     return time;
@@ -104,22 +149,195 @@ function formatTime(time) {
   }
 
   const period = hour >= 12 ? "PM" : "AM";
-
   const displayHour = hour % 12 === 0 ? 12 : hour % 12;
 
   return `${displayHour}:${minute} ${period}`;
 }
 
-/* =========================================================
-   PLAN CARD
-========================================================= */
+function formatCurrency(value) {
+  return Number(value || 0).toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  });
+}
+
+function resolveSeatPrice(plan, seatType) {
+  const priceRow = Array.isArray(plan?.seatPrices)
+    ? plan.seatPrices.find(
+        (item) => item?.seatType === seatType && item?.active !== false,
+      )
+    : null;
+
+  if (priceRow?.price != null) {
+    return Number(priceRow.price);
+  }
+
+  if (seatType === "NORMAL" && plan?.price != null) {
+    return Number(plan.price);
+  }
+
+  return null;
+}
+
+function mapPlanToForm(plan) {
+  const normalPrice = resolveSeatPrice(plan, "NORMAL");
+  const premiumPrice = resolveSeatPrice(plan, "PREMIUM");
+
+  const featurePricing = createEmptyFeaturePricing();
+
+  if (Array.isArray(plan?.featurePrices)) {
+    plan.featurePrices.forEach((item) => {
+      if (!item?.seatFeature || !featurePricing[item.seatFeature]) {
+        return;
+      }
+
+      featurePricing[item.seatFeature] = {
+        enabled: item.active !== false,
+        price: item.additionalPrice != null ? String(item.additionalPrice) : "",
+      };
+    });
+  }
+
+  return {
+    name: plan?.name || "",
+    description: plan?.description || "",
+
+    shiftName: plan?.shiftName || "",
+    startTime: plan?.startTime || "",
+    endTime: plan?.endTime || "",
+
+    planType: plan?.planType || "MONTHLY",
+    durationDays: plan?.durationDays ?? 30,
+
+    normalPrice: normalPrice != null ? String(normalPrice) : "",
+
+    premiumEnabled: premiumPrice != null,
+
+    premiumPrice: premiumPrice != null ? String(premiumPrice) : "",
+
+    featurePricing,
+
+    active: Boolean(plan?.active),
+
+    fullRefundDays: plan?.fullRefundDays ?? 0,
+    partialRefundDays: plan?.partialRefundDays ?? 0,
+    partialRefundPercentage: plan?.partialRefundPercentage ?? 0,
+  };
+}
+
+// =========================================================
+// SUMMARY TILE
+// =========================================================
+
+function SummaryTile({ icon, label, value, tone = "primary", helper }) {
+  const theme = useTheme();
+
+  const color = theme.palette[tone]?.main || theme.palette.primary.main;
+
+  return (
+    <Card
+      elevation={0}
+      sx={{
+        height: "100%",
+        borderRadius: 3.2,
+        border: "1px solid",
+        borderColor: alpha(color, 0.14),
+        bgcolor: "background.paper",
+        boxShadow: "0 8px 26px rgba(15,23,42,0.045)",
+      }}
+    >
+      <CardContent
+        sx={{
+          p: 2.2,
+          "&:last-child": {
+            pb: 2.2,
+          },
+        }}
+      >
+        <Stack direction="row" spacing={1.6} alignItems="center">
+          <Box
+            sx={{
+              width: 46,
+              height: 46,
+              borderRadius: 2.5,
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+              bgcolor: alpha(color, 0.085),
+              color,
+            }}
+          >
+            {icon}
+          </Box>
+
+          <Box sx={{ minWidth: 0 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ fontWeight: 700 }}
+            >
+              {label}
+            </Typography>
+
+            <Typography
+              variant="h5"
+              fontWeight={850}
+              sx={{
+                mt: 0.1,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {value}
+            </Typography>
+
+            {helper && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{
+                  display: "block",
+                  mt: 0.2,
+                }}
+              >
+                {helper}
+              </Typography>
+            )}
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+// =========================================================
+// PLAN CARD
+// =========================================================
 
 function PlanCard({ plan, onEdit, onToggleStatus, actionLoading }) {
+  const theme = useTheme();
+
   const [menuAnchor, setMenuAnchor] = useState(null);
 
   const menuOpen = Boolean(menuAnchor);
 
   const isUpdating = actionLoading === plan.id;
+
+  const normalPrice = resolveSeatPrice(plan, "NORMAL");
+
+  const premiumPrice = resolveSeatPrice(plan, "PREMIUM");
+
+  const configuredFeaturePrices = Array.isArray(plan?.featurePrices)
+    ? plan.featurePrices.filter(
+        (item) =>
+          item?.active !== false && Number(item?.additionalPrice || 0) > 0,
+      )
+    : [];
+
+  const planTiming =
+    plan.startTime || plan.endTime
+      ? `${plan.startTime ? formatTime(plan.startTime) : "—"} - ${
+          plan.endTime ? formatTime(plan.endTime) : "—"
+        }`
+      : null;
 
   const handleCloseMenu = () => {
     setMenuAnchor(null);
@@ -137,25 +355,49 @@ function PlanCard({ plan, onEdit, onToggleStatus, actionLoading }) {
 
   return (
     <Card
+      elevation={0}
       sx={{
         height: "100%",
         position: "relative",
-        opacity: plan.active ? 1 : 0.72,
+        overflow: "hidden",
         border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 2,
-        transition: "all 0.2s ease",
+        borderColor: plan.active
+          ? alpha(theme.palette.primary.main, 0.15)
+          : "divider",
+        borderRadius: 3.5,
+        bgcolor: "background.paper",
+        opacity: plan.active ? 1 : 0.8,
+        boxShadow: plan.active ? "0 10px 30px rgba(15,23,42,0.055)" : "none",
+        transition:
+          "transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease",
         "&:hover": {
-          boxShadow: 3,
-          transform: "translateY(-2px)",
+          transform: "translateY(-4px)",
+          boxShadow: "0 16px 38px rgba(15,23,42,0.085)",
+          borderColor: plan.active
+            ? alpha(theme.palette.primary.main, 0.35)
+            : theme.palette.divider,
+        },
+        "&::before": {
+          content: '""',
+          position: "absolute",
+          inset: "0 auto 0 0",
+          width: 4,
+          bgcolor: plan.active ? "primary.main" : "grey.300",
         },
       }}
     >
-      <CardContent sx={{ p: 3 }}>
-        {/* =========================
-            HEADER
-        ========================= */}
-
+      <CardContent
+        sx={{
+          p: 2.6,
+          pl: 3,
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
+          "&:last-child": {
+            pb: 2.6,
+          },
+        }}
+      >
         <Stack
           direction="row"
           justifyContent="space-between"
@@ -167,11 +409,10 @@ function PlanCard({ plan, onEdit, onToggleStatus, actionLoading }) {
               direction="row"
               spacing={1}
               alignItems="center"
-              mb={1}
               flexWrap="wrap"
               useFlexGap
             >
-              <Typography variant="h6" fontWeight={700}>
+              <Typography variant="h6" fontWeight={850}>
                 {plan.name}
               </Typography>
 
@@ -179,43 +420,45 @@ function PlanCard({ plan, onEdit, onToggleStatus, actionLoading }) {
                 label={plan.active ? "Active" : "Inactive"}
                 size="small"
                 color={plan.active ? "success" : "default"}
-                variant="outlined"
+                variant={plan.active ? "filled" : "outlined"}
+                sx={{
+                  height: 24,
+                  fontWeight: 750,
+                }}
               />
             </Stack>
 
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="baseline"
-              flexWrap="wrap"
-              useFlexGap
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: "block",
+                mt: 0.65,
+                fontWeight: 650,
+              }}
             >
-              <Typography variant="h4" fontWeight={700} color="primary.main">
-                ₹{Number(plan.price || 0).toLocaleString("en-IN")}
-              </Typography>
-
-              <Typography variant="body2" color="text.secondary">
-                / {plan.durationDays || 0} days
-              </Typography>
-            </Stack>
+              {formatPlanType(plan.planType)}
+            </Typography>
           </Box>
 
           <IconButton
             onClick={(event) => setMenuAnchor(event.currentTarget)}
             disabled={isUpdating}
+            size="small"
+            sx={{
+              border: "1px solid",
+              borderColor: "divider",
+              bgcolor: "background.paper",
+            }}
           >
-            {isUpdating ? <CircularProgress size={20} /> : <MoreVert />}
+            {isUpdating ? <CircularProgress size={18} /> : <MoreVert />}
           </IconButton>
         </Stack>
-
-        {/* =========================
-            MENU
-        ========================= */}
 
         <Menu anchorEl={menuAnchor} open={menuOpen} onClose={handleCloseMenu}>
           <MenuItem onClick={handleEdit} disabled={isUpdating}>
             <Edit fontSize="small" sx={{ mr: 1.5 }} />
-            Edit
+            Edit Plan
           </MenuItem>
 
           <MenuItem onClick={handleToggle} disabled={isUpdating}>
@@ -225,9 +468,80 @@ function PlanCard({ plan, onEdit, onToggleStatus, actionLoading }) {
           </MenuItem>
         </Menu>
 
-        {/* =========================
-            DESCRIPTION
-        ========================= */}
+        <Box
+          sx={{
+            mt: 2.3,
+            p: 1.8,
+            borderRadius: 2.6,
+            bgcolor: alpha(theme.palette.primary.main, 0.055),
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.09),
+          }}
+        >
+          <Typography variant="caption" color="text.secondary" fontWeight={800}>
+            NORMAL SEAT
+          </Typography>
+
+          <Stack direction="row" spacing={0.8} alignItems="baseline">
+            <Typography
+              variant="h4"
+              fontWeight={900}
+              color="primary.main"
+              sx={{
+                letterSpacing: "-0.035em",
+              }}
+            >
+              ₹{formatCurrency(normalPrice)}
+            </Typography>
+
+            <Typography variant="body2" color="text.secondary" fontWeight={600}>
+              / {plan.durationDays || 0} days
+            </Typography>
+          </Stack>
+
+          {premiumPrice != null && (
+            <Typography
+              variant="body2"
+              sx={{
+                mt: 0.7,
+                fontWeight: 750,
+              }}
+            >
+              Premium seat: ₹{formatCurrency(premiumPrice)}
+            </Typography>
+          )}
+        </Box>
+
+        {configuredFeaturePrices.length > 0 && (
+          <Box sx={{ mt: 1.5 }}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              fontWeight={800}
+            >
+              FEATURE SURCHARGES
+            </Typography>
+
+            <Stack
+              direction="row"
+              spacing={0.8}
+              useFlexGap
+              flexWrap="wrap"
+              sx={{ mt: 0.8 }}
+            >
+              {configuredFeaturePrices.map((item) => (
+                <Chip
+                  key={item.seatFeature}
+                  size="small"
+                  variant="outlined"
+                  label={`${formatFeature(item.seatFeature)} +₹${formatCurrency(
+                    item.additionalPrice,
+                  )}`}
+                />
+              ))}
+            </Stack>
+          </Box>
+        )}
 
         <Typography
           variant="body2"
@@ -235,114 +549,146 @@ function PlanCard({ plan, onEdit, onToggleStatus, actionLoading }) {
           sx={{
             mt: 2,
             minHeight: 42,
+            lineHeight: 1.55,
           }}
         >
           {plan.description || "No description provided."}
         </Typography>
 
-        <Divider sx={{ my: 2.5 }} />
+        <Divider sx={{ my: 2.2 }} />
 
-        {/* =========================
-            PLAN INFORMATION
-        ========================= */}
+        <Stack spacing={1.2}>
+          <Stack direction="row" spacing={1.2} alignItems="center">
+            <CalendarMonth
+              sx={{
+                fontSize: 18,
+                color: "primary.main",
+              }}
+            />
 
-        <Stack spacing={1.4}>
-          <Stack direction="row" justifyContent="space-between" spacing={2}>
-            <Typography variant="body2" color="text.secondary">
-              Plan Type
-            </Typography>
-
-            <Typography variant="body2" fontWeight={600} textAlign="right">
-              {formatPlanType(plan.planType)}
-            </Typography>
-          </Stack>
-
-          <Stack direction="row" justifyContent="space-between" spacing={2}>
-            <Typography variant="body2" color="text.secondary">
-              Duration
-            </Typography>
-
-            <Typography variant="body2" fontWeight={600} textAlign="right">
+            <Typography variant="body2" fontWeight={750}>
               {plan.durationDays || 0} days
             </Typography>
           </Stack>
 
           {plan.shiftName && (
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Shift
-              </Typography>
+            <Stack direction="row" spacing={1.2} alignItems="center">
+              <Schedule
+                sx={{
+                  fontSize: 18,
+                  color: "info.main",
+                }}
+              />
 
-              <Typography variant="body2" fontWeight={600} textAlign="right">
+              <Typography variant="body2" fontWeight={750}>
                 {plan.shiftName}
               </Typography>
             </Stack>
           )}
 
-          {(plan.startTime || plan.endTime) && (
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Timing
-              </Typography>
+          {planTiming && (
+            <Stack direction="row" spacing={1.2} alignItems="center">
+              <AccessTime
+                sx={{
+                  fontSize: 18,
+                  color: "warning.main",
+                }}
+              />
 
-              <Typography variant="body2" fontWeight={600} textAlign="right">
-                {plan.startTime ? formatTime(plan.startTime) : "—"}
-                {" - "}
-                {plan.endTime ? formatTime(plan.endTime) : "—"}
-              </Typography>
-            </Stack>
-          )}
-
-          {plan.fullRefundDays != null && (
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Full Refund
-              </Typography>
-
-              <Typography variant="body2" fontWeight={600} textAlign="right">
-                {plan.fullRefundDays} days
-              </Typography>
-            </Stack>
-          )}
-
-          {plan.partialRefundDays != null && (
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Partial Refund
-              </Typography>
-
-              <Typography variant="body2" fontWeight={600} textAlign="right">
-                {plan.partialRefundDays} days
-              </Typography>
-            </Stack>
-          )}
-
-          {plan.partialRefundPercentage != null && (
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography variant="body2" color="text.secondary">
-                Partial Refund %
-              </Typography>
-
-              <Typography variant="body2" fontWeight={600} textAlign="right">
-                {plan.partialRefundPercentage}%
+              <Typography variant="body2" fontWeight={750}>
+                {planTiming}
               </Typography>
             </Stack>
           )}
         </Stack>
+
+        <Box sx={{ flex: 1 }} />
+
+        <Box
+          sx={{
+            mt: 2.2,
+            p: 1.5,
+            borderRadius: 2.4,
+            bgcolor: alpha(theme.palette.text.primary, 0.025),
+            border: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+            }}
+          >
+            Refund Policy
+          </Typography>
+
+          <Stack spacing={0.7} sx={{ mt: 0.9 }}>
+            <Stack direction="row" justifyContent="space-between">
+              <Typography variant="caption" color="text.secondary">
+                Full refund
+              </Typography>
+
+              <Typography variant="caption" fontWeight={750}>
+                {plan.fullRefundDays ?? 0} days
+              </Typography>
+            </Stack>
+
+            <Stack direction="row" justifyContent="space-between">
+              <Typography variant="caption" color="text.secondary">
+                Partial refund
+              </Typography>
+
+              <Typography variant="caption" fontWeight={750}>
+                {plan.partialRefundDays ?? 0} days
+              </Typography>
+            </Stack>
+
+            <Stack direction="row" justifyContent="space-between">
+              <Typography variant="caption" color="text.secondary">
+                Refund amount
+              </Typography>
+
+              <Typography variant="caption" fontWeight={750}>
+                {plan.partialRefundPercentage ?? 0}%
+              </Typography>
+            </Stack>
+          </Stack>
+        </Box>
+
+        <Button
+          fullWidth
+          variant="outlined"
+          startIcon={<Edit />}
+          onClick={() => onEdit(plan)}
+          disabled={isUpdating}
+          sx={{
+            mt: 2,
+            minHeight: 43,
+            textTransform: "none",
+            fontWeight: 800,
+            borderRadius: 2.3,
+          }}
+        >
+          Edit Plan
+        </Button>
       </CardContent>
     </Card>
   );
 }
 
-/* =========================================================
-   MEMBERSHIP PLANS PAGE
-========================================================= */
+// =========================================================
+// MEMBERSHIP PLANS PAGE
+// =========================================================
 
 function MembershipPlans() {
+  const theme = useTheme();
   const navigate = useNavigate();
 
   const [plans, setPlans] = useState([]);
-
   const [library, setLibrary] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -352,8 +698,11 @@ function MembershipPlans() {
   const [actionLoading, setActionLoading] = useState(null);
 
   const [error, setError] = useState("");
-
   const [success, setSuccess] = useState("");
+
+  // Validation / API errors produced while the Add/Edit dialog is open.
+  // Keep these inside the dialog so the user can actually see why Save failed.
+  const [dialogError, setDialogError] = useState("");
 
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -361,9 +710,9 @@ function MembershipPlans() {
 
   const [form, setForm] = useState(emptyPlan);
 
-  /* =======================================================
-     DERIVED DATA
-  ======================================================= */
+  // =======================================================
+  // DERIVED DATA
+  // =======================================================
 
   const activePlans = useMemo(
     () => plans.filter((plan) => plan.active),
@@ -375,9 +724,22 @@ function MembershipPlans() {
     [plans],
   );
 
-  /* =======================================================
-     LOAD DATA
-  ======================================================= */
+  const averagePrice = useMemo(() => {
+    if (plans.length === 0) {
+      return 0;
+    }
+
+    const total = plans.reduce(
+      (sum, plan) => sum + Number(resolveSeatPrice(plan, "NORMAL") || 0),
+      0,
+    );
+
+    return total / plans.length;
+  }, [plans]);
+
+  // =======================================================
+  // LOAD DATA
+  // =======================================================
 
   const loadMembershipPlans = useCallback(async () => {
     try {
@@ -394,15 +756,6 @@ function MembershipPlans() {
         return;
       }
 
-      /*
-       * Current architecture assumes the
-       * first library is the active owner
-       * library.
-       *
-       * Later, when multi-library switching
-       * is added, this can be replaced with
-       * selected tenant/library context.
-       */
       const currentLibrary = ownerLibraries[0];
 
       setLibrary(currentLibrary);
@@ -426,77 +779,82 @@ function MembershipPlans() {
     loadMembershipPlans();
   }, [loadMembershipPlans]);
 
-  /* =======================================================
-     FORM CHANGE
-  ======================================================= */
+  // =======================================================
+  // FORM HANDLERS
+  // =======================================================
 
   const handleChange = (event) => {
     const { name, value, checked, type } = event.target;
 
     setForm((previous) => ({
       ...previous,
-
       [name]: type === "checkbox" ? checked : value,
     }));
 
-    setError("");
+    setDialogError("");
   };
 
-  /* =======================================================
-     OPEN ADD
-  ======================================================= */
+  const handleFeatureEnabledChange = (feature, enabled) => {
+    setForm((previous) => ({
+      ...previous,
+      featurePricing: {
+        ...(previous.featurePricing || createEmptyFeaturePricing()),
+        [feature]: {
+          ...(previous.featurePricing?.[feature] || {
+            enabled: false,
+            price: "",
+          }),
+          enabled,
+          price: enabled
+            ? (previous.featurePricing?.[feature]?.price ?? "")
+            : "",
+        },
+      },
+    }));
+
+    setDialogError("");
+  };
+
+  const handleFeaturePriceChange = (feature, value) => {
+    setForm((previous) => ({
+      ...previous,
+      featurePricing: {
+        ...(previous.featurePricing || createEmptyFeaturePricing()),
+        [feature]: {
+          ...(previous.featurePricing?.[feature] || {
+            enabled: false,
+            price: "",
+          }),
+          price: value,
+        },
+      },
+    }));
+
+    setDialogError("");
+  };
+
+  // =======================================================
+  // OPEN / CLOSE
+  // =======================================================
 
   const handleOpenAdd = () => {
     setEditingPlan(null);
 
     setForm({
       ...emptyPlan,
+      featurePricing: createEmptyFeaturePricing(),
     });
 
-    setError("");
+    setDialogError("");
     setDialogOpen(true);
   };
-
-  /* =======================================================
-     OPEN EDIT
-  ======================================================= */
 
   const handleOpenEdit = (plan) => {
     setEditingPlan(plan);
-
-    setForm({
-      name: plan.name || "",
-
-      description: plan.description || "",
-
-      shiftName: plan.shiftName || "",
-
-      startTime: plan.startTime || "",
-
-      endTime: plan.endTime || "",
-
-      planType: plan.planType || "MONTHLY",
-
-      durationDays: plan.durationDays ?? 30,
-
-      price: plan.price ?? "",
-
-      active: Boolean(plan.active),
-
-      fullRefundDays: plan.fullRefundDays ?? 0,
-
-      partialRefundDays: plan.partialRefundDays ?? 0,
-
-      partialRefundPercentage: plan.partialRefundPercentage ?? 0,
-    });
-
-    setError("");
+    setForm(mapPlanToForm(plan));
+    setDialogError("");
     setDialogOpen(true);
   };
-
-  /* =======================================================
-     CLOSE DIALOG
-  ======================================================= */
 
   const handleCloseDialog = () => {
     if (saving) {
@@ -505,44 +863,54 @@ function MembershipPlans() {
 
     setDialogOpen(false);
     setEditingPlan(null);
+    setDialogError("");
 
     setForm({
       ...emptyPlan,
+      featurePricing: createEmptyFeaturePricing(),
     });
   };
 
-  /* =======================================================
-     SAVE PLAN
-  ======================================================= */
+  // =======================================================
+  // SAVE PLAN
+  // =======================================================
 
   const handleSavePlan = async () => {
     if (!library?.id) {
-      setError("Library information is not available.");
+      setDialogError("Library information is not available.");
       return;
     }
 
     if (!form.name.trim()) {
-      setError("Plan name is required.");
+      setDialogError("Plan name is required.");
       return;
     }
 
-    if (form.price === "" || Number(form.price) < 0) {
-      setError("Enter a valid plan price.");
+    if (form.normalPrice === "" || Number(form.normalPrice) <= 0) {
+      setDialogError("Normal seat price must be greater than 0.");
+      return;
+    }
+
+    if (
+      form.premiumEnabled &&
+      (form.premiumPrice === "" || Number(form.premiumPrice) <= 0)
+    ) {
+      setDialogError("Premium seat price must be greater than 0.");
       return;
     }
 
     if (!form.durationDays || Number(form.durationDays) <= 0) {
-      setError("Duration must be greater than 0 days.");
+      setDialogError("Duration must be greater than 0 days.");
       return;
     }
 
     if (!form.planType) {
-      setError("Plan type is required.");
+      setDialogError("Plan type is required.");
       return;
     }
 
     if (form.startTime && form.endTime && form.startTime === form.endTime) {
-      setError("Start time and end time cannot be the same.");
+      setDialogError("Start time and end time cannot be the same.");
       return;
     }
 
@@ -550,15 +918,59 @@ function MembershipPlans() {
       Number(form.partialRefundPercentage) < 0 ||
       Number(form.partialRefundPercentage) > 100
     ) {
-      setError("Partial refund percentage must be between 0 and 100.");
+      setDialogError("Partial refund percentage must be between 0 and 100.");
       return;
     }
+
+    for (const feature of FEATURE_OPTIONS) {
+      const configuration = form.featurePricing?.[feature.value] || {
+        enabled: false,
+        price: "",
+      };
+
+      if (!configuration?.enabled) {
+        continue;
+      }
+
+      if (configuration.price !== "" && Number(configuration.price) < 0) {
+        setDialogError(`${feature.label} surcharge cannot be negative.`);
+        return;
+      }
+    }
+
+    const normalPrice = Number(form.normalPrice);
+
+    const seatPrices = [
+      {
+        seatType: "NORMAL",
+        price: normalPrice,
+        active: true,
+      },
+    ];
+
+    if (form.premiumEnabled) {
+      seatPrices.push({
+        seatType: "PREMIUM",
+        price: Number(form.premiumPrice),
+        active: true,
+      });
+    }
+
+    const featurePrices = FEATURE_OPTIONS.filter(
+      (feature) => form.featurePricing?.[feature.value]?.enabled,
+    ).map((feature) => ({
+      seatFeature: feature.value,
+      additionalPrice: Number(form.featurePricing?.[feature.value]?.price || 0),
+      active: true,
+    }));
 
     const payload = {
       name: form.name.trim(),
 
       description: form.description.trim() || null,
 
+      // Legacy fields retained until
+      // BookingSlot migration is complete.
       shiftName: form.shiftName.trim() || null,
 
       startTime: form.startTime || null,
@@ -569,7 +981,13 @@ function MembershipPlans() {
 
       durationDays: Number(form.durationDays),
 
-      price: Number(form.price),
+      // Keep legacy/default price equal
+      // to NORMAL base price.
+      price: normalPrice,
+
+      seatPrices,
+
+      featurePrices,
 
       active: Boolean(form.active),
 
@@ -582,8 +1000,7 @@ function MembershipPlans() {
 
     try {
       setSaving(true);
-
-      setError("");
+      setDialogError("");
       setSuccess("");
 
       if (editingPlan) {
@@ -601,29 +1018,35 @@ function MembershipPlans() {
 
       setForm({
         ...emptyPlan,
+        featurePricing: createEmptyFeaturePricing(),
       });
 
       await loadMembershipPlans();
     } catch (requestError) {
       console.error("Failed to save membership plan:", requestError);
 
-      setError(
-        requestError?.response?.data?.message ||
-          "Unable to save membership plan.",
-      );
+      const responseData = requestError?.response?.data;
+
+      const message =
+        responseData?.message ||
+        responseData?.error ||
+        (typeof responseData === "string" ? responseData : null) ||
+        requestError?.message ||
+        "Unable to save membership plan.";
+
+      setDialogError(message);
     } finally {
       setSaving(false);
     }
   };
 
-  /* =======================================================
-     ACTIVATE / DEACTIVATE
-  ======================================================= */
+  // =======================================================
+  // ACTIVATE / DEACTIVATE
+  // =======================================================
 
   const handleToggleStatus = async (plan) => {
     try {
       setActionLoading(plan.id);
-
       setError("");
       setSuccess("");
 
@@ -650,87 +1073,173 @@ function MembershipPlans() {
     }
   };
 
-  /* =======================================================
-     LOADING
-  ======================================================= */
+  // =======================================================
+  // LOADING
+  // =======================================================
 
   if (loading) {
     return (
       <Box
         sx={{
-          minHeight: 400,
+          minHeight: 460,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <CircularProgress />
+        <Stack spacing={2} alignItems="center">
+          <CircularProgress />
+
+          <Typography color="text.secondary">
+            Loading membership plans...
+          </Typography>
+        </Stack>
       </Box>
     );
   }
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  // =======================================================
+  // RENDER
+  // =======================================================
 
   return (
-    <Box>
-      {/* =================================================
-          PAGE HEADER
-      ================================================= */}
-
-      <Stack
-        direction={{
-          xs: "column",
-          md: "row",
+    <Box
+      sx={{
+        width: "100%",
+        maxWidth: 1480,
+        mx: "auto",
+        pb: 5,
+      }}
+    >
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        sx={{
+          mb: 1.5,
+          fontWeight: 500,
         }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "flex-start",
-          md: "center",
-        }}
-        spacing={2}
-        mb={3}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={700}>
-            Membership Plans
-          </Typography>
-
-          <Typography variant="body2" color="text.secondary" mt={0.5}>
-            Create and manage membership plans offered by your library.
-          </Typography>
-
-          {library?.name && (
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              display="block"
-              mt={0.5}
-            >
-              Library: {library.name}
-            </Typography>
-          )}
-        </Box>
-
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={handleOpenAdd}
-          disabled={!library || saving || actionLoading !== null}
+        Dashboard
+        {"  ›  "}
+        Library Setup
+        {"  ›  "}
+        <Box
+          component="span"
+          sx={{
+            color: "primary.main",
+            fontWeight: 700,
+          }}
         >
-          Add Plan
-        </Button>
-      </Stack>
+          Membership Plans
+        </Box>
+      </Typography>
 
-      {/* =================================================
-          NO LIBRARY
-      ================================================= */}
+      <Card
+        elevation={0}
+        sx={{
+          mb: 3,
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+          background: `linear-gradient(
+            135deg,
+            ${alpha(theme.palette.primary.main, 0.1)} 0%,
+            ${theme.palette.background.paper} 52%,
+            ${alpha(theme.palette.secondary.main, 0.055)} 100%
+          )`,
+          boxShadow: "0 18px 50px rgba(15,23,42,0.06)",
+        }}
+      >
+        <CardContent
+          sx={{
+            p: { xs: 2.5, md: 3.5 },
+          }}
+        >
+          <Stack
+            direction={{
+              xs: "column",
+              lg: "row",
+            }}
+            justifyContent="space-between"
+            alignItems={{
+              xs: "stretch",
+              lg: "center",
+            }}
+            spacing={3}
+          >
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Box
+                sx={{
+                  width: 62,
+                  height: 62,
+                  borderRadius: 3.2,
+                  display: "grid",
+                  placeItems: "center",
+                  color: "primary.contrastText",
+                  bgcolor: "primary.main",
+                }}
+              >
+                <WorkspacePremium sx={{ fontSize: 32 }} />
+              </Box>
+
+              <Box>
+                <Typography variant="h4" fontWeight={900}>
+                  Membership Plans
+                </Typography>
+
+                <Typography
+                  variant="body1"
+                  color="text.secondary"
+                  sx={{
+                    mt: 0.75,
+                    maxWidth: 760,
+                  }}
+                >
+                  Configure plan duration, Normal/Premium seat pricing, optional
+                  seat-feature surcharges and refund rules.
+                </Typography>
+
+                {library?.name && (
+                  <Chip
+                    size="small"
+                    label={library.name}
+                    variant="outlined"
+                    sx={{
+                      mt: 1.4,
+                      fontWeight: 700,
+                    }}
+                  />
+                )}
+              </Box>
+            </Stack>
+
+            <Button
+              variant="contained"
+              size="large"
+              startIcon={<Add />}
+              onClick={handleOpenAdd}
+              disabled={!library || saving || actionLoading !== null}
+              sx={{
+                minHeight: 48,
+                px: 2.6,
+                textTransform: "none",
+                borderRadius: 2.5,
+                fontWeight: 850,
+              }}
+            >
+              Add Membership Plan
+            </Button>
+          </Stack>
+        </CardContent>
+      </Card>
 
       {!library && (
         <Alert
           severity="info"
-          sx={{ mb: 3 }}
+          sx={{
+            mb: 3,
+            borderRadius: 2.5,
+          }}
           action={
             <Button
               color="inherit"
@@ -745,552 +1254,824 @@ function MembershipPlans() {
         </Alert>
       )}
 
-      {/* =================================================
-          ERROR
-      ================================================= */}
-
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
+        <Alert
+          severity="error"
+          sx={{
+            mb: 2.5,
+            borderRadius: 2.5,
+          }}
+          onClose={() => setError("")}
+        >
           {error}
         </Alert>
       )}
 
-      {/* =================================================
-          SUCCESS
-      ================================================= */}
-
       {success && (
-        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccess("")}>
+        <Alert
+          severity="success"
+          sx={{
+            mb: 2.5,
+            borderRadius: 2.5,
+          }}
+          onClose={() => setSuccess("")}
+        >
           {success}
         </Alert>
       )}
 
-      {/* =================================================
-          SUMMARY
-      ================================================= */}
-
       {library && (
-        <Grid container spacing={2} mb={3}>
-          {/* Total */}
-
+        <Grid container spacing={2} sx={{ mb: 3 }}>
           <Grid
             size={{
               xs: 12,
-              sm: 4,
+              sm: 6,
+              lg: 3,
             }}
           >
-            <Card
-              sx={{
-                height: "100%",
-              }}
-            >
-              <CardContent>
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <Box
-                    sx={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 2,
-
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-
-                      bgcolor: "primary.light",
-
-                      color: "primary.main",
-                    }}
-                  >
-                    <WorkspacePremium />
-                  </Box>
-
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Total Plans
-                    </Typography>
-
-                    <Typography variant="h5" fontWeight={700}>
-                      {plans.length}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
+            <SummaryTile
+              icon={<WorkspacePremium />}
+              label="Total Plans"
+              value={plans.length}
+              helper="All configured plans"
+            />
           </Grid>
 
-          {/* Active */}
-
           <Grid
             size={{
               xs: 12,
-              sm: 4,
+              sm: 6,
+              lg: 3,
             }}
           >
-            <Card
-              sx={{
-                height: "100%",
-              }}
-            >
-              <CardContent>
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <Box
-                    sx={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 2,
-
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-
-                      bgcolor: "success.light",
-
-                      color: "success.main",
-                    }}
-                  >
-                    <CheckCircle />
-                  </Box>
-
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Active Plans
-                    </Typography>
-
-                    <Typography variant="h5" fontWeight={700}>
-                      {activePlans.length}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
+            <SummaryTile
+              icon={<CheckCircle />}
+              label="Active Plans"
+              value={activePlans.length}
+              helper="Visible to students"
+              tone="success"
+            />
           </Grid>
 
-          {/* Inactive */}
+          <Grid
+            size={{
+              xs: 12,
+              sm: 6,
+              lg: 3,
+            }}
+          >
+            <SummaryTile
+              icon={<Replay />}
+              label="Inactive Plans"
+              value={inactivePlans.length}
+              helper="Currently hidden"
+              tone="info"
+            />
+          </Grid>
 
           <Grid
             size={{
               xs: 12,
-              sm: 4,
+              sm: 6,
+              lg: 3,
             }}
           >
-            <Card
-              sx={{
-                height: "100%",
-              }}
-            >
-              <CardContent>
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <Box
-                    sx={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 2,
-
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-
-                      bgcolor: "info.light",
-
-                      color: "info.main",
-                    }}
-                  >
-                    <WorkspacePremium />
-                  </Box>
-
-                  <Box>
-                    <Typography variant="body2" color="text.secondary">
-                      Inactive Plans
-                    </Typography>
-
-                    <Typography variant="h5" fontWeight={700}>
-                      {inactivePlans.length}
-                    </Typography>
-                  </Box>
-                </Stack>
-              </CardContent>
-            </Card>
+            <SummaryTile
+              icon={<CurrencyRupee />}
+              label="Average Normal Price"
+              value={`₹${formatCurrency(averagePrice)}`}
+              helper="Across all plans"
+              tone="warning"
+            />
           </Grid>
         </Grid>
       )}
-
-      {/* =================================================
-          PLAN GRID
-      ================================================= */}
 
       {library && plans.length > 0 && (
-        <Grid container spacing={2.5}>
-          {plans.map((plan) => (
-            <Grid
-              key={plan.id}
-              size={{
-                xs: 12,
-                md: 6,
-                lg: 4,
-              }}
-            >
-              <PlanCard
-                plan={plan}
-                onEdit={handleOpenEdit}
-                onToggleStatus={handleToggleStatus}
-                actionLoading={actionLoading}
-              />
-            </Grid>
-          ))}
-        </Grid>
+        <>
+          <Stack
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
+            justifyContent="space-between"
+            alignItems={{
+              xs: "flex-start",
+              sm: "center",
+            }}
+            spacing={1}
+            sx={{ mb: 2 }}
+          >
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Your Plans
+              </Typography>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.25 }}
+              >
+                Manage base seat pricing, feature surcharges, duration and
+                availability.
+              </Typography>
+            </Box>
+
+            <Chip
+              size="small"
+              label={`${activePlans.length} active`}
+              color="success"
+              variant="outlined"
+              sx={{ fontWeight: 700 }}
+            />
+          </Stack>
+
+          <Grid container spacing={2.5}>
+            {plans.map((plan) => (
+              <Grid
+                key={plan.id}
+                size={{
+                  xs: 12,
+                  md: 6,
+                  xl: 4,
+                }}
+              >
+                <PlanCard
+                  plan={plan}
+                  onEdit={handleOpenEdit}
+                  onToggleStatus={handleToggleStatus}
+                  actionLoading={actionLoading}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </>
       )}
 
-      {/* =================================================
-          EMPTY STATE
-      ================================================= */}
-
       {library && plans.length === 0 && (
-        <Card sx={{ mt: 2 }}>
+        <Card
+          elevation={0}
+          sx={{
+            mt: 2,
+            minHeight: 360,
+            borderRadius: 4,
+            border: "1.5px dashed",
+            borderColor: alpha(theme.palette.primary.main, 0.25),
+            bgcolor: alpha(theme.palette.primary.main, 0.018),
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <CardContent
             sx={{
-              py: 8,
+              py: 7,
+              px: 3,
               textAlign: "center",
             }}
           >
             <WorkspacePremium
               sx={{
-                fontSize: 48,
-                color: "text.disabled",
-                mb: 2,
+                fontSize: 50,
+                color: "primary.main",
               }}
             />
 
-            <Typography variant="h6" fontWeight={700}>
-              No membership plans
+            <Typography variant="h5" fontWeight={850} sx={{ mt: 1.5 }}>
+              Create your first membership plan
             </Typography>
 
-            <Typography variant="body2" color="text.secondary" mt={0.5}>
-              Create your first membership plan to start offering memberships.
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                mt: 0.75,
+                maxWidth: 520,
+                mx: "auto",
+                lineHeight: 1.6,
+              }}
+            >
+              Configure Normal and Premium base pricing, optional feature
+              surcharges and refund policies.
             </Typography>
 
             <Button
               variant="contained"
+              size="large"
               startIcon={<Add />}
-              sx={{ mt: 2 }}
+              sx={{
+                mt: 2.5,
+                textTransform: "none",
+                fontWeight: 800,
+                borderRadius: 2.5,
+                px: 3,
+              }}
               onClick={handleOpenAdd}
             >
-              Create Plan
+              Create Membership Plan
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* =================================================
-          ADD / EDIT DIALOG
-      ================================================= */}
+      {/* ================================================= */}
+      {/* ADD / EDIT DIALOG */}
+      {/* ================================================= */}
 
       <Dialog
         open={dialogOpen}
         onClose={saving ? undefined : handleCloseDialog}
         fullWidth
         maxWidth="md"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              overflow: "hidden",
+              boxShadow: "0 28px 80px rgba(15,23,42,0.20)",
+            },
+          },
+        }}
       >
-        <DialogTitle>
-          {editingPlan ? "Edit Membership Plan" : "Add Membership Plan"}
+        <DialogTitle
+          sx={{
+            px: { xs: 2.5, md: 3.2 },
+            pt: 3,
+            pb: 2,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            alignItems="flex-start"
+            spacing={2}
+          >
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2.4,
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: alpha(theme.palette.primary.main, 0.09),
+                  color: "primary.main",
+                }}
+              >
+                {editingPlan ? <Edit /> : <Add />}
+              </Box>
+
+              <Box>
+                <Typography variant="h6" fontWeight={850}>
+                  {editingPlan ? "Edit Membership Plan" : "Add Membership Plan"}
+                </Typography>
+
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 0.2 }}
+                >
+                  Configure plan details and authoritative seat pricing.
+                </Typography>
+              </Box>
+            </Stack>
+
+            <IconButton onClick={handleCloseDialog} disabled={saving}>
+              <Close />
+            </IconButton>
+          </Stack>
         </DialogTitle>
 
-        <DialogContent>
-          <Stack spacing={2.5} mt={1}>
-            <Grid container spacing={2}>
-              {/* Plan Name */}
+        <DialogContent
+          sx={{
+            px: { xs: 2.5, md: 3.2 },
+            py: 3,
+          }}
+        >
+          <Stack spacing={3}>
+            {/* PLAN INFORMATION */}
 
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 6,
+            <Box>
+              <Typography variant="subtitle1" fontWeight={850}>
+                Plan Information
+              </Typography>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  mt: 0.35,
+                  mb: 2,
                 }}
               >
-                <TextField
-                  fullWidth
-                  required
-                  label="Plan Name"
-                  name="name"
-                  placeholder="e.g. Monthly Morning Plan"
-                  value={form.name}
-                  onChange={handleChange}
-                />
-              </Grid>
+                Set plan identity, type and duration.
+              </Typography>
 
-              {/* Price */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 6,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  required
-                  label="Price"
-                  name="price"
-                  type="number"
-                  inputProps={{
-                    min: 0,
-                    step: "0.01",
+              <Grid container spacing={2}>
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 6,
                   }}
-                  value={form.price}
-                  onChange={handleChange}
-                />
-              </Grid>
-
-              {/* Plan Type */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 6,
-                }}
-              >
-                <FormControl fullWidth required>
-                  <InputLabel>Plan Type</InputLabel>
-
-                  <Select
-                    label="Plan Type"
-                    name="planType"
-                    value={form.planType}
+                >
+                  <TextField
+                    fullWidth
+                    required
+                    label="Plan Name"
+                    name="name"
+                    placeholder="e.g. Monthly Plan"
+                    value={form.name}
                     onChange={handleChange}
+                  />
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 6,
+                  }}
+                >
+                  <FormControl fullWidth required>
+                    <InputLabel>Plan Type</InputLabel>
+
+                    <Select
+                      label="Plan Type"
+                      name="planType"
+                      value={form.planType}
+                      onChange={handleChange}
+                    >
+                      <MenuItem value="DAILY">Daily</MenuItem>
+
+                      <MenuItem value="WEEKLY">Weekly</MenuItem>
+
+                      <MenuItem value="MONTHLY">Monthly</MenuItem>
+
+                      <MenuItem value="QUARTERLY">Quarterly</MenuItem>
+
+                      <MenuItem value="CUSTOM">Custom</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 6,
+                  }}
+                >
+                  <TextField
+                    fullWidth
+                    required
+                    label="Duration (Days)"
+                    name="durationDays"
+                    type="number"
+                    inputProps={{
+                      min: 1,
+                    }}
+                    value={form.durationDays}
+                    onChange={handleChange}
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 12 }}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={3}
+                    label="Description"
+                    name="description"
+                    placeholder="Describe this membership plan"
+                    value={form.description}
+                    onChange={handleChange}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+
+            <Divider />
+
+            {/* SEAT TYPE PRICING */}
+
+            <Box>
+              <Typography variant="subtitle1" fontWeight={850}>
+                Seat Pricing
+              </Typography>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  mt: 0.35,
+                  mb: 2,
+                }}
+              >
+                Set the base price for each commercial seat category.
+              </Typography>
+
+              <Grid container spacing={2}>
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 6,
+                  }}
+                >
+                  <TextField
+                    fullWidth
+                    required
+                    label="Normal Seat Price"
+                    name="normalPrice"
+                    type="number"
+                    inputProps={{
+                      min: 0.01,
+                      step: "0.01",
+                    }}
+                    value={form.normalPrice}
+                    onChange={handleChange}
+                    helperText="Required. Also used as the legacy/default plan price during migration."
+                  />
+                </Grid>
+
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 6,
+                  }}
+                >
+                  <Card
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2.5,
+                    }}
                   >
-                    <MenuItem value="DAILY">Daily</MenuItem>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={form.premiumEnabled}
+                          onChange={(event) =>
+                            setForm((previous) => ({
+                              ...previous,
+                              premiumEnabled: event.target.checked,
+                              premiumPrice: event.target.checked
+                                ? previous.premiumPrice
+                                : "",
+                            }))
+                          }
+                        />
+                      }
+                      label="Offer Premium Seats"
+                    />
 
-                    <MenuItem value="WEEKLY">Weekly</MenuItem>
-
-                    <MenuItem value="MONTHLY">Monthly</MenuItem>
-
-                    <MenuItem value="QUARTERLY">Quarterly</MenuItem>
-
-                    <MenuItem value="CUSTOM">Custom</MenuItem>
-                  </Select>
-                </FormControl>
+                    <TextField
+                      fullWidth
+                      label="Premium Seat Price"
+                      type="number"
+                      inputProps={{
+                        min: 0.01,
+                        step: "0.01",
+                      }}
+                      value={form.premiumPrice}
+                      onChange={(event) =>
+                        setForm((previous) => ({
+                          ...previous,
+                          premiumPrice: event.target.value,
+                        }))
+                      }
+                      disabled={!form.premiumEnabled}
+                      sx={{ mt: 1 }}
+                    />
+                  </Card>
+                </Grid>
               </Grid>
+            </Box>
 
-              {/* Duration */}
+            <Divider />
 
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 6,
+            {/* FEATURE SURCHARGES */}
+
+            <Box>
+              <Typography variant="subtitle1" fontWeight={850}>
+                Optional Feature Pricing
+              </Typography>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  mt: 0.35,
+                  mb: 2,
                 }}
               >
-                <TextField
-                  fullWidth
-                  required
-                  label="Duration (Days)"
-                  name="durationDays"
-                  type="number"
-                  inputProps={{
-                    min: 1,
+                Add optional surcharges on top of the Normal/Premium base price.
+                Features without a configured surcharge remain free.
+              </Typography>
+
+              <Grid container spacing={1.5}>
+                {FEATURE_OPTIONS.map((feature) => {
+                  const configuration = form.featurePricing?.[
+                    feature.value
+                  ] || {
+                    enabled: false,
+                    price: "",
+                  };
+
+                  return (
+                    <Grid
+                      key={feature.value}
+                      size={{
+                        xs: 12,
+                        md: 6,
+                      }}
+                    >
+                      <Card
+                        variant="outlined"
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2.5,
+                          height: "100%",
+                        }}
+                      >
+                        <Stack
+                          direction="row"
+                          spacing={1.5}
+                          alignItems="center"
+                          justifyContent="space-between"
+                        >
+                          <Box>
+                            <Typography variant="body2" fontWeight={800}>
+                              {feature.label}
+                            </Typography>
+
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              {feature.value}
+                            </Typography>
+                          </Box>
+
+                          <Switch
+                            checked={configuration?.enabled || false}
+                            onChange={(event) =>
+                              handleFeatureEnabledChange(
+                                feature.value,
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        </Stack>
+
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Additional Price"
+                          type="number"
+                          inputProps={{
+                            min: 0,
+                            step: "0.01",
+                          }}
+                          value={configuration?.price ?? ""}
+                          onChange={(event) =>
+                            handleFeaturePriceChange(
+                              feature.value,
+                              event.target.value,
+                            )
+                          }
+                          disabled={!configuration?.enabled}
+                          sx={{ mt: 1 }}
+                        />
+                      </Card>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Box>
+
+            <Divider />
+
+            {/* LEGACY SHIFT / TIMING */}
+
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Schedule color="primary" />
+
+                <Typography variant="subtitle1" fontWeight={850}>
+                  Shift & Timing
+                </Typography>
+              </Stack>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{
+                  mt: 0.35,
+                  mb: 2,
+                }}
+              >
+                Legacy optional timing fields. BookingSlot remains the direction
+                for the final timing model.
+              </Typography>
+
+              <Grid container spacing={2}>
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 4,
                   }}
-                  value={form.durationDays}
-                  onChange={handleChange}
-                />
-              </Grid>
+                >
+                  <TextField
+                    fullWidth
+                    label="Shift Name"
+                    name="shiftName"
+                    value={form.shiftName}
+                    onChange={handleChange}
+                  />
+                </Grid>
 
-              {/* Description */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={3}
-                  label="Description"
-                  name="description"
-                  placeholder="Describe this membership plan"
-                  value={form.description}
-                  onChange={handleChange}
-                />
-              </Grid>
-
-              {/* Shift */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 4,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  label="Shift Name"
-                  name="shiftName"
-                  placeholder="e.g. Morning Shift"
-                  value={form.shiftName}
-                  onChange={handleChange}
-                />
-              </Grid>
-
-              {/* Start Time */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 4,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  label="Start Time"
-                  name="startTime"
-                  type="time"
-                  value={form.startTime}
-                  onChange={handleChange}
-                  slotProps={{
-                    inputLabel: {
-                      shrink: true,
-                    },
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 4,
                   }}
-                />
-              </Grid>
+                >
+                  <TextField
+                    fullWidth
+                    label="Start Time"
+                    name="startTime"
+                    type="time"
+                    value={form.startTime}
+                    onChange={handleChange}
+                    slotProps={{
+                      inputLabel: {
+                        shrink: true,
+                      },
+                    }}
+                  />
+                </Grid>
 
-              {/* End Time */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 4,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  label="End Time"
-                  name="endTime"
-                  type="time"
-                  value={form.endTime}
-                  onChange={handleChange}
-                  slotProps={{
-                    inputLabel: {
-                      shrink: true,
-                    },
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 4,
                   }}
-                />
+                >
+                  <TextField
+                    fullWidth
+                    label="End Time"
+                    name="endTime"
+                    type="time"
+                    value={form.endTime}
+                    onChange={handleChange}
+                    slotProps={{
+                      inputLabel: {
+                        shrink: true,
+                      },
+                    }}
+                  />
+                </Grid>
               </Grid>
+            </Box>
 
-              {/* Refund Policy Heading */}
+            <Divider />
 
-              <Grid
-                size={{
-                  xs: 12,
-                }}
-              >
-                <Divider />
+            {/* REFUND POLICY */}
 
-                <Typography variant="subtitle1" fontWeight={700} mt={2}>
+            <Box>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <SavingsOutlined color="primary" />
+
+                <Typography variant="subtitle1" fontWeight={850}>
                   Refund Policy
                 </Typography>
+              </Stack>
 
-                <Typography variant="body2" color="text.secondary" mt={0.5}>
-                  Configure refund rules applicable to this membership plan.
-                </Typography>
-              </Grid>
-
-              {/* Full Refund */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 4,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  label="Full Refund Days"
-                  name="fullRefundDays"
-                  type="number"
-                  inputProps={{
-                    min: 0,
+              <Grid container spacing={2} sx={{ mt: 0.5 }}>
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 4,
                   }}
-                  value={form.fullRefundDays}
-                  onChange={handleChange}
-                  helperText="Number of days eligible for full refund."
-                />
-              </Grid>
+                >
+                  <TextField
+                    fullWidth
+                    label="Full Refund Days"
+                    name="fullRefundDays"
+                    type="number"
+                    inputProps={{
+                      min: 0,
+                    }}
+                    value={form.fullRefundDays}
+                    onChange={handleChange}
+                  />
+                </Grid>
 
-              {/* Partial Refund */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 4,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  label="Partial Refund Days"
-                  name="partialRefundDays"
-                  type="number"
-                  inputProps={{
-                    min: 0,
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 4,
                   }}
-                  value={form.partialRefundDays}
-                  onChange={handleChange}
-                  helperText="Number of days eligible for partial refund."
-                />
-              </Grid>
+                >
+                  <TextField
+                    fullWidth
+                    label="Partial Refund Days"
+                    name="partialRefundDays"
+                    type="number"
+                    inputProps={{
+                      min: 0,
+                    }}
+                    value={form.partialRefundDays}
+                    onChange={handleChange}
+                  />
+                </Grid>
 
-              {/* Partial Percentage */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                  md: 4,
-                }}
-              >
-                <TextField
-                  fullWidth
-                  label="Partial Refund %"
-                  name="partialRefundPercentage"
-                  type="number"
-                  inputProps={{
-                    min: 0,
-                    max: 100,
-                    step: "0.01",
+                <Grid
+                  size={{
+                    xs: 12,
+                    md: 4,
                   }}
-                  value={form.partialRefundPercentage}
+                >
+                  <TextField
+                    fullWidth
+                    label="Partial Refund %"
+                    name="partialRefundPercentage"
+                    type="number"
+                    inputProps={{
+                      min: 0,
+                      max: 100,
+                    }}
+                    value={form.partialRefundPercentage}
+                    onChange={handleChange}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
+
+            <Divider />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  name="active"
+                  checked={Boolean(form.active)}
                   onChange={handleChange}
-                  helperText="Percentage refunded during partial refund period."
                 />
-              </Grid>
+              }
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={800}>
+                    Active Plan
+                  </Typography>
 
-              {/* Active */}
-
-              <Grid
-                size={{
-                  xs: 12,
-                }}
-              >
-                <FormControlLabel
-                  control={
-                    <Switch
-                      name="active"
-                      checked={form.active}
-                      onChange={handleChange}
-                    />
-                  }
-                  label={
-                    form.active ? "Plan will be active" : "Create as inactive"
-                  }
-                />
-              </Grid>
-            </Grid>
+                  <Typography variant="caption" color="text.secondary">
+                    {form.active
+                      ? "This plan will be visible to students."
+                      : "This plan will remain hidden from students."}
+                  </Typography>
+                </Box>
+              }
+            />
           </Stack>
         </DialogContent>
 
         <DialogActions
           sx={{
-            px: 3,
-            pb: 2.5,
+            px: { xs: 2.5, md: 3.2 },
+            py: 2.2,
+            borderTop: "1px solid",
+            borderColor: "divider",
+            gap: 1,
+            flexWrap: "wrap",
           }}
         >
-          <Button onClick={handleCloseDialog} disabled={saving}>
+          {dialogError && (
+            <Alert
+              severity="error"
+              onClose={() => setDialogError("")}
+              sx={{
+                flex: "1 1 100%",
+                mb: 0.5,
+                borderRadius: 2,
+              }}
+            >
+              {dialogError}
+            </Alert>
+          )}
+
+          <Box sx={{ flex: 1 }} />
+
+          <Button
+            onClick={handleCloseDialog}
+            disabled={saving}
+            variant="outlined"
+            sx={{
+              textTransform: "none",
+              fontWeight: 700,
+              borderRadius: 2.2,
+              minWidth: 110,
+            }}
+          >
             Cancel
           </Button>
 
@@ -1300,15 +2081,22 @@ function MembershipPlans() {
             disabled={
               saving ||
               !form.name.trim() ||
-              form.price === "" ||
+              form.normalPrice === "" ||
               !form.durationDays ||
-              !form.planType
+              !form.planType ||
+              (form.premiumEnabled && form.premiumPrice === "")
             }
             startIcon={
               saving ? (
                 <CircularProgress size={18} color="inherit" />
               ) : undefined
             }
+            sx={{
+              textTransform: "none",
+              fontWeight: 850,
+              borderRadius: 2.2,
+              minWidth: 170,
+            }}
           >
             {saving
               ? "Saving..."

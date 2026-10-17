@@ -9,6 +9,11 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  FormControl,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
   Dialog,
   DialogActions,
   DialogContent,
@@ -22,7 +27,11 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
+  Select,
+  alpha,
+  useTheme,
 } from "@mui/material";
 
 import {
@@ -34,6 +43,11 @@ import {
   Payment,
   TrendingUp,
   WorkspacePremium,
+  AutoAwesome,
+  Refresh,
+  Bolt,
+  ShieldOutlined,
+  AccountBalanceWalletOutlined,
   Download as DownloadIcon,
   ReceiptLong as ReceiptLongIcon,
 } from "@mui/icons-material";
@@ -42,7 +56,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import libraryApi from "../../api/libraryApi";
 import libraryRegistrationApi from "../../api/libraryRegistrationApi";
-import dashboardApi from "../../api/dashboardApi";
+import memberApi from "../../api/memberApi";
 import platformPlanApi from "../../api/platformPlanApi";
 import platformSubscriptionApi from "../../api/platformSubscriptionApi";
 import platformPaymentApi from "../../api/platformPaymentApi";
@@ -289,6 +303,8 @@ const loadRazorpayScript = () =>
 // ============================================================
 
 function SubscriptionBilling() {
+  const theme = useTheme();
+
   const location = useLocation();
 
   const navigate = useNavigate();
@@ -317,9 +333,11 @@ function SubscriptionBilling() {
 
   const [plans, setPlans] = useState([]);
 
-  const [dashboardData, setDashboardData] = useState(null);
+  const [memberSummary, setMemberSummary] = useState(null);
 
   const [loading, setLoading] = useState(true);
+
+  const [refreshing, setRefreshing] = useState(false);
 
   const [error, setError] = useState("");
 
@@ -513,22 +531,23 @@ function SubscriptionBilling() {
     if (!selectedLibraryId) {
       setSubscriptions([]);
       setActiveSubscription(null);
-      setDashboardData(null);
+      setMemberSummary(null);
 
       return;
     }
 
-    const [subscriptionResponse, planResponse, dashboardResponse] =
+    const [subscriptionResponse, planResponse, memberSummaryResponse] =
       await Promise.all([
         platformSubscriptionApi.getLibrarySubscriptions(selectedLibraryId),
 
         platformPlanApi.getActivePlans(),
 
-        dashboardApi.getDashboard(selectedLibraryId).catch((requestError) => {
-          console.warn("Unable to load dashboard usage:", requestError);
-
-          return null;
-        }),
+        memberApi
+          .getLibraryMemberSummary(selectedLibraryId)
+          .catch((requestError) => {
+            console.warn("Unable to load member summary:", requestError);
+            return null;
+          }),
       ]);
 
     const subscriptionList = normalizeListResponse(subscriptionResponse);
@@ -544,7 +563,7 @@ function SubscriptionBilling() {
 
     setPlans(normalizeListResponse(planResponse));
 
-    setDashboardData(dashboardResponse);
+    setMemberSummary(memberSummaryResponse ?? null);
   }, []);
 
   // ==========================================================
@@ -839,11 +858,10 @@ function SubscriptionBilling() {
     currentPlan?.maxStudents ?? currentPlan?.maxMembers ?? 0,
   );
 
-  const statistics = dashboardData?.overview?.statistics ?? null;
-
-  const currentMembers = Number(
-    statistics?.activeStudents ?? statistics?.activeSubscriptions ?? 0,
-  );
+  // Member capacity must use the same owner-member source of truth as
+  // the Members page. Dashboard statistics can lag or represent a
+  // different metric, which caused Members = 1 while Billing = 0.
+  const currentMembers = Number(memberSummary?.activeMembers ?? 0);
 
   const usagePercentage =
     maxMembers > 0 ? Math.min((currentMembers / maxMembers) * 100, 100) : 0;
@@ -1428,25 +1446,102 @@ function SubscriptionBilling() {
   };
 
   // ==========================================================
+  // PREMIUM PAGE INTERACTIONS
+  // ==========================================================
+
+  const handleLibrarySelectionChange = async (event) => {
+    const nextLibraryId = Number(event.target.value);
+
+    if (!Number.isFinite(nextLibraryId)) {
+      return;
+    }
+
+    const nextLibrary =
+      libraries.find((item) => Number(item?.id) === nextLibraryId) ?? null;
+
+    setLibraryId(String(nextLibraryId));
+    setLibrary(nextLibrary);
+    storeLibraryId(nextLibraryId);
+    setHighlightedPaymentTransactionId(null);
+    setShowAllHistory(false);
+    setError("");
+
+    window.dispatchEvent(
+      new CustomEvent("owner-library-changed", {
+        detail: { libraryId: nextLibraryId },
+      }),
+    );
+  };
+
+  const handleRefreshBilling = async () => {
+    if (!libraryId || refreshing) {
+      return;
+    }
+
+    try {
+      setRefreshing(true);
+      setError("");
+
+      await Promise.all([
+        loadSubscriptionData(Number(libraryId)),
+        loadLibrarySeatCount(Number(libraryId)),
+      ]);
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Unable to refresh subscription and billing data.",
+        ),
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // ==========================================================
   // LOADING
   // ==========================================================
 
   if (loading) {
     return (
-      <Stack
-        alignItems="center"
-        justifyContent="center"
-        spacing={2}
+      <Paper
+        variant="outlined"
         sx={{
           minHeight: 420,
+          borderRadius: 4,
+          display: "grid",
+          placeItems: "center",
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+          background: `linear-gradient(145deg, #fff 0%, ${alpha(
+            theme.palette.primary.main,
+            0.035,
+          )} 100%)`,
         }}
       >
-        <CircularProgress />
+        <Stack alignItems="center" spacing={2}>
+          <Box
+            sx={{
+              width: 58,
+              height: 58,
+              borderRadius: 3,
+              display: "grid",
+              placeItems: "center",
+              bgcolor: alpha(theme.palette.primary.main, 0.08),
+            }}
+          >
+            <CircularProgress size={28} />
+          </Box>
 
-        <Typography color="text.secondary">
-          Loading subscription and usage...
-        </Typography>
-      </Stack>
+          <Box textAlign="center">
+            <Typography fontWeight={850}>
+              Loading your LibraryHub plan
+            </Typography>
+            <Typography variant="body2" color="text.secondary" mt={0.35}>
+              Syncing subscription, usage and billing history...
+            </Typography>
+          </Box>
+        </Stack>
+      </Paper>
     );
   }
 
@@ -1455,50 +1550,201 @@ function SubscriptionBilling() {
   // ==========================================================
 
   return (
-    <Box>
-      {/* HEADER */}
-      <Stack
-        direction={{
-          xs: "column",
-          md: "row",
+    <Box
+      sx={{
+        pb: 4,
+        "& .MuiButton-root": {
+          textTransform: "none",
+          fontWeight: 800,
+        },
+        "& .MuiCard-root": {
+          borderRadius: 3.5,
+          border: "1px solid",
+          borderColor: "divider",
+        },
+        "& .MuiTableHead-root .MuiTableCell-root": {
+          bgcolor: "#FAFBFD",
+          color: "text.secondary",
+          fontSize: 12,
+          fontWeight: 850,
+          textTransform: "uppercase",
+          letterSpacing: 0.45,
+        },
+      }}
+    >
+      {/* PREMIUM HEADER */}
+      <Paper
+        variant="outlined"
+        sx={{
+          position: "relative",
+          overflow: "hidden",
+          p: { xs: 2.5, md: 3.2 },
+          mb: 3,
+          borderRadius: 4,
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+          background: `linear-gradient(118deg, ${alpha(
+            theme.palette.primary.main,
+            0.08,
+          )} 0%, #fff 52%, ${alpha(theme.palette.info.main, 0.045)} 100%)`,
+          boxShadow: "0 14px 40px rgba(15,23,42,0.05)",
+          "&::after": {
+            content: '""',
+            position: "absolute",
+            width: 210,
+            height: 210,
+            borderRadius: "50%",
+            right: -70,
+            top: -110,
+            bgcolor: alpha(theme.palette.primary.main, 0.055),
+          },
         }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "flex-start",
-          md: "center",
-        }}
-        spacing={2}
-        mb={4}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={800}>
-            Subscription & Usage
-          </Typography>
-
-          <Typography variant="body1" color="text.secondary" mt={0.5}>
-            Manage your LibraryHub plan, view usage and upgrade when needed.
-          </Typography>
-
-          {library && (
-            <Typography variant="body2" color="text.secondary" mt={0.5}>
-              Library: <strong>{library.name}</strong>
-            </Typography>
-          )}
-        </Box>
-
-        <Button
-          variant="outlined"
-          startIcon={<History />}
-          onClick={() => setShowAllHistory((previous) => !previous)}
+        <Stack
+          direction={{ xs: "column", lg: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "stretch", lg: "center" }}
+          spacing={2.5}
+          position="relative"
+          zIndex={1}
         >
-          {showAllHistory ? "Show Recent" : "Billing History"}
-        </Button>
-      </Stack>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box
+              sx={{
+                width: 58,
+                height: 58,
+                borderRadius: 3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: "primary.main",
+                color: "common.white",
+                boxShadow: `0 10px 28px ${alpha(theme.palette.primary.main, 0.24)}`,
+                flexShrink: 0,
+              }}
+            >
+              <WorkspacePremium sx={{ fontSize: 29 }} />
+            </Box>
+
+            <Box minWidth={0}>
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Typography
+                  variant="h4"
+                  fontWeight={900}
+                  sx={{ letterSpacing: -0.7 }}
+                >
+                  Subscription & Billing
+                </Typography>
+
+                <Chip
+                  icon={<AutoAwesome sx={{ fontSize: 16 }} />}
+                  label="LibraryHub Platform"
+                  size="small"
+                  sx={{
+                    fontWeight: 800,
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    color: "primary.main",
+                  }}
+                />
+              </Stack>
+
+              <Typography variant="body2" color="text.secondary" mt={0.5}>
+                Manage your plan, monitor capacity, compare upgrades and keep
+                billing records in one workspace.
+              </Typography>
+
+              {activeSubscription && (
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  mt={1.2}
+                  flexWrap="wrap"
+                  useFlexGap
+                >
+                  <Chip
+                    size="small"
+                    icon={<CheckCircle />}
+                    label={`${planName} · Active`}
+                    color="success"
+                    variant="outlined"
+                    sx={{ fontWeight: 800 }}
+                  />
+                  <Chip
+                    size="small"
+                    label={`${Math.round(usagePercentage)}% member capacity used`}
+                    variant="outlined"
+                    sx={{ fontWeight: 750 }}
+                  />
+                </Stack>
+              )}
+            </Box>
+          </Stack>
+
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1.1}
+            alignItems={{ xs: "stretch", sm: "center" }}
+          >
+            <FormControl size="small" sx={{ minWidth: { sm: 220 } }}>
+              <InputLabel>Library</InputLabel>
+              <Select
+                value={libraryId}
+                label="Library"
+                disabled={libraries.length === 0 || refreshing}
+                onChange={handleLibrarySelectionChange}
+                sx={{ borderRadius: 2.2, bgcolor: "background.paper" }}
+              >
+                {libraries.map((item) => (
+                  <MenuItem key={item.id} value={String(item.id)}>
+                    {item.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Tooltip title="Refresh subscription, usage and billing">
+              <span>
+                <IconButton
+                  onClick={handleRefreshBilling}
+                  disabled={!libraryId || refreshing}
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 2.2,
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  {refreshing ? (
+                    <CircularProgress size={18} />
+                  ) : (
+                    <Refresh fontSize="small" />
+                  )}
+                </IconButton>
+              </span>
+            </Tooltip>
+
+            <Button
+              variant="outlined"
+              startIcon={<History />}
+              onClick={() => setShowAllHistory((previous) => !previous)}
+              sx={{ borderRadius: 2.2, fontWeight: 800, whiteSpace: "nowrap" }}
+            >
+              {showAllHistory ? "Recent Billing" : "Billing History"}
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
 
       {notificationSuccess && (
         <Alert
           severity="success"
-          sx={{ mb: 3 }}
+          sx={{ mb: 3, borderRadius: 2.5 }}
           onClose={() => setNotificationSuccess("")}
         >
           {notificationSuccess}
@@ -1506,7 +1752,11 @@ function SubscriptionBilling() {
       )}
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError("")}>
+        <Alert
+          severity="error"
+          sx={{ mb: 3, borderRadius: 2.5 }}
+          onClose={() => setError("")}
+        >
           {error}
         </Alert>
       )}
@@ -1514,7 +1764,7 @@ function SubscriptionBilling() {
       {!activeSubscription && (
         <Alert
           severity="warning"
-          sx={{ mb: 3 }}
+          sx={{ mb: 3, borderRadius: 2.5 }}
           action={
             <Button
               color="inherit"
@@ -1530,7 +1780,11 @@ function SubscriptionBilling() {
       )}
 
       {activeSubscription && (
-        <Alert severity="success" icon={<CheckCircle />} sx={{ mb: 3 }}>
+        <Alert
+          severity="success"
+          icon={<CheckCircle />}
+          sx={{ mb: 3, borderRadius: 2.5 }}
+        >
           Your LibraryHub subscription is active.
           {nextBillingDate !== "-" && (
             <>
@@ -1551,10 +1805,23 @@ function SubscriptionBilling() {
           }}
         >
           <Card
+            variant="outlined"
             sx={{
               height: "100%",
-              border: "1px solid",
-              borderColor: activeSubscription ? "primary.main" : "divider",
+              borderRadius: 4,
+              borderColor: activeSubscription
+                ? alpha(theme.palette.primary.main, 0.22)
+                : "divider",
+              background: `linear-gradient(145deg, #fff 0%, ${alpha(
+                theme.palette.primary.main,
+                0.035,
+              )} 100%)`,
+              boxShadow: "0 14px 38px rgba(15,23,42,0.05)",
+              transition: "transform .2s ease, box-shadow .2s ease",
+              "&:hover": {
+                transform: "translateY(-2px)",
+                boxShadow: "0 18px 44px rgba(15,23,42,0.08)",
+              },
             }}
           >
             <CardContent sx={{ p: 3 }}>
@@ -1674,6 +1941,7 @@ function SubscriptionBilling() {
                   <Button
                     variant="contained"
                     startIcon={<TrendingUp />}
+                    sx={{ borderRadius: 2.2, px: 2.2, fontWeight: 800 }}
                     endIcon={<ArrowForward />}
                     disabled={!libraryId || !activeSubscription}
                     onClick={() => openPlanDialog("change")}
@@ -1683,6 +1951,7 @@ function SubscriptionBilling() {
 
                   <Button
                     variant="outlined"
+                    sx={{ borderRadius: 2.2, fontWeight: 800 }}
                     disabled={!libraryId}
                     onClick={() => openPlanDialog("compare")}
                   >
@@ -1701,8 +1970,17 @@ function SubscriptionBilling() {
           }}
         >
           <Card
+            variant="outlined"
             sx={{
               height: "100%",
+              borderRadius: 4,
+              borderColor: alpha(theme.palette.success.main, 0.16),
+              boxShadow: "0 14px 38px rgba(15,23,42,0.045)",
+              transition: "transform .2s ease, box-shadow .2s ease",
+              "&:hover": {
+                transform: "translateY(-2px)",
+                boxShadow: "0 18px 44px rgba(15,23,42,0.075)",
+              },
             }}
           >
             <CardContent sx={{ p: 3 }}>
@@ -1943,7 +2221,7 @@ function SubscriptionBilling() {
           <Card sx={{ height: "100%" }}>
             <CardContent>
               <Stack direction="row" spacing={2} alignItems="center">
-                <Payment color="primary" />
+                <AccountBalanceWalletOutlined color="primary" />
 
                 <Box>
                   <Typography variant="caption" color="text.secondary">
@@ -1993,7 +2271,7 @@ function SubscriptionBilling() {
           <Card sx={{ height: "100%" }}>
             <CardContent>
               <Stack direction="row" spacing={2} alignItems="center">
-                <Payment color="primary" />
+                <Bolt color="primary" />
 
                 <Box>
                   <Typography variant="caption" color="text.secondary">
@@ -2012,11 +2290,21 @@ function SubscriptionBilling() {
 
       {/* PLAN FEATURES / LIMITS */}
       {currentPlan && (
-        <Card sx={{ mb: 3 }}>
+        <Card
+          variant="outlined"
+          sx={{
+            mb: 3,
+            borderRadius: 3.5,
+            boxShadow: "0 10px 30px rgba(15,23,42,0.035)",
+          }}
+        >
           <CardContent sx={{ p: 3 }}>
-            <Typography variant="h6" fontWeight={700} mb={0.5}>
-              Included in your {currentPlan.name} plan
-            </Typography>
+            <Stack direction="row" spacing={1.2} alignItems="center" mb={0.5}>
+              <ShieldOutlined color="primary" />
+              <Typography variant="h6" fontWeight={850}>
+                Included in your {currentPlan.name} plan
+              </Typography>
+            </Stack>
 
             <Typography variant="body2" color="text.secondary" mb={2}>
               Current LibraryHub platform limits and enabled features.
@@ -2108,7 +2396,14 @@ function SubscriptionBilling() {
       )}
 
       {/* BILLING HISTORY */}
-      <Card>
+      <Card
+        variant="outlined"
+        sx={{
+          borderRadius: 3.5,
+          overflow: "hidden",
+          boxShadow: "0 12px 34px rgba(15,23,42,0.045)",
+        }}
+      >
         <CardContent sx={{ p: 3 }}>
           <Stack
             direction={{
@@ -2124,7 +2419,7 @@ function SubscriptionBilling() {
             mb={2}
           >
             <Box>
-              <Typography variant="h6" fontWeight={700}>
+              <Typography variant="h6" fontWeight={850}>
                 Platform Billing History
               </Typography>
 
@@ -2600,6 +2895,11 @@ function SubscriptionBilling() {
         onClose={closeInvoiceDialog}
         fullWidth
         maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: { borderRadius: 4, overflow: "hidden" },
+          },
+        }}
       >
         <DialogTitle>Platform Billing Invoice</DialogTitle>
 

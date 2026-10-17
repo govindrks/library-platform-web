@@ -1,5 +1,6 @@
 import api from "./axios";
 
+
 /**
  * API service for Floor and Seat Management.
  *
@@ -10,16 +11,22 @@ import api from "./axios";
  */
 const seatApi = {
 
+
   // =========================================================
   // FLOOR MANAGEMENT
   // =========================================================
 
+
   /**
    * Get all floors belonging to a library.
    *
-   * GET /api/libraries/{libraryId}/floors
+   * GET
+   * /api/libraries/{libraryId}/floors
    */
-  getFloors: async (libraryId) => {
+  getFloors: async (
+    libraryId
+  ) => {
+
     const response = await api.get(
       `/api/libraries/${libraryId}/floors`
     );
@@ -31,7 +38,8 @@ const seatApi = {
   /**
    * Create a new floor.
    *
-   * POST /api/libraries/{libraryId}/floors
+   * POST
+   * /api/libraries/{libraryId}/floors
    *
    * Request:
    *
@@ -44,6 +52,7 @@ const seatApi = {
     libraryId,
     data
   ) => {
+
     const response = await api.post(
       `/api/libraries/${libraryId}/floors`,
       data
@@ -53,9 +62,35 @@ const seatApi = {
   },
 
 
+  /**
+   * Delete a floor.
+   *
+   * DELETE
+   * /api/libraries/{libraryId}/floors/{floorId}
+   *
+   * IMPORTANT:
+   *
+   * Backend should reject deletion when the floor
+   * contains protected active bookings/subscriptions
+   * or seat allocations.
+   */
+  deleteFloor: async (
+    libraryId,
+    floorId
+  ) => {
+
+    const response = await api.delete(
+      `/api/libraries/${libraryId}/floors/${floorId}`
+    );
+
+    return response.data;
+  },
+
+
   // =========================================================
   // COMPLETE FLOOR LAYOUT
   // =========================================================
+
 
   /**
    * Get the complete physical layout of a floor.
@@ -97,13 +132,14 @@ const seatApi = {
    * - Owner Seat Mapping
    * - Student Book Seat
    *
-   * This is now the canonical endpoint for rendering the
-   * complete physical floor layout.
+   * This is the canonical endpoint for rendering
+   * the complete physical floor layout.
    */
   getFloorLayout: async (
     libraryId,
     floorId
   ) => {
+
     const response = await api.get(
       `/api/libraries/${libraryId}/floors/${floorId}/layout`
     );
@@ -150,7 +186,7 @@ const seatApi = {
    *
    * floorId belongs in the URL.
    *
-   * This endpoint now persists:
+   * This endpoint persists:
    *
    * - seats
    * - row count
@@ -164,6 +200,7 @@ const seatApi = {
     floorId,
     data
   ) => {
+
     const response = await api.put(
       `/api/libraries/${libraryId}/floors/${floorId}/layout`,
       data
@@ -176,16 +213,15 @@ const seatApi = {
   /**
    * Backward-compatible alias.
    *
-   * Existing frontend code may still call generateLayout().
-   *
-   * Keep temporarily while all seat-mapping screens migrate
-   * to saveLayout().
+   * Existing frontend code may still call
+   * generateLayout().
    */
   generateLayout: async (
     libraryId,
     floorId,
     data
   ) => {
+
     const response = await api.put(
       `/api/libraries/${libraryId}/floors/${floorId}/layout`,
       data
@@ -201,7 +237,9 @@ const seatApi = {
    * GET
    * /api/libraries/{libraryId}/floors/{floorId}/seat-matrix
    *
-   * Backend returns List<SeatRowResponse>.
+   * Backend returns:
+   *
+   * List<SeatRowResponse>
    *
    * IMPORTANT:
    *
@@ -221,6 +259,7 @@ const seatApi = {
     libraryId,
     floorId
   ) => {
+
     const response = await api.get(
       `/api/libraries/${libraryId}/floors/${floorId}/seat-matrix`
     );
@@ -233,14 +272,17 @@ const seatApi = {
   // SEAT MANAGEMENT
   // =========================================================
 
+
   /**
    * Get all seats belonging to a library.
    *
-   * GET /api/libraries/{libraryId}/seats
+   * GET
+   * /api/libraries/{libraryId}/seats
    */
   getLibrarySeats: async (
     libraryId
   ) => {
+
     const response = await api.get(
       `/api/libraries/${libraryId}/seats`
     );
@@ -270,6 +312,7 @@ const seatApi = {
     floorId,
     data
   ) => {
+
     const response = await api.post(
       `/api/libraries/${libraryId}/floors/${floorId}/seats`,
       data
@@ -282,12 +325,14 @@ const seatApi = {
   /**
    * Get one seat by ID.
    *
-   * GET /api/libraries/{libraryId}/seats/{seatId}
+   * GET
+   * /api/libraries/{libraryId}/seats/{seatId}
    */
   getSeatById: async (
     libraryId,
     seatId
   ) => {
+
     const response = await api.get(
       `/api/libraries/${libraryId}/seats/${seatId}`
     );
@@ -299,12 +344,14 @@ const seatApi = {
   /**
    * Delete a seat.
    *
-   * DELETE /api/libraries/{libraryId}/seats/{seatId}
+   * DELETE
+   * /api/libraries/{libraryId}/seats/{seatId}
    */
   deleteSeat: async (
     libraryId,
     seatId
   ) => {
+
     const response = await api.delete(
       `/api/libraries/${libraryId}/seats/${seatId}`
     );
@@ -316,6 +363,7 @@ const seatApi = {
   // =========================================================
   // SEAT STATUS
   // =========================================================
+
 
   /**
    * Update the physical status of one seat.
@@ -337,14 +385,15 @@ const seatApi = {
    * RESERVED_FOR_GIRLS
    * MAINTENANCE
    *
-   * BOOKED should normally be controlled by the booking
-   * lifecycle rather than manually through Seat Mapping.
+   * BOOKED should normally be controlled by
+   * booking/subscription lifecycle.
    */
   updateSeatStatus: async (
     libraryId,
     seatId,
     status
   ) => {
+
     const response = await api.put(
       `/api/libraries/${libraryId}/seats/${seatId}/status`,
       {
@@ -359,6 +408,7 @@ const seatApi = {
   // =========================================================
   // SEAT TYPE
   // =========================================================
+
 
   /**
    * Update the type of one seat.
@@ -385,6 +435,7 @@ const seatApi = {
     seatId,
     seatType
   ) => {
+
     const response = await api.put(
       `/api/libraries/${libraryId}/seats/${seatId}/type`,
       {
@@ -400,10 +451,12 @@ const seatApi = {
   // CURRENT AVAILABLE SEATS
   // =========================================================
 
+
   /**
    * Get currently available physical seats.
    *
-   * GET /api/libraries/{libraryId}/available-seats
+   * GET
+   * /api/libraries/{libraryId}/available-seats
    *
    * Useful for:
    *
@@ -414,6 +467,7 @@ const seatApi = {
   getAvailableSeats: async (
     libraryId
   ) => {
+
     const response = await api.get(
       `/api/libraries/${libraryId}/available-seats`
     );
@@ -425,6 +479,7 @@ const seatApi = {
   // =========================================================
   // SLOT-AWARE SEAT AVAILABILITY
   // =========================================================
+
 
   /**
    * Get effective seat availability for a selected:
@@ -462,6 +517,7 @@ const seatApi = {
     slotId,
     date
   ) => {
+
     const response = await api.get(
       `/api/libraries/${libraryId}/seat-availability`,
       {
@@ -481,6 +537,7 @@ const seatApi = {
   // BULK STATUS UPDATE
   // =========================================================
 
+
   /**
    * Update physical status of multiple seats.
    *
@@ -499,6 +556,7 @@ const seatApi = {
     seatIds,
     status
   ) => {
+
     const response = await api.put(
       `/api/libraries/${libraryId}/seats/bulk/status`,
       {
@@ -514,6 +572,7 @@ const seatApi = {
   // =========================================================
   // BULK TYPE UPDATE
   // =========================================================
+
 
   /**
    * Update type of multiple seats.
@@ -533,6 +592,7 @@ const seatApi = {
     seatIds,
     seatType
   ) => {
+
     const response = await api.put(
       `/api/libraries/${libraryId}/seats/bulk/type`,
       {
@@ -549,11 +609,13 @@ const seatApi = {
   // SEAT TRANSFER
   // =========================================================
 
+
   /**
    * Transfer an existing subscription/member
    * from one seat to another.
    *
-   * PUT /api/libraries/{libraryId}/seat/transfer
+   * PUT
+   * /api/libraries/{libraryId}/seat/transfer
    *
    * Request:
    *
@@ -567,6 +629,7 @@ const seatApi = {
     libraryId,
     data
   ) => {
+
     const response = await api.put(
       `/api/libraries/${libraryId}/seat/transfer`,
       data
@@ -579,6 +642,7 @@ const seatApi = {
   // =========================================================
   // COMPLETE SEAT SETUP
   // =========================================================
+
 
   /**
    * Complete the SEATS_AND_SLOTS onboarding step.
@@ -594,17 +658,21 @@ const seatApi = {
    *
    * This is an onboarding operation.
    *
-   * Normal dashboard Seat Mapping must NOT call this endpoint.
+   * Normal dashboard Seat Mapping must NOT call
+   * this endpoint.
    */
   completeSeatSetup: async (
     libraryId
   ) => {
+
     const response = await api.post(
       `/api/libraries/${libraryId}/seat-setup/complete`
     );
 
     return response.data;
   },
+
 };
+
 
 export default seatApi;

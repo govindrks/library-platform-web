@@ -20,39 +20,26 @@ import {
   ArrowForward,
   DoorFrontOutlined,
   EventSeat,
-  MeetingRoom,
   MeetingRoomOutlined,
   Schedule,
 } from "@mui/icons-material";
 
 import { useEffect, useMemo, useState } from "react";
-
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import seatApi from "../../../api/seatApi";
-
 import slotApi from "../../../api/slotApi";
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function getToday() {
   const date = new Date();
-
   const year = date.getFullYear();
-
   const month = String(date.getMonth() + 1).padStart(2, "0");
-
   const day = String(date.getDate()).padStart(2, "0");
-
   return `${year}-${month}-${day}`;
 }
 
-function formatSeatType(value) {
-  if (!value) {
-    return "Normal";
-  }
+function formatEnum(value, fallback = "-") {
+  if (!value) return fallback;
 
   return String(value)
     .replaceAll("_", " ")
@@ -61,11 +48,16 @@ function formatSeatType(value) {
 }
 
 function formatTime(value) {
-  if (!value) {
-    return "-";
-  }
-
+  if (!value) return "-";
   return String(value).slice(0, 5);
+}
+
+function formatMoney(value) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0));
 }
 
 function normalizeRow(value) {
@@ -82,13 +74,96 @@ function getRowLabel(index) {
   return String.fromCharCode(65 + index);
 }
 
-function isSeatSelectable(seat) {
-  return seat?.availabilityStatus === "AVAILABLE" && seat?.booked !== true;
+function getSeatTypeBasePrice(plan, seatType) {
+  const resolvedType = seatType || "NORMAL";
+
+  const configured = Array.isArray(plan?.seatPrices)
+    ? plan.seatPrices.find(
+        (item) => item?.seatType === resolvedType && item?.active !== false,
+      )
+    : null;
+
+  if (configured?.price != null) {
+    return Number(configured.price);
+  }
+
+  // Migration fallback is intentionally NORMAL-only.
+  if (resolvedType === "NORMAL" && plan?.price != null) {
+    return Number(plan.price);
+  }
+
+  return null;
 }
 
-// ============================================================
-// LAYOUT MARKER
-// ============================================================
+function getSeatFeaturePricing(plan, seat) {
+  const seatFeatures = Array.isArray(seat?.features) ? seat.features : [];
+
+  const configuredPrices = Array.isArray(plan?.featurePrices)
+    ? plan.featurePrices
+    : [];
+
+  return seatFeatures
+    .map((feature) => {
+      const pricing = configuredPrices.find(
+        (item) => item?.seatFeature === feature && item?.active !== false,
+      );
+
+      return {
+        feature,
+        additionalPrice:
+          pricing?.additionalPrice != null
+            ? Number(pricing.additionalPrice)
+            : 0,
+      };
+    })
+    .filter(
+      (item) =>
+        Number.isFinite(item.additionalPrice) && item.additionalPrice > 0,
+    );
+}
+
+function calculateSeatPreview(plan, seat) {
+  if (!seat) {
+    return {
+      basePrice: null,
+      featurePrices: [],
+      total: null,
+    };
+  }
+
+  const basePrice = getSeatTypeBasePrice(plan, seat.seatType);
+
+  const featurePrices = getSeatFeaturePricing(plan, seat);
+
+  if (basePrice == null) {
+    return {
+      basePrice: null,
+      featurePrices,
+      total: null,
+    };
+  }
+
+  const featureTotal = featurePrices.reduce(
+    (sum, item) => sum + Number(item.additionalPrice || 0),
+    0,
+  );
+
+  return {
+    basePrice,
+    featurePrices,
+    total: basePrice + featureTotal,
+  };
+}
+
+function isSeatSelectable(seat, selectedPlan) {
+  if (seat?.availabilityStatus !== "AVAILABLE" || seat?.booked === true) {
+    return false;
+  }
+
+  // Do not allow a seat whose commercial base price has not
+  // been configured for the selected plan.
+  return getSeatTypeBasePrice(selectedPlan, seat?.seatType) != null;
+}
 
 function LayoutMarker({ type }) {
   const isEntrance = type === "ENTRANCE";
@@ -96,32 +171,18 @@ function LayoutMarker({ type }) {
   return (
     <Box
       sx={{
-        minWidth: {
-          xs: 135,
-          sm: 165,
-        },
-
+        minWidth: { xs: 135, sm: 165 },
         px: 2.5,
         py: 1.1,
-
         display: "flex",
-
         alignItems: "center",
-
         justifyContent: "center",
-
         gap: 1,
-
         border: "1px solid",
-
         borderColor: "divider",
-
         borderRadius: 3,
-
         bgcolor: "action.hover",
-
         fontWeight: 800,
-
         letterSpacing: 1.2,
       }}
     >
@@ -136,54 +197,29 @@ function LayoutMarker({ type }) {
   );
 }
 
-// ============================================================
-// COMPONENT
-// ============================================================
-
 function BookSeat() {
   const { libraryId } = useParams();
-
   const location = useLocation();
-
   const navigate = useNavigate();
-
-  // ==========================================================
-  // ROUTE STATE
-  // ==========================================================
 
   const selectedPlan = location.state?.selectedPlan || null;
 
   const library = location.state?.library || null;
 
-  // ==========================================================
-  // BOOKING STATE
-  // ==========================================================
-
   const [bookingDate, setBookingDate] = useState(getToday());
 
   const [floors, setFloors] = useState([]);
-
   const [floorId, setFloorId] = useState("");
 
   const [slots, setSlots] = useState([]);
-
   const [slotId, setSlotId] = useState("");
 
   const [seats, setSeats] = useState([]);
-
   const [selectedSeat, setSelectedSeat] = useState(null);
-
-  // ==========================================================
-  // PHYSICAL FLOOR LAYOUT
-  // ==========================================================
 
   const [floorLayout, setFloorLayout] = useState(null);
 
   const [loadingLayout, setLoadingLayout] = useState(false);
-
-  // ==========================================================
-  // LOADING / ERROR
-  // ==========================================================
 
   const [loadingSetup, setLoadingSetup] = useState(true);
 
@@ -191,57 +227,43 @@ function BookSeat() {
 
   const [error, setError] = useState("");
 
-  // ==========================================================
-  // SELECTED FLOOR
-  // ==========================================================
-
   const selectedFloor = useMemo(
     () => floors.find((floor) => String(floor.id) === String(floorId)) || null,
     [floors, floorId],
   );
-
-  // ==========================================================
-  // SELECTED SLOT
-  // ==========================================================
 
   const selectedSlot = useMemo(
     () => slots.find((slot) => String(slot.id) === String(slotId)) || null,
     [slots, slotId],
   );
 
-  // ==========================================================
-  // LOAD FLOORS + ACTIVE SLOTS
-  // ==========================================================
+  const selectedSeatPricing = useMemo(
+    () => calculateSeatPreview(selectedPlan, selectedSeat),
+    [selectedPlan, selectedSeat],
+  );
 
   useEffect(() => {
     let active = true;
 
     const loadSetup = async () => {
-      if (!libraryId) {
-        return;
-      }
+      if (!libraryId) return;
 
       try {
         setLoadingSetup(true);
-
         setError("");
 
         const [floorResponse, slotResponse] = await Promise.all([
           seatApi.getFloors(libraryId),
-
           slotApi.getActiveSlots(libraryId),
         ]);
 
-        if (!active) {
-          return;
-        }
+        if (!active) return;
 
         const loadedFloors = Array.isArray(floorResponse) ? floorResponse : [];
 
         const loadedSlots = Array.isArray(slotResponse) ? slotResponse : [];
 
         setFloors(loadedFloors);
-
         setSlots(loadedSlots);
 
         if (loadedFloors.length > 0) {
@@ -275,17 +297,12 @@ function BookSeat() {
     };
   }, [libraryId]);
 
-  // ==========================================================
-  // LOAD COMPLETE PHYSICAL FLOOR LAYOUT
-  // ==========================================================
-
   useEffect(() => {
     let active = true;
 
     const loadPhysicalLayout = async () => {
       if (!libraryId || !floorId) {
         setFloorLayout(null);
-
         return;
       }
 
@@ -297,9 +314,7 @@ function BookSeat() {
           Number(floorId),
         );
 
-        if (!active) {
-          return;
-        }
+        if (!active) return;
 
         setFloorLayout(response || null);
       } catch (requestError) {
@@ -307,7 +322,6 @@ function BookSeat() {
 
         if (active) {
           setFloorLayout(null);
-
           setError(
             requestError?.response?.data?.message ||
               requestError?.message ||
@@ -328,27 +342,19 @@ function BookSeat() {
     };
   }, [libraryId, floorId]);
 
-  // ==========================================================
-  // LOAD SLOT-AWARE AVAILABILITY
-  // ==========================================================
-
   useEffect(() => {
     let active = true;
 
     const loadAvailability = async () => {
       if (!libraryId || !floorId || !slotId || !bookingDate) {
         setSeats([]);
-
         setSelectedSeat(null);
-
         return;
       }
 
       try {
         setLoadingSeats(true);
-
         setError("");
-
         setSelectedSeat(null);
 
         const response = await seatApi.getSeatAvailability(
@@ -358,9 +364,7 @@ function BookSeat() {
           bookingDate,
         );
 
-        if (!active) {
-          return;
-        }
+        if (!active) return;
 
         setSeats(Array.isArray(response) ? response : []);
       } catch (requestError) {
@@ -368,7 +372,6 @@ function BookSeat() {
 
         if (active) {
           setSeats([]);
-
           setError(
             requestError?.response?.data?.message ||
               requestError?.message ||
@@ -389,10 +392,6 @@ function BookSeat() {
     };
   }, [libraryId, floorId, slotId, bookingDate]);
 
-  // ==========================================================
-  // LAYOUT VALUES
-  // ==========================================================
-
   const rowCount = Number(floorLayout?.rowCount ?? 0);
 
   const columnCount = Number(floorLayout?.columnCount ?? 0);
@@ -406,10 +405,6 @@ function BookSeat() {
     [floorLayout],
   );
 
-  // ==========================================================
-  // SEAT LOOKUP BY PHYSICAL POSITION
-  // ==========================================================
-
   const seatByPosition = useMemo(() => {
     const map = new Map();
 
@@ -420,36 +415,20 @@ function BookSeat() {
     return map;
   }, [seats]);
 
-  // ==========================================================
-  // GAP LOOKUP
-  // ==========================================================
-
   const gapKeys = useMemo(
     () =>
       new Set(gaps.map((gap) => positionKey(gap.rowLabel, gap.columnNumber))),
     [gaps],
   );
 
-  // ==========================================================
-  // FALLBACK DIMENSIONS
-  // ==========================================================
-  //
-  // Older floors may not yet have FloorLayoutConfig.
-  //
-  // In that case derive enough dimensions from the
-  // actual availability data so booking remains usable.
-  //
-
-  const derivedRowCount = useMemo(() => {
-    if (seats.length === 0) {
-      return 0;
-    }
+  const derivedSeatRowCount = useMemo(() => {
+    if (seats.length === 0) return 0;
 
     const rowIndexes = seats
       .map((seat) => {
         const row = normalizeRow(seat.rowLabel);
 
-        if (!row) {
+        if (!/^[A-Z]$/.test(row)) {
           return 0;
         }
 
@@ -460,26 +439,51 @@ function BookSeat() {
     return rowIndexes.length ? Math.max(...rowIndexes) : 0;
   }, [seats]);
 
-  const derivedColumnCount = useMemo(() => {
-    if (seats.length === 0) {
-      return 0;
-    }
+  const derivedSeatColumnCount = useMemo(() => {
+    if (seats.length === 0) return 0;
 
-    return Math.max(...seats.map((seat) => Number(seat.columnNumber ?? 0)));
+    return Math.max(0, ...seats.map((seat) => Number(seat.columnNumber ?? 0)));
   }, [seats]);
 
-  const effectiveRowCount = rowCount > 0 ? rowCount : derivedRowCount;
+  const derivedGapRowCount = useMemo(() => {
+    if (gaps.length === 0) return 0;
 
-  const effectiveColumnCount =
-    columnCount > 0 ? columnCount : derivedColumnCount;
+    const rowIndexes = gaps
+      .map((gap) => {
+        const row = normalizeRow(gap.rowLabel);
 
-  // ==========================================================
-  // COUNTS
-  // ==========================================================
+        if (!/^[A-Z]$/.test(row)) {
+          return 0;
+        }
+
+        return row.charCodeAt(0) - 64;
+      })
+      .filter((value) => value > 0);
+
+    return rowIndexes.length ? Math.max(...rowIndexes) : 0;
+  }, [gaps]);
+
+  const derivedGapColumnCount = useMemo(() => {
+    if (gaps.length === 0) return 0;
+
+    return Math.max(0, ...gaps.map((gap) => Number(gap.columnNumber ?? 0)));
+  }, [gaps]);
+
+  const effectiveRowCount = Math.max(
+    rowCount,
+    derivedSeatRowCount,
+    derivedGapRowCount,
+  );
+
+  const effectiveColumnCount = Math.max(
+    columnCount,
+    derivedSeatColumnCount,
+    derivedGapColumnCount,
+  );
 
   const availableCount = useMemo(
-    () => seats.filter(isSeatSelectable).length,
-    [seats],
+    () => seats.filter((seat) => isSeatSelectable(seat, selectedPlan)).length,
+    [seats, selectedPlan],
   );
 
   const bookedCount = useMemo(
@@ -490,106 +494,91 @@ function BookSeat() {
     [seats],
   );
 
-  // ==========================================================
-  // CONTINUE
-  // ==========================================================
-
   const handleContinue = () => {
     setError("");
 
     if (!selectedPlan) {
       setError("Please select a membership plan first.");
-
       return;
     }
 
     if (!bookingDate) {
       setError("Please select a booking date.");
-
       return;
     }
 
     if (!selectedFloor) {
       setError("Please select a floor.");
-
       return;
     }
 
     if (!selectedSlot) {
       setError("Please select a booking slot.");
-
       return;
     }
 
     if (!selectedSeat) {
       setError("Please select an available seat.");
+      return;
+    }
 
+    if (selectedSeatPricing.basePrice == null) {
+      setError(
+        `Pricing is not configured for ${formatEnum(
+          selectedSeat.seatType,
+          "Normal",
+        )} seats under this membership plan.`,
+      );
       return;
     }
 
     const normalizedSeat = {
       ...selectedSeat,
-
       id: selectedSeat.seatId,
-
       floorId: selectedFloor.id,
-
       floorNumber: selectedFloor.floorNumber,
-
       floorName: selectedFloor.name,
     };
 
     navigate(`/student/libraries/${libraryId}/booking-review`, {
       state: {
         library,
-
         selectedPlan,
-
         selectedSeat: normalizedSeat,
-
         selectedSlot,
-
         selectedFloor,
-
         startDate: bookingDate,
-
         endDate: bookingDate,
+
+        // Display-only standard pricing preview.
+        // Backend recalculates from seatId during booking.
+        standardPricingPreview: selectedSeatPricing,
       },
     });
   };
 
-  // ==========================================================
-  // TOP MARKERS
-  // ==========================================================
-
-  const renderTopMarkers = () => {
+  const renderMarkers = (positionPrefix, marginKey) => {
     const left = [];
     const center = [];
     const right = [];
 
-    if (entrancePosition === "TOP_LEFT") {
-      left.push(<LayoutMarker key="entrance" type="ENTRANCE" />);
-    }
+    const mapping = [
+      ["LEFT", left],
+      ["CENTER", center],
+      ["RIGHT", right],
+    ];
 
-    if (receptionPosition === "TOP_LEFT") {
-      left.push(<LayoutMarker key="reception" type="RECEPTION" />);
-    }
+    mapping.forEach(([suffix, target]) => {
+      const position = `${positionPrefix}_${suffix}`;
 
-    if (entrancePosition === "TOP_CENTER") {
-      center.push(<LayoutMarker key="entrance" type="ENTRANCE" />);
-    }
+      if (entrancePosition === position) {
+        target.push(<LayoutMarker key="entrance" type="ENTRANCE" />);
+      }
 
-    if (receptionPosition === "TOP_CENTER") {
-      center.push(<LayoutMarker key="reception" type="RECEPTION" />);
-    }
-
-    if (entrancePosition === "TOP_RIGHT") {
-      right.push(<LayoutMarker key="entrance" type="ENTRANCE" />);
-    }
-
-    if (receptionPosition === "TOP_RIGHT") {
-      right.push(<LayoutMarker key="reception" type="RECEPTION" />);
-    }
+      if (receptionPosition === position) {
+        target.push(<LayoutMarker key="reception" type="RECEPTION" />);
+      }
+    });
 
     if (left.length === 0 && center.length === 0 && right.length === 0) {
       return null;
@@ -599,14 +588,10 @@ function BookSeat() {
       <Box
         sx={{
           display: "grid",
-
           gridTemplateColumns: "1fr 1fr 1fr",
-
           alignItems: "center",
-
           gap: 2,
-
-          mb: 4,
+          [marginKey]: 4,
         }}
       >
         <Stack alignItems="flex-start" spacing={1}>
@@ -623,86 +608,11 @@ function BookSeat() {
       </Box>
     );
   };
-
-  // ==========================================================
-  // BOTTOM MARKERS
-  // ==========================================================
-
-  const renderBottomMarkers = () => {
-    const left = [];
-    const center = [];
-    const right = [];
-
-    if (entrancePosition === "BOTTOM_LEFT") {
-      left.push(<LayoutMarker key="entrance" type="ENTRANCE" />);
-    }
-
-    if (receptionPosition === "BOTTOM_LEFT") {
-      left.push(<LayoutMarker key="reception" type="RECEPTION" />);
-    }
-
-    if (entrancePosition === "BOTTOM_CENTER") {
-      center.push(<LayoutMarker key="entrance" type="ENTRANCE" />);
-    }
-
-    if (receptionPosition === "BOTTOM_CENTER") {
-      center.push(<LayoutMarker key="reception" type="RECEPTION" />);
-    }
-
-    if (entrancePosition === "BOTTOM_RIGHT") {
-      right.push(<LayoutMarker key="entrance" type="ENTRANCE" />);
-    }
-
-    if (receptionPosition === "BOTTOM_RIGHT") {
-      right.push(<LayoutMarker key="reception" type="RECEPTION" />);
-    }
-
-    if (left.length === 0 && center.length === 0 && right.length === 0) {
-      return null;
-    }
-
-    return (
-      <Box
-        sx={{
-          display: "grid",
-
-          gridTemplateColumns: "1fr 1fr 1fr",
-
-          alignItems: "center",
-
-          gap: 2,
-
-          mt: 4,
-        }}
-      >
-        <Stack alignItems="flex-start" spacing={1}>
-          {left}
-        </Stack>
-
-        <Stack alignItems="center" spacing={1}>
-          {center}
-        </Stack>
-
-        <Stack alignItems="flex-end" spacing={1}>
-          {right}
-        </Stack>
-      </Box>
-    );
-  };
-
-  // ==========================================================
-  // NO PLAN
-  // ==========================================================
 
   if (!selectedPlan) {
     return (
       <Box>
-        <Alert
-          severity="warning"
-          sx={{
-            mb: 2,
-          }}
-        >
+        <Alert severity="warning" sx={{ mb: 2 }}>
           Please select a membership plan before booking a seat.
         </Alert>
 
@@ -716,57 +626,30 @@ function BookSeat() {
     );
   }
 
-  // ==========================================================
-  // PAGE
-  // ==========================================================
-
   return (
     <Box>
-      {/* ======================================================
-          BACK
-      ====================================================== */}
-
       <Button
         startIcon={<ArrowBack />}
         onClick={() => navigate(`/student/libraries/${libraryId}/plans`)}
-        sx={{
-          mb: 2,
-        }}
+        sx={{ mb: 2 }}
       >
         Back to Plans
       </Button>
-
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
 
       <Typography variant="h4" fontWeight={800}>
         Select Your Seat
       </Typography>
 
-      <Typography
-        color="text.secondary"
-        sx={{
-          mt: 0.5,
-          mb: 3,
-        }}
-      >
+      <Typography color="text.secondary" sx={{ mt: 0.5, mb: 3 }}>
         Choose a date, floor, booking slot and available seat.
       </Typography>
-
-      {/* ======================================================
-          SELECTED PLAN
-      ====================================================== */}
 
       <Card
         elevation={0}
         sx={{
           mb: 3,
-
           border: "1px solid",
-
           borderColor: "divider",
-
           borderRadius: 3,
         }}
       >
@@ -799,25 +682,24 @@ function BookSeat() {
               )}
             </Box>
 
-            <Typography variant="h5" fontWeight={800} color="primary.main">
-              ₹{Number(selectedPlan.price ?? 0).toLocaleString("en-IN")}
-            </Typography>
+            <Box textAlign={{ sm: "right" }}>
+              <Typography variant="caption" color="text.secondary">
+                Normal seat from
+              </Typography>
+
+              <Typography variant="h5" fontWeight={800} color="primary.main">
+                {formatMoney(
+                  getSeatTypeBasePrice(selectedPlan, "NORMAL") ??
+                    selectedPlan.price,
+                )}
+              </Typography>
+            </Box>
           </Stack>
         </CardContent>
       </Card>
 
-      {/* ======================================================
-          LOADING SETUP
-      ====================================================== */}
-
       {loadingSetup ? (
-        <Stack
-          alignItems="center"
-          spacing={2}
-          sx={{
-            py: 6,
-          }}
-        >
+        <Stack alignItems="center" spacing={2} sx={{ py: 6 }}>
           <CircularProgress />
 
           <Typography color="text.secondary">
@@ -826,17 +708,7 @@ function BookSeat() {
         </Stack>
       ) : (
         <>
-          {/* ==================================================
-              DATE / FLOOR / SLOT
-          ================================================== */}
-
-          <Grid
-            container
-            spacing={2}
-            sx={{
-              mb: 3,
-            }}
-          >
+          <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid
               size={{
                 xs: 12,
@@ -853,7 +725,6 @@ function BookSeat() {
                   inputLabel: {
                     shrink: true,
                   },
-
                   htmlInput: {
                     min: getToday(),
                   },
@@ -874,7 +745,6 @@ function BookSeat() {
                 value={floorId}
                 onChange={(event) => {
                   setFloorId(event.target.value);
-
                   setSelectedSeat(null);
                 }}
                 disabled={floors.length === 0}
@@ -914,57 +784,19 @@ function BookSeat() {
             </Grid>
           </Grid>
 
-          {/* ==================================================
-              CONFIG WARNINGS
-          ================================================== */}
-
-          {floors.length === 0 && (
-            <Alert
-              severity="warning"
-              sx={{
-                mb: 2,
-              }}
-            >
-              This library does not have any configured floors.
-            </Alert>
-          )}
-
-          {slots.length === 0 && (
-            <Alert
-              severity="warning"
-              sx={{
-                mb: 2,
-              }}
-            >
-              This library does not currently have an active booking slot.
-            </Alert>
-          )}
-
           {error && (
-            <Alert
-              severity="error"
-              sx={{
-                mb: 3,
-              }}
-            >
+            <Alert severity="error" sx={{ mb: 3 }}>
               {error}
             </Alert>
           )}
-
-          {/* ==================================================
-              CURRENT SELECTION
-          ================================================== */}
 
           {selectedFloor && selectedSlot && (
             <Card
               elevation={0}
               sx={{
                 mb: 3,
-
                 border: "1px solid",
-
                 borderColor: "divider",
-
                 borderRadius: 3,
               }}
             >
@@ -972,473 +804,268 @@ function BookSeat() {
                 <Stack
                   direction={{
                     xs: "column",
-                    md: "row",
+                    sm: "row",
                   }}
                   spacing={2}
-                  divider={<Divider orientation="vertical" flexItem />}
+                  justifyContent="space-between"
                 >
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <MeetingRoom color="primary" />
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={800}>
+                      {selectedFloor.name ||
+                        `Floor ${selectedFloor.floorNumber}`}
+                    </Typography>
 
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Floor
-                      </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedSlot.name}
+                      {" • "}
+                      {formatTime(selectedSlot.startTime)}
+                      {" - "}
+                      {formatTime(selectedSlot.endTime)}
+                    </Typography>
+                  </Box>
 
-                      <Typography fontWeight={700}>
-                        {selectedFloor.name ||
-                          `Floor ${selectedFloor.floorNumber}`}
-                      </Typography>
-                    </Box>
-                  </Stack>
+                  <Stack direction="row" spacing={1}>
+                    <Chip
+                      label={`${availableCount} available`}
+                      color="success"
+                      variant="outlined"
+                    />
 
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Schedule color="primary" />
-
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Slot
-                      </Typography>
-
-                      <Typography fontWeight={700}>
-                        {selectedSlot.name}
-                      </Typography>
-
-                      <Typography variant="body2" color="text.secondary">
-                        {formatTime(selectedSlot.startTime)}
-                        {" - "}
-                        {formatTime(selectedSlot.endTime)}
-                      </Typography>
-                    </Box>
+                    <Chip
+                      label={`${bookedCount} booked`}
+                      color="error"
+                      variant="outlined"
+                    />
                   </Stack>
                 </Stack>
               </CardContent>
             </Card>
           )}
 
-          {/* ==================================================
-              AVAILABILITY HEADER
-          ================================================== */}
-
-          <Stack
-            direction={{
-              xs: "column",
-              sm: "row",
-            }}
-            justifyContent="space-between"
-            alignItems={{
-              xs: "flex-start",
-              sm: "center",
-            }}
-            spacing={2}
-            sx={{
-              mb: 2,
-            }}
-          >
-            <Box>
-              <Typography variant="h6" fontWeight={700}>
-                Seat Availability
-              </Typography>
-
-              {floorLayout && (
-                <Typography variant="body2" color="text.secondary">
-                  Physical layout configured by the library owner
-                </Typography>
-              )}
-            </Box>
-
-            <Stack
-              direction="row"
-              sx={{
-                flexWrap: "wrap",
-                gap: 1,
-              }}
-            >
-              <Chip
-                size="small"
-                color="success"
-                label={`${availableCount} Available`}
-              />
-
-              <Chip
-                size="small"
-                color="error"
-                variant="outlined"
-                label={`${bookedCount} Booked`}
-              />
-
-              {gaps.length > 0 && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  label={`${gaps.length} Gaps / Aisles`}
-                />
-              )}
-            </Stack>
-          </Stack>
-
-          {/* ==================================================
-              PHYSICAL SEAT MAP
-          ================================================== */}
-
           {loadingSeats || loadingLayout ? (
-            <Stack
-              alignItems="center"
-              spacing={2}
-              sx={{
-                py: 6,
-              }}
-            >
+            <Stack alignItems="center" spacing={2} sx={{ py: 7 }}>
               <CircularProgress />
 
               <Typography color="text.secondary">
-                Loading physical seat layout and availability...
+                Loading seat map...
               </Typography>
             </Stack>
-          ) : !floorId || !slotId ? (
-            <Alert severity="info">
-              Select a floor and booking slot to see seat availability.
-            </Alert>
-          ) : effectiveRowCount === 0 || effectiveColumnCount === 0 ? (
-            <Alert severity="info">
-              No seat layout has been configured for this floor.
-            </Alert>
           ) : (
             <Card
               elevation={0}
               sx={{
                 border: "1px solid",
-
                 borderColor: "divider",
-
                 borderRadius: 3,
+                overflow: "auto",
               }}
             >
-              <CardContent>
-                {/* LEGEND */}
+              <CardContent
+                sx={{
+                  minWidth: Math.max(620, effectiveColumnCount * 84),
+                }}
+              >
+                {renderMarkers("TOP", "mb")}
 
                 <Stack
                   direction="row"
-                  sx={{
-                    flexWrap: "wrap",
-                    gap: 1,
-                    mb: 4,
-                  }}
+                  justifyContent="space-between"
+                  alignItems="center"
+                  sx={{ mb: 3 }}
                 >
-                  <Chip size="small" color="success" label="Available" />
+                  <Box>
+                    <Typography variant="h6" fontWeight={800}>
+                      Seat Map
+                    </Typography>
 
-                  <Chip size="small" color="error" label="Booked" />
-
-                  <Chip size="small" label="Reserved" />
-
-                  <Chip size="small" color="warning" label="Girls Reserved" />
-
-                  <Chip size="small" variant="outlined" label="Maintenance" />
-
-                  <Chip size="small" variant="outlined" label="Gap / Aisle" />
-                </Stack>
-
-                {/* TOP ENTRANCE / RECEPTION */}
-
-                {renderTopMarkers()}
-
-                {/* MAIN PHYSICAL ROOM */}
-
-                <Box
-                  sx={{
-                    display: "grid",
-
-                    gridTemplateColumns:
-                      entrancePosition === "LEFT_CENTER" ||
-                      receptionPosition === "LEFT_CENTER" ||
-                      entrancePosition === "RIGHT_CENTER" ||
-                      receptionPosition === "RIGHT_CENTER"
-                        ? {
-                            xs: "1fr",
-                            lg: "175px minmax(0, 1fr) 175px",
-                          }
-                        : "1fr",
-
-                    gap: 2,
-
-                    alignItems: "center",
-                  }}
-                >
-                  {/* LEFT SIDE */}
-
-                  {(entrancePosition === "LEFT_CENTER" ||
-                    receptionPosition === "LEFT_CENTER") && (
-                    <Stack
-                      spacing={2}
-                      alignItems="center"
-                      sx={{
-                        display: {
-                          xs: "none",
-                          lg: "flex",
-                        },
-                      }}
-                    >
-                      {entrancePosition === "LEFT_CENTER" && (
-                        <LayoutMarker type="ENTRANCE" />
-                      )}
-
-                      {receptionPosition === "LEFT_CENTER" && (
-                        <LayoutMarker type="RECEPTION" />
-                      )}
-                    </Stack>
-                  )}
-
-                  {/* SEAT GRID */}
-
-                  <Box
-                    sx={{
-                      overflowX: "auto",
-
-                      py: 2,
-                    }}
-                  >
-                    <Stack
-                      spacing={2.25}
-                      sx={{
-                        minWidth: effectiveColumnCount * 78 + 55,
-                      }}
-                    >
-                      {Array.from({
-                        length: effectiveRowCount,
-                      }).map((_, rowIndex) => {
-                        const rowLabel = getRowLabel(rowIndex);
-
-                        return (
-                          <Stack
-                            key={rowLabel}
-                            direction="row"
-                            spacing={1.4}
-                            alignItems="center"
-                          >
-                            {/* ROW LABEL */}
-
-                            <Box
-                              sx={{
-                                width: 38,
-
-                                minWidth: 38,
-
-                                height: 72,
-
-                                display: "flex",
-
-                                alignItems: "center",
-
-                                justifyContent: "center",
-
-                                borderRadius: 2,
-
-                                bgcolor: "action.hover",
-
-                                fontWeight: 800,
-                              }}
-                            >
-                              {rowLabel}
-                            </Box>
-
-                            {/* POSITIONS */}
-
-                            {Array.from({
-                              length: effectiveColumnCount,
-                            }).map((__, columnIndex) => {
-                              const columnNumber = columnIndex + 1;
-
-                              const key = positionKey(rowLabel, columnNumber);
-
-                              const seat = seatByPosition.get(key);
-
-                              const isGap = gapKeys.has(key);
-
-                              // =============================
-                              // INTENTIONAL GAP
-                              // =============================
-
-                              if (isGap) {
-                                return (
-                                  <Box
-                                    key={key}
-                                    sx={{
-                                      width: 68,
-
-                                      minWidth: 68,
-
-                                      height: 78,
-
-                                      display: "flex",
-
-                                      alignItems: "center",
-
-                                      justifyContent: "center",
-                                    }}
-                                  >
-                                    <Typography
-                                      variant="caption"
-                                      color="text.disabled"
-                                      sx={{
-                                        writingMode: "vertical-rl",
-
-                                        letterSpacing: 1,
-                                      }}
-                                    >
-                                      AISLE
-                                    </Typography>
-                                  </Box>
-                                );
-                              }
-
-                              // =============================
-                              // NO SEAT CONFIGURED
-                              // =============================
-
-                              if (!seat) {
-                                return (
-                                  <Box
-                                    key={key}
-                                    sx={{
-                                      width: 68,
-
-                                      minWidth: 68,
-
-                                      height: 78,
-                                    }}
-                                  />
-                                );
-                              }
-
-                              const selectable = isSeatSelectable(seat);
-
-                              const selected =
-                                selectedSeat?.seatId === seat.seatId;
-
-                              const status = seat.availabilityStatus;
-
-                              const seatColor = selected
-                                ? "primary"
-                                : selectable
-                                  ? "success"
-                                  : status === "BOOKED"
-                                    ? "error"
-                                    : status === "RESERVED_FOR_GIRLS"
-                                      ? "warning"
-                                      : "inherit";
-
-                              return (
-                                <Tooltip
-                                  key={key}
-                                  title={`${seat.seatNumber} • ${formatSeatType(
-                                    seat.seatType,
-                                  )} • ${formatSeatType(
-                                    seat.availabilityStatus,
-                                  )}`}
-                                >
-                                  <span>
-                                    <Button
-                                      variant={
-                                        selected ? "contained" : "outlined"
-                                      }
-                                      color={seatColor}
-                                      disabled={!selectable}
-                                      onClick={() => setSelectedSeat(seat)}
-                                      sx={{
-                                        width: 68,
-
-                                        minWidth: 68,
-
-                                        height: 78,
-
-                                        px: 0.5,
-
-                                        flexDirection: "column",
-
-                                        opacity:
-                                          selectable || selected ? 1 : 0.55,
-
-                                        borderRadius: 2,
-                                      }}
-                                    >
-                                      <EventSeat />
-
-                                      <Typography
-                                        component="span"
-                                        fontWeight={800}
-                                        variant="body2"
-                                      >
-                                        {seat.seatNumber}
-                                      </Typography>
-
-                                      <Typography
-                                        component="span"
-                                        variant="caption"
-                                        sx={{
-                                          lineHeight: 1.1,
-
-                                          textTransform: "none",
-                                        }}
-                                      >
-                                        {formatSeatType(seat.seatType)}
-                                      </Typography>
-                                    </Button>
-                                  </span>
-                                </Tooltip>
-                              );
-                            })}
-                          </Stack>
-                        );
-                      })}
-                    </Stack>
+                    <Typography variant="body2" color="text.secondary">
+                      Green seats are available. Red seats are booked. Seats
+                      without a configured plan price are disabled.
+                    </Typography>
                   </Box>
 
-                  {/* RIGHT SIDE */}
+                  <Schedule color="primary" />
+                </Stack>
 
-                  {(entrancePosition === "RIGHT_CENTER" ||
-                    receptionPosition === "RIGHT_CENTER") && (
-                    <Stack
-                      spacing={2}
-                      alignItems="center"
-                      sx={{
-                        display: {
-                          xs: "none",
-                          lg: "flex",
-                        },
-                      }}
-                    >
-                      {entrancePosition === "RIGHT_CENTER" && (
-                        <LayoutMarker type="ENTRANCE" />
-                      )}
+                <Divider sx={{ mb: 3 }} />
 
-                      {receptionPosition === "RIGHT_CENTER" && (
-                        <LayoutMarker type="RECEPTION" />
-                      )}
-                    </Stack>
-                  )}
-                </Box>
+                <Stack spacing={1.5} alignItems="center">
+                  {Array.from({
+                    length: effectiveRowCount,
+                  }).map((_, rowIndex) => {
+                    const rowLabel = getRowLabel(rowIndex);
 
-                {/* BOTTOM ENTRANCE / RECEPTION */}
+                    return (
+                      <Stack
+                        key={rowLabel}
+                        direction="row"
+                        spacing={1.5}
+                        alignItems="center"
+                      >
+                        <Typography
+                          sx={{
+                            width: 24,
+                            flexShrink: 0,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {rowLabel}
+                        </Typography>
 
-                {renderBottomMarkers()}
+                        {Array.from({
+                          length: effectiveColumnCount,
+                        }).map((__, columnIndex) => {
+                          const columnNumber = columnIndex + 1;
+
+                          const key = positionKey(rowLabel, columnNumber);
+
+                          if (gapKeys.has(key)) {
+                            return (
+                              <Box
+                                key={key}
+                                sx={{
+                                  width: 76,
+                                  minWidth: 76,
+                                  height: 84,
+                                }}
+                              />
+                            );
+                          }
+
+                          const seat = seatByPosition.get(key);
+
+                          if (!seat) {
+                            return (
+                              <Box
+                                key={key}
+                                sx={{
+                                  width: 76,
+                                  minWidth: 76,
+                                  height: 84,
+                                }}
+                              />
+                            );
+                          }
+
+                          const selectable = isSeatSelectable(
+                            seat,
+                            selectedPlan,
+                          );
+
+                          const selected = selectedSeat?.seatId === seat.seatId;
+
+                          const status = seat.availabilityStatus;
+
+                          const seatPrice = calculateSeatPreview(
+                            selectedPlan,
+                            seat,
+                          );
+
+                          const restrictions = Array.isArray(seat.restrictions)
+                            ? seat.restrictions
+                            : [];
+
+                          const features = Array.isArray(seat.features)
+                            ? seat.features
+                            : [];
+
+                          const tooltipParts = [
+                            seat.seatNumber,
+                            formatEnum(seat.seatType, "Normal"),
+                            status === "AVAILABLE"
+                              ? seatPrice.total != null
+                                ? formatMoney(seatPrice.total)
+                                : "Price not configured"
+                              : formatEnum(status),
+                          ];
+
+                          if (features.length > 0) {
+                            tooltipParts.push(
+                              `Features: ${features
+                                .map((item) => formatEnum(item))
+                                .join(", ")}`,
+                            );
+                          }
+
+                          if (restrictions.length > 0) {
+                            tooltipParts.push(
+                              `Restricted: ${restrictions
+                                .map((item) => formatEnum(item))
+                                .join(", ")}`,
+                            );
+                          }
+
+                          const seatColor = selected
+                            ? "primary"
+                            : selectable
+                              ? "success"
+                              : status === "BOOKED"
+                                ? "error"
+                                : "inherit";
+
+                          return (
+                            <Tooltip key={key} title={tooltipParts.join(" • ")}>
+                              <span>
+                                <Button
+                                  variant={selected ? "contained" : "outlined"}
+                                  color={seatColor}
+                                  disabled={!selectable}
+                                  onClick={() => setSelectedSeat(seat)}
+                                  sx={{
+                                    width: 76,
+                                    minWidth: 76,
+                                    height: 84,
+                                    px: 0.5,
+                                    flexDirection: "column",
+                                    opacity: selectable || selected ? 1 : 0.55,
+                                    borderRadius: 2,
+                                  }}
+                                >
+                                  <EventSeat />
+
+                                  <Typography
+                                    component="span"
+                                    fontWeight={800}
+                                    fontSize={12}
+                                    noWrap
+                                    sx={{
+                                      maxWidth: 68,
+                                    }}
+                                  >
+                                    {seat.seatNumber}
+                                  </Typography>
+
+                                  <Typography
+                                    component="span"
+                                    variant="caption"
+                                    sx={{
+                                      lineHeight: 1.1,
+                                    }}
+                                  >
+                                    {formatEnum(seat.seatType, "Normal")}
+                                  </Typography>
+                                </Button>
+                              </span>
+                            </Tooltip>
+                          );
+                        })}
+                      </Stack>
+                    );
+                  })}
+                </Stack>
+
+                {renderMarkers("BOTTOM", "mt")}
               </CardContent>
             </Card>
           )}
-
-          {/* ==================================================
-              SELECTED SEAT
-          ================================================== */}
 
           {selectedSeat && (
             <Card
               elevation={0}
               sx={{
                 mt: 3,
-
                 border: "1px solid",
-
                 borderColor: "primary.main",
-
                 borderRadius: 3,
               }}
             >
@@ -1468,23 +1095,92 @@ function BookSeat() {
                       </Typography>
 
                       <Typography variant="body2" color="text.secondary">
-                        {formatSeatType(selectedSeat.seatType)}
+                        {formatEnum(selectedSeat.seatType, "Normal")}
                         {" • Row "}
                         {selectedSeat.rowLabel}
                         {" • Position "}
                         {selectedSeat.columnNumber}
                       </Typography>
+
+                      {Array.isArray(selectedSeat.features) &&
+                        selectedSeat.features.length > 0 && (
+                          <Stack
+                            direction="row"
+                            spacing={0.75}
+                            useFlexGap
+                            flexWrap="wrap"
+                            sx={{ mt: 1 }}
+                          >
+                            {selectedSeat.features.map((feature) => (
+                              <Chip
+                                key={feature}
+                                size="small"
+                                variant="outlined"
+                                label={formatEnum(feature)}
+                              />
+                            ))}
+                          </Stack>
+                        )}
+
+                      {Array.isArray(selectedSeat.restrictions) &&
+                        selectedSeat.restrictions.length > 0 && (
+                          <Stack
+                            direction="row"
+                            spacing={0.75}
+                            useFlexGap
+                            flexWrap="wrap"
+                            sx={{ mt: 1 }}
+                          >
+                            {selectedSeat.restrictions.map((restriction) => (
+                              <Chip
+                                key={restriction}
+                                size="small"
+                                color="warning"
+                                variant="outlined"
+                                label={formatEnum(restriction)}
+                              />
+                            ))}
+                          </Stack>
+                        )}
                     </Box>
                   </Stack>
 
-                  <Button
-                    size="large"
-                    variant="contained"
-                    endIcon={<ArrowForward />}
-                    onClick={handleContinue}
+                  <Stack
+                    alignItems={{
+                      xs: "stretch",
+                      sm: "flex-end",
+                    }}
+                    spacing={1}
                   >
-                    Review Booking
-                  </Button>
+                    <Box
+                      textAlign={{
+                        sm: "right",
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary">
+                        Standard seat price
+                      </Typography>
+
+                      <Typography
+                        variant="h5"
+                        fontWeight={900}
+                        color="primary.main"
+                      >
+                        {selectedSeatPricing.total != null
+                          ? formatMoney(selectedSeatPricing.total)
+                          : "Not configured"}
+                      </Typography>
+                    </Box>
+
+                    <Button
+                      size="large"
+                      variant="contained"
+                      endIcon={<ArrowForward />}
+                      onClick={handleContinue}
+                    >
+                      Review Booking
+                    </Button>
+                  </Stack>
                 </Stack>
               </CardContent>
             </Card>

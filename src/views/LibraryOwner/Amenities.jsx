@@ -15,6 +15,7 @@ import {
   Refresh,
   Save,
   Security,
+  Tune,
   Wifi,
 } from "@mui/icons-material";
 
@@ -25,6 +26,7 @@ import {
   Card,
   CardContent,
   Checkbox,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -38,6 +40,8 @@ import {
   Tabs,
   TextField,
   Typography,
+  alpha,
+  useTheme,
 } from "@mui/material";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -48,16 +52,13 @@ import libraryApi from "../../api/libraryApi";
 // AMENITY UI METADATA
 // ============================================================
 //
-// Your backend AmenityResponse contains:
-//
+// Backend AmenityResponse:
 // {
-//     id: Long,
-//     name: String
+//   id: Long,
+//   name: String
 // }
 //
-// Therefore description, icon and category remain frontend
-// presentation metadata for now.
-//
+// Description, icon and category are frontend presentation metadata.
 // The actual amenity ID/name always comes from the backend.
 // ============================================================
 
@@ -181,58 +182,115 @@ const getAmenityMetadata = (name) => {
 };
 
 // ============================================================
+// PREMIUM SECTION HEADER
+// ============================================================
+
+function SectionHeading({ icon, title, description, action }) {
+  const theme = useTheme();
+
+  return (
+    <Stack
+      direction={{ xs: "column", sm: "row" }}
+      justifyContent="space-between"
+      alignItems={{ xs: "flex-start", sm: "center" }}
+      spacing={2}
+      sx={{ mb: 2.25 }}
+    >
+      <Stack direction="row" spacing={1.5} alignItems="center">
+        <Box
+          sx={{
+            width: 42,
+            height: 42,
+            borderRadius: 2.5,
+            display: "grid",
+            placeItems: "center",
+            color: "primary.main",
+            bgcolor: alpha(theme.palette.primary.main, 0.08),
+            border: "1px solid",
+            borderColor: alpha(theme.palette.primary.main, 0.12),
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </Box>
+
+        <Box>
+          <Typography
+            variant="h6"
+            fontWeight={800}
+            sx={{ letterSpacing: "-0.01em" }}
+          >
+            {title}
+          </Typography>
+
+          {description && (
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 0.25 }}
+            >
+              {description}
+            </Typography>
+          )}
+        </Box>
+      </Stack>
+
+      {action}
+    </Stack>
+  );
+}
+
+// ============================================================
 // COMPONENT
 // ============================================================
 
 function Amenities() {
-  // ========================================================
+  const theme = useTheme();
+
+  // ==========================================================
   // LIBRARY
-  // ========================================================
+  // ==========================================================
 
   const [library, setLibrary] = useState(null);
 
-  // ========================================================
+  // ==========================================================
   // STANDARD AMENITIES
-  // ========================================================
+  // ==========================================================
 
   const [amenities, setAmenities] = useState([]);
 
-  // ========================================================
+  // ==========================================================
   // SELECTED STANDARD AMENITY IDS
-  // ========================================================
+  // ==========================================================
 
   const [selectedAmenityIds, setSelectedAmenityIds] = useState([]);
 
-  // ========================================================
+  // ==========================================================
   // CUSTOM AMENITIES
-  // ========================================================
+  // ==========================================================
 
   const [customAmenities, setCustomAmenities] = useState([]);
 
-  // ========================================================
+  // ==========================================================
   // PAGE STATE
-  // ========================================================
+  // ==========================================================
 
   const [loading, setLoading] = useState(true);
-
   const [saving, setSaving] = useState(false);
-
   const [error, setError] = useState("");
-
   const [saved, setSaved] = useState(false);
 
-  // ========================================================
+  // ==========================================================
   // CATEGORY
-  // ========================================================
+  // ==========================================================
 
   const [selectedCategory, setSelectedCategory] = useState("All Amenities");
 
-  // ========================================================
+  // ==========================================================
   // CUSTOM AMENITY DIALOG
-  // ========================================================
+  // ==========================================================
 
   const [dialogOpen, setDialogOpen] = useState(false);
-
   const [editingCustomAmenity, setEditingCustomAmenity] = useState(null);
 
   const [customAmenity, setCustomAmenity] = useState({
@@ -240,26 +298,21 @@ function Amenities() {
     description: "",
   });
 
-  // ========================================================
+  // ==========================================================
   // CURRENT LIBRARY NAME
-  // ========================================================
+  // ==========================================================
 
   const libraryName = library?.name || library?.libraryName || "your library";
 
-  // ========================================================
+  // ==========================================================
   // LOAD EVERYTHING
-  // ========================================================
+  // ==========================================================
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       setSaved(false);
-
-      // ------------------------------------------------
-      // STEP 1
-      // Get owner's libraries
-      // ------------------------------------------------
 
       const libraries = await libraryApi.getMyLibraries();
 
@@ -268,58 +321,25 @@ function Amenities() {
         setAmenities([]);
         setSelectedAmenityIds([]);
         setCustomAmenities([]);
-
         return;
       }
-
-      // ------------------------------------------------
-      // Current library
-      // ------------------------------------------------
 
       const currentLibrary = libraries[0];
 
       setLibrary(currentLibrary);
 
-      // ------------------------------------------------
-      // STEP 2
-      // Load:
-      //
-      // 1. Master amenities
-      // 2. Library selected amenities
-      // 3. Custom amenities
-      // ------------------------------------------------
-
       const [masterAmenities, libraryAmenities, libraryCustomAmenities] =
         await Promise.all([
           libraryApi.getAllAmenities(),
-
           libraryApi.getLibraryAmenities(currentLibrary.id),
-
           libraryApi.getCustomAmenities(currentLibrary.id),
         ]);
-
-      // ------------------------------------------------
-      // MASTER AMENITIES
-      // ------------------------------------------------
 
       const normalizedMasterAmenities = Array.isArray(masterAmenities)
         ? masterAmenities
         : [];
 
       setAmenities(normalizedMasterAmenities);
-
-      // ------------------------------------------------
-      // SELECTED AMENITIES
-      //
-      // Backend response:
-      //
-      // [
-      //     {
-      //         id: 1,
-      //         name: "Wi-Fi"
-      //     }
-      // ]
-      // ------------------------------------------------
 
       const normalizedLibraryAmenities = Array.isArray(libraryAmenities)
         ? libraryAmenities
@@ -330,10 +350,6 @@ function Amenities() {
         .filter((id) => id !== null && id !== undefined);
 
       setSelectedAmenityIds(selectedIds);
-
-      // ------------------------------------------------
-      // CUSTOM AMENITIES
-      // ------------------------------------------------
 
       setCustomAmenities(
         Array.isArray(libraryCustomAmenities) ? libraryCustomAmenities : [],
@@ -349,25 +365,28 @@ function Amenities() {
     }
   }, []);
 
-  // ========================================================
+  // ==========================================================
   // INITIAL LOAD
-  // ========================================================
+  // ==========================================================
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // ========================================================
-  // SELECTED COUNT
-  // ========================================================
+  // ==========================================================
+  // DERIVED COUNTS
+  // ==========================================================
 
   const selectedCount = useMemo(() => {
     return selectedAmenityIds.length + customAmenities.length;
   }, [selectedAmenityIds, customAmenities]);
 
-  // ========================================================
+  const standardSelectedCount = selectedAmenityIds.length;
+  const customCount = customAmenities.length;
+
+  // ==========================================================
   // FILTER STANDARD AMENITIES BY CATEGORY
-  // ========================================================
+  // ==========================================================
 
   const filteredAmenities = useMemo(() => {
     if (selectedCategory === "All Amenities") {
@@ -376,7 +395,6 @@ function Amenities() {
 
     return amenities.filter((amenity) => {
       const metadata = getAmenityMetadata(amenity.name);
-
       return metadata.category === selectedCategory;
     });
   }, [amenities, selectedCategory]);
@@ -389,9 +407,9 @@ function Amenities() {
     return [];
   }, [customAmenities, selectedCategory]);
 
-  // ========================================================
+  // ==========================================================
   // TOGGLE STANDARD AMENITY
-  // ========================================================
+  // ==========================================================
 
   const handleToggle = (amenityId) => {
     setSelectedAmenityIds((previous) => {
@@ -405,14 +423,13 @@ function Amenities() {
     setSaved(false);
   };
 
-  // ========================================================
+  // ==========================================================
   // SAVE STANDARD AMENITIES
-  // ========================================================
+  // ==========================================================
 
   const handleSave = async () => {
     if (!library?.id) {
       setError("No library is associated with your account.");
-
       return;
     }
 
@@ -420,14 +437,6 @@ function Amenities() {
       setSaving(true);
       setError("");
       setSaved(false);
-
-      // ------------------------------------------------
-      // Backend expects:
-      //
-      // {
-      //     "amenityIds": [1, 2, 3]
-      // }
-      // ------------------------------------------------
 
       await libraryApi.assignLibraryAmenities(library.id, selectedAmenityIds);
 
@@ -443,25 +452,25 @@ function Amenities() {
     }
   };
 
-  // ========================================================
+  // ==========================================================
   // RESET / RELOAD SAVED STATE
-  // ========================================================
+  // ==========================================================
 
   const handleReset = async () => {
     await loadData();
   };
 
-  // ========================================================
+  // ==========================================================
   // CANCEL
-  // ========================================================
+  // ==========================================================
 
   const handleCancel = async () => {
     await loadData();
   };
 
-  // ========================================================
+  // ==========================================================
   // OPEN ADD CUSTOM AMENITY
-  // ========================================================
+  // ==========================================================
 
   const handleOpenAddDialog = () => {
     setEditingCustomAmenity(null);
@@ -474,9 +483,9 @@ function Amenities() {
     setDialogOpen(true);
   };
 
-  // ========================================================
+  // ==========================================================
   // OPEN EDIT CUSTOM AMENITY
-  // ========================================================
+  // ==========================================================
 
   const handleOpenEditDialog = (amenity) => {
     setEditingCustomAmenity(amenity);
@@ -489,13 +498,12 @@ function Amenities() {
     setDialogOpen(true);
   };
 
-  // ========================================================
+  // ==========================================================
   // CLOSE CUSTOM AMENITY DIALOG
-  // ========================================================
+  // ==========================================================
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
-
     setEditingCustomAmenity(null);
 
     setCustomAmenity({
@@ -504,14 +512,13 @@ function Amenities() {
     });
   };
 
-  // ========================================================
+  // ==========================================================
   // CREATE / UPDATE CUSTOM AMENITY
-  // ========================================================
+  // ==========================================================
 
   const handleSaveCustomAmenity = async () => {
     if (!library?.id) {
       setError("No library is associated with your account.");
-
       return;
     }
 
@@ -527,10 +534,6 @@ function Amenities() {
       setSaving(true);
       setError("");
 
-      // =============================================
-      // UPDATE
-      // =============================================
-
       if (editingCustomAmenity) {
         const updated = await libraryApi.updateCustomAmenity(
           library.id,
@@ -544,12 +547,7 @@ function Amenities() {
         setCustomAmenities((previous) =>
           previous.map((item) => (item.id === updated.id ? updated : item)),
         );
-      }
-
-      // =============================================
-      // CREATE
-      // =============================================
-      else {
+      } else {
         const created = await libraryApi.createCustomAmenity(library.id, {
           name,
           description,
@@ -559,7 +557,6 @@ function Amenities() {
       }
 
       setSaved(false);
-
       handleCloseDialog();
     } catch (err) {
       console.error("Failed to save custom amenity:", err);
@@ -572,9 +569,9 @@ function Amenities() {
     }
   };
 
-  // ========================================================
+  // ==========================================================
   // DELETE CUSTOM AMENITY
-  // ========================================================
+  // ==========================================================
 
   const handleDeleteCustomAmenity = async (id) => {
     if (!library?.id) {
@@ -601,15 +598,15 @@ function Amenities() {
     }
   };
 
-  // ========================================================
+  // ==========================================================
   // LOADING STATE
-  // ========================================================
+  // ==========================================================
 
   if (loading) {
     return (
       <Box
         sx={{
-          minHeight: 420,
+          minHeight: 460,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -617,7 +614,6 @@ function Amenities() {
       >
         <Stack alignItems="center" spacing={2}>
           <CircularProgress />
-
           <Typography color="text.secondary">
             Loading library amenities...
           </Typography>
@@ -626,224 +622,301 @@ function Amenities() {
     );
   }
 
-  // ========================================================
+  // ==========================================================
   // NO LIBRARY
-  // ========================================================
+  // ==========================================================
 
   if (!library) {
     return (
-      <Alert severity="warning">
+      <Alert severity="warning" sx={{ borderRadius: 3 }}>
         No library is associated with your account.
       </Alert>
     );
   }
 
-  // ========================================================
+  // ==========================================================
   // PAGE
-  // ========================================================
+  // ==========================================================
 
   return (
-    <Box>
-      {/* =================================================
-                BREADCRUMB
-            ================================================= */}
+    <Box
+      sx={{
+        pb: 5,
+        maxWidth: 1480,
+        mx: "auto",
+      }}
+    >
+      {/* ===================================================== */}
+      {/* BREADCRUMB */}
+      {/* ===================================================== */}
 
       <Typography
         variant="body2"
+        color="text.secondary"
         sx={{
-          color: "#64748B",
           mb: 1.5,
+          fontWeight: 500,
         }}
       >
         Dashboard
-        {"  >  "}
+        {"  ›  "}
         Library Profile
-        {"  >  "}
+        {"  ›  "}
         <Box
           component="span"
           sx={{
-            color: "#1D4ED8",
-            fontWeight: 600,
+            color: "primary.main",
+            fontWeight: 700,
           }}
         >
           Amenities
         </Box>
       </Typography>
 
-      {/* =================================================
-                HEADER
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* PREMIUM HERO */}
+      {/* ===================================================== */}
 
-      <Stack
-        direction={{
-          xs: "column",
-          lg: "row",
+      <Card
+        elevation={0}
+        sx={{
+          mb: 3,
+          position: "relative",
+          overflow: "hidden",
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+          background: `linear-gradient(
+            135deg,
+            ${alpha(theme.palette.primary.main, 0.1)} 0%,
+            ${theme.palette.background.paper} 52%,
+            ${alpha(theme.palette.secondary.main, 0.06)} 100%
+          )`,
+          boxShadow: "0 18px 50px rgba(15,23,42,0.06)",
+          "&::before": {
+            content: '""',
+            position: "absolute",
+            width: 260,
+            height: 260,
+            borderRadius: "50%",
+            right: -100,
+            top: -145,
+            background: alpha(theme.palette.primary.main, 0.07),
+          },
         }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "flex-start",
-          lg: "center",
-        }}
-        spacing={3}
-        mb={3}
       >
-        <Box>
-          <Typography
-            variant="h4"
-            fontWeight={800}
-            sx={{
-              color: "#111B4B",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            Library Amenities
-          </Typography>
-
-          <Typography variant="body1" color="text.secondary" mt={0.5}>
-            Select the facilities available to members at{" "}
-            <strong>{libraryName}</strong>.
-          </Typography>
-        </Box>
-
-        {/* =================================================
-                    SELECTED SUMMARY
-                ================================================= */}
-
-        <Card
+        <CardContent
           sx={{
-            minWidth: {
-              xs: "100%",
-              sm: 300,
+            p: { xs: 2.5, md: 3.5 },
+            position: "relative",
+            zIndex: 1,
+            "&:last-child": {
+              pb: { xs: 2.5, md: 3.5 },
             },
-            borderRadius: 2,
-            background: "linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%)",
-            border: "1px solid #BBF7D0",
-            boxShadow: "none",
           }}
         >
-          <CardContent
-            sx={{
-              p: 2,
-              "&:last-child": {
-                pb: 2,
-              },
-            }}
+          <Stack
+            direction={{ xs: "column", lg: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "stretch", lg: "center" }}
+            spacing={3}
           >
-            <Stack direction="row" spacing={1.5} alignItems="center">
+            <Stack direction="row" spacing={2} alignItems="center">
               <Box
                 sx={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  backgroundColor: "#10B981",
+                  width: 62,
+                  height: 62,
+                  borderRadius: 3.2,
+                  display: "grid",
+                  placeItems: "center",
+                  bgcolor: "primary.main",
+                  color: "primary.contrastText",
+                  boxShadow: `0 12px 28px ${alpha(
+                    theme.palette.primary.main,
+                    0.28,
+                  )}`,
                   flexShrink: 0,
                 }}
               >
-                <CheckCircle />
+                <Tune sx={{ fontSize: 31 }} />
               </Box>
 
-              <Box>
+              <Box sx={{ minWidth: 0 }}>
                 <Typography
-                  fontWeight={800}
+                  variant="h4"
+                  fontWeight={850}
                   sx={{
-                    color: "#166534",
+                    letterSpacing: "-0.025em",
+                    lineHeight: 1.12,
                   }}
                 >
-                  {selectedCount} Amenities Selected
+                  Library Amenities
                 </Typography>
 
                 <Typography
-                  variant="body2"
-                  sx={{
-                    color: "#166534",
-                    mt: 0.25,
-                  }}
+                  variant="body1"
+                  color="text.secondary"
+                  sx={{ mt: 0.75, maxWidth: 720 }}
                 >
-                  These facilities will be shown to members on the public page.
+                  Curate the facilities available at{" "}
+                  <Box
+                    component="span"
+                    sx={{ color: "text.primary", fontWeight: 700 }}
+                  >
+                    {libraryName}
+                  </Box>{" "}
+                  so students can quickly understand what your library offers.
                 </Typography>
               </Box>
             </Stack>
-          </CardContent>
-        </Card>
-      </Stack>
 
-      {/* =================================================
-                ERROR
-            ================================================= */}
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={1.25}
+              sx={{ flexShrink: 0 }}
+            >
+              <Box
+                sx={{
+                  minWidth: 130,
+                  px: 2,
+                  py: 1.4,
+                  borderRadius: 2.8,
+                  bgcolor: alpha(theme.palette.success.main, 0.08),
+                  border: "1px solid",
+                  borderColor: alpha(theme.palette.success.main, 0.16),
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                >
+                  Selected
+                </Typography>
+
+                <Typography
+                  variant="h5"
+                  fontWeight={850}
+                  sx={{ mt: 0.1, color: "success.dark" }}
+                >
+                  {selectedCount}
+                </Typography>
+              </Box>
+
+              <Box
+                sx={{
+                  minWidth: 130,
+                  px: 2,
+                  py: 1.4,
+                  borderRadius: 2.8,
+                  bgcolor: alpha(theme.palette.primary.main, 0.06),
+                  border: "1px solid",
+                  borderColor: alpha(theme.palette.primary.main, 0.12),
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ fontWeight: 700 }}
+                >
+                  Custom
+                </Typography>
+
+                <Typography
+                  variant="h5"
+                  fontWeight={850}
+                  sx={{ mt: 0.1, color: "primary.main" }}
+                >
+                  {customCount}
+                </Typography>
+              </Box>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* ===================================================== */}
+      {/* FEEDBACK */}
+      {/* ===================================================== */}
 
       {error && (
         <Alert
           severity="error"
+          onClose={() => setError("")}
           sx={{
             mb: 2,
-            borderRadius: 2,
+            borderRadius: 2.5,
           }}
-          onClose={() => setError("")}
         >
           {error}
         </Alert>
       )}
 
-      {/* =================================================
-                SUCCESS
-            ================================================= */}
-
       {saved && (
         <Alert
           severity="success"
+          icon={<CheckCircle />}
+          onClose={() => setSaved(false)}
           sx={{
             mb: 2,
-            borderRadius: 2,
+            borderRadius: 2.5,
           }}
-          onClose={() => setSaved(false)}
         >
           Library amenities have been saved successfully.
         </Alert>
       )}
 
-      {/* =================================================
-                CATEGORY TABS + STANDARD AMENITIES
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* STANDARD AMENITIES */}
+      {/* ===================================================== */}
 
       <Card
+        elevation={0}
         sx={{
-          borderRadius: 2,
+          borderRadius: 4,
           overflow: "hidden",
-          boxShadow: "0 2px 10px rgba(15, 23, 42, 0.04)",
-          border: "1px solid #E2E8F0",
+          border: "1px solid",
+          borderColor: "divider",
+          boxShadow: "0 10px 30px rgba(15,23,42,0.045)",
+          mb: 3,
         }}
       >
-        {/* =================================================
-                    TABS
-                ================================================= */}
+        <Box sx={{ p: { xs: 2, md: 2.75 }, pb: 0 }}>
+          <SectionHeading
+            icon={<Apartment />}
+            title="Available Facilities"
+            description={`${standardSelectedCount} standard amenities selected for this library.`}
+          />
+        </Box>
 
         <Tabs
           value={selectedCategory}
-          onChange={(event, value) => setSelectedCategory(value)}
+          onChange={(_event, value) => setSelectedCategory(value)}
           variant="scrollable"
           scrollButtons="auto"
           sx={{
-            px: 1.5,
-            borderBottom: "1px solid #E2E8F0",
+            px: { xs: 1, md: 2 },
+            borderTop: "1px solid",
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            bgcolor: alpha(theme.palette.primary.main, 0.018),
 
             "& .MuiTab-root": {
+              minHeight: 58,
               textTransform: "none",
-              fontWeight: 500,
-              minHeight: 56,
-              color: "#334155",
+              fontWeight: 650,
+              color: "text.secondary",
+              px: 2,
             },
 
             "& .Mui-selected": {
-              color: "#1565FF",
-              fontWeight: 700,
+              color: "primary.main",
+              fontWeight: 800,
             },
 
             "& .MuiTabs-indicator": {
               height: 3,
+              borderRadius: "3px 3px 0 0",
             },
           }}
         >
@@ -852,24 +925,11 @@ function Amenities() {
           ))}
         </Tabs>
 
-        {/* =================================================
-                    AMENITY GRID
-                ================================================= */}
-
-        <Box
-          sx={{
-            p: {
-              xs: 1.5,
-              md: 2.5,
-            },
-          }}
-        >
+        <Box sx={{ p: { xs: 1.5, md: 2.75 } }}>
           <Grid container spacing={2}>
             {filteredAmenities.map((amenity) => {
               const metadata = getAmenityMetadata(amenity.name);
-
               const Icon = metadata.icon;
-
               const selected = selectedAmenityIds.includes(amenity.id);
 
               return (
@@ -882,22 +942,35 @@ function Amenities() {
                   }}
                 >
                   <Card
-                    variant="outlined"
+                    elevation={0}
                     onClick={() => handleToggle(amenity.id)}
                     sx={{
                       height: "100%",
+                      minHeight: 112,
                       cursor: "pointer",
-                      borderRadius: 2,
-
-                      borderColor: selected ? "#60A5FA" : "#E2E8F0",
-
-                      backgroundColor: selected ? "#F4F8FF" : "#FFFFFF",
-
-                      transition: "all 0.2s ease",
-
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: selected
+                        ? alpha(theme.palette.primary.main, 0.55)
+                        : "divider",
+                      background: selected
+                        ? `linear-gradient(145deg, ${alpha(
+                            theme.palette.primary.main,
+                            0.07,
+                          )}, ${alpha(theme.palette.primary.main, 0.025)})`
+                        : "background.paper",
+                      boxShadow: selected
+                        ? `0 10px 24px ${alpha(
+                            theme.palette.primary.main,
+                            0.08,
+                          )}`
+                        : "none",
+                      transition:
+                        "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
                       "&:hover": {
-                        borderColor: "#3B82F6",
-                        boxShadow: "0 4px 14px rgba(37, 99, 235, 0.08)",
+                        transform: "translateY(-2px)",
+                        borderColor: alpha(theme.palette.primary.main, 0.5),
+                        boxShadow: "0 12px 28px rgba(15,23,42,0.07)",
                       },
                     }}
                   >
@@ -914,66 +987,74 @@ function Amenities() {
                         spacing={1.5}
                         alignItems="flex-start"
                       >
-                        {/* ICON */}
-
                         <Box
                           sx={{
                             width: 50,
                             height: 50,
-                            borderRadius: 2,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
+                            borderRadius: 2.2,
+                            display: "grid",
+                            placeItems: "center",
                             flexShrink: 0,
-
-                            backgroundColor: selected ? "#E0EDFF" : "#F1F5F9",
-
-                            color: selected ? "#1565FF" : "#475569",
+                            bgcolor: selected
+                              ? alpha(theme.palette.primary.main, 0.12)
+                              : alpha(theme.palette.text.primary, 0.045),
+                            color: selected ? "primary.main" : "text.secondary",
                           }}
                         >
                           <Icon />
                         </Box>
 
-                        {/* TEXT */}
-
-                        <Box
-                          sx={{
-                            flex: 1,
-                            minWidth: 0,
-                            pt: 0.25,
-                          }}
-                        >
-                          <Typography
-                            variant="subtitle1"
-                            fontWeight={750}
-                            sx={{
-                              color: "#111B4B",
-                            }}
+                        <Box sx={{ flex: 1, minWidth: 0, pt: 0.1 }}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            flexWrap="wrap"
+                            useFlexGap
                           >
-                            {amenity.name}
-                          </Typography>
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={800}
+                              sx={{ lineHeight: 1.3 }}
+                            >
+                              {amenity.name}
+                            </Typography>
+
+                            {selected && (
+                              <Chip
+                                size="small"
+                                label="Selected"
+                                color="primary"
+                                sx={{
+                                  height: 22,
+                                  fontWeight: 750,
+                                  "& .MuiChip-label": {
+                                    px: 0.9,
+                                  },
+                                }}
+                              />
+                            )}
+                          </Stack>
 
                           <Typography
                             variant="body2"
                             color="text.secondary"
                             sx={{
-                              mt: 0.25,
-                              lineHeight: 1.4,
+                              mt: 0.45,
+                              lineHeight: 1.45,
                             }}
                           >
                             {metadata.description}
                           </Typography>
                         </Box>
 
-                        {/* CHECKBOX */}
-
                         <Checkbox
                           checked={selected}
                           onChange={() => handleToggle(amenity.id)}
                           onClick={(event) => event.stopPropagation()}
                           sx={{
-                            p: 0.5,
-                            mt: 0.25,
+                            p: 0.25,
+                            mt: 0.15,
                           }}
                         />
                       </Stack>
@@ -982,6 +1063,7 @@ function Amenities() {
                 </Grid>
               );
             })}
+
             {filteredCustomAmenities.map((amenity) => (
               <Grid
                 key={`custom-${amenity.id}`}
@@ -992,17 +1074,23 @@ function Amenities() {
                 }}
               >
                 <Card
-                  variant="outlined"
+                  elevation={0}
                   sx={{
                     height: "100%",
-                    borderRadius: 2,
-                    borderColor: "#A78BFA",
-                    backgroundColor: "#FAF5FF",
-                    transition: "all 0.2s ease",
-
+                    minHeight: 112,
+                    borderRadius: 3,
+                    border: "1px solid",
+                    borderColor: alpha(theme.palette.secondary.main, 0.28),
+                    background: `linear-gradient(145deg, ${alpha(
+                      theme.palette.secondary.main,
+                      0.07,
+                    )}, ${alpha(theme.palette.secondary.main, 0.025)})`,
+                    transition:
+                      "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
                     "&:hover": {
-                      borderColor: "#8B5CF6",
-                      boxShadow: "0 4px 14px rgba(124, 58, 237, 0.08)",
+                      transform: "translateY(-2px)",
+                      borderColor: alpha(theme.palette.secondary.main, 0.46),
+                      boxShadow: "0 12px 28px rgba(15,23,42,0.07)",
                     },
                   }}
                 >
@@ -1023,58 +1111,50 @@ function Amenities() {
                         sx={{
                           width: 50,
                           height: 50,
-                          borderRadius: 2,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          borderRadius: 2.2,
+                          display: "grid",
+                          placeItems: "center",
                           flexShrink: 0,
-                          backgroundColor: "#EDE9FE",
-                          color: "#7C3AED",
+                          bgcolor: alpha(theme.palette.secondary.main, 0.12),
+                          color: "secondary.main",
                         }}
                       >
                         <Apartment />
                       </Box>
 
-                      <Box
-                        sx={{
-                          flex: 1,
-                          minWidth: 0,
-                          pt: 0.25,
-                        }}
-                      >
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                          <Typography
-                            variant="subtitle1"
-                            fontWeight={750}
-                            sx={{
-                              color: "#111B4B",
-                            }}
-                          >
+                      <Box sx={{ flex: 1, minWidth: 0, pt: 0.1 }}>
+                        <Stack
+                          direction="row"
+                          spacing={0.75}
+                          alignItems="center"
+                          flexWrap="wrap"
+                          useFlexGap
+                        >
+                          <Typography variant="subtitle1" fontWeight={800}>
                             {amenity.name}
                           </Typography>
 
-                          <Box
-                            component="span"
+                          <Chip
+                            size="small"
+                            label="Custom"
+                            color="secondary"
+                            variant="outlined"
                             sx={{
-                              px: 0.8,
-                              py: 0.2,
-                              borderRadius: 1,
-                              fontSize: "0.65rem",
-                              fontWeight: 700,
-                              color: "#6D28D9",
-                              backgroundColor: "#EDE9FE",
+                              height: 22,
+                              fontWeight: 750,
+                              "& .MuiChip-label": {
+                                px: 0.8,
+                              },
                             }}
-                          >
-                            CUSTOM
-                          </Box>
+                          />
                         </Stack>
 
                         <Typography
                           variant="body2"
                           color="text.secondary"
                           sx={{
-                            mt: 0.25,
-                            lineHeight: 1.4,
+                            mt: 0.45,
+                            lineHeight: 1.45,
                           }}
                         >
                           {amenity.description ||
@@ -1082,11 +1162,16 @@ function Amenities() {
                         </Typography>
                       </Box>
 
-                      <Stack direction="row" spacing={0}>
+                      <Stack direction="row" spacing={0.25}>
                         <IconButton
                           size="small"
                           onClick={() => handleOpenEditDialog(amenity)}
                           disabled={saving}
+                          sx={{
+                            border: "1px solid",
+                            borderColor: "divider",
+                            bgcolor: "background.paper",
+                          }}
                         >
                           <Edit fontSize="small" />
                         </IconButton>
@@ -1096,6 +1181,11 @@ function Amenities() {
                           color="error"
                           onClick={() => handleDeleteCustomAmenity(amenity.id)}
                           disabled={saving}
+                          sx={{
+                            border: "1px solid",
+                            borderColor: alpha(theme.palette.error.main, 0.16),
+                            bgcolor: alpha(theme.palette.error.main, 0.03),
+                          }}
                         >
                           <DeleteOutlineOutlined fontSize="small" />
                         </IconButton>
@@ -1105,6 +1195,7 @@ function Amenities() {
                 </Card>
               </Grid>
             ))}
+
             {(selectedCategory === "All Amenities" ||
               selectedCategory === "Other") && (
               <Grid
@@ -1116,24 +1207,23 @@ function Amenities() {
                 }}
               >
                 <Card
-                  variant="outlined"
+                  elevation={0}
                   onClick={handleOpenAddDialog}
                   sx={{
                     height: "100%",
-                    minHeight: 94,
-                    borderRadius: 2,
-                    borderStyle: "dashed",
-                    borderWidth: 1.5,
-                    borderColor: "#A5B4FC",
+                    minHeight: 112,
+                    borderRadius: 3,
+                    border: "1.5px dashed",
+                    borderColor: alpha(theme.palette.primary.main, 0.35),
                     cursor: "pointer",
-                    backgroundColor: "#FAFAFF",
-                    transition: "all 0.2s ease",
-
+                    bgcolor: alpha(theme.palette.primary.main, 0.018),
+                    transition:
+                      "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
                     "&:hover": {
+                      transform: "translateY(-2px)",
                       borderColor: "primary.main",
-                      backgroundColor: "#F5F3FF",
-                      transform: "translateY(-1px)",
-                      boxShadow: "0 4px 14px rgba(79, 70, 229, 0.08)",
+                      bgcolor: alpha(theme.palette.primary.main, 0.04),
+                      boxShadow: "0 12px 28px rgba(15,23,42,0.06)",
                     },
                   }}
                 >
@@ -1143,7 +1233,7 @@ function Amenities() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-
+                      p: 2,
                       "&:last-child": {
                         pb: 2,
                       },
@@ -1152,13 +1242,12 @@ function Amenities() {
                     <Stack direction="row" spacing={1.25} alignItems="center">
                       <Box
                         sx={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 2,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "#EEF2FF",
+                          width: 44,
+                          height: 44,
+                          borderRadius: 2.2,
+                          display: "grid",
+                          placeItems: "center",
+                          bgcolor: alpha(theme.palette.primary.main, 0.09),
                           color: "primary.main",
                         }}
                       >
@@ -1166,12 +1255,12 @@ function Amenities() {
                       </Box>
 
                       <Box>
-                        <Typography fontWeight={700} color="primary.main">
+                        <Typography fontWeight={800} color="primary.main">
                           Add Custom Amenity
                         </Typography>
 
                         <Typography variant="body2" color="text.secondary">
-                          Create a facility for your library
+                          Create a facility specific to your library
                         </Typography>
                       </Box>
                     </Stack>
@@ -1181,137 +1270,131 @@ function Amenities() {
             )}
           </Grid>
 
-          {/* =================================================
-                        EMPTY CATEGORY
-                    ================================================= */}
-
           {filteredAmenities.length === 0 &&
             filteredCustomAmenities.length === 0 && (
               <Box
                 sx={{
-                  py: 6,
+                  py: 7,
                   textAlign: "center",
                 }}
               >
-                <Typography color="text.secondary">
-                  No amenities found in this category.
+                <Box
+                  sx={{
+                    width: 58,
+                    height: 58,
+                    borderRadius: "50%",
+                    mx: "auto",
+                    mb: 1.5,
+                    display: "grid",
+                    placeItems: "center",
+                    bgcolor: alpha(theme.palette.primary.main, 0.06),
+                    color: "text.disabled",
+                  }}
+                >
+                  <Apartment />
+                </Box>
+
+                <Typography fontWeight={750}>No amenities found</Typography>
+
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 0.5 }}
+                >
+                  There are no amenities in this category yet.
                 </Typography>
               </Box>
             )}
         </Box>
       </Card>
 
-      {/* =================================================
-                CUSTOM AMENITIES
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* CUSTOM AMENITIES MANAGEMENT */}
+      {/* ===================================================== */}
 
       <Card
+        elevation={0}
         sx={{
-          mt: 2,
-          borderRadius: 2,
-          border: "1px solid #E2E8F0",
-          boxShadow: "0 2px 10px rgba(15, 23, 42, 0.04)",
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: "divider",
+          boxShadow: "0 10px 30px rgba(15,23,42,0.045)",
+          mb: 3,
         }}
       >
         <CardContent
           sx={{
-            p: {
-              xs: 2,
-              md: 2.5,
+            p: { xs: 2, md: 2.75 },
+            "&:last-child": {
+              pb: { xs: 2, md: 2.75 },
             },
           }}
         >
-          {/* =================================================
-                        HEADER
-                    ================================================= */}
-
-          <Stack
-            direction={{
-              xs: "column",
-              md: "row",
-            }}
-            justifyContent="space-between"
-            alignItems={{
-              xs: "flex-start",
-              md: "center",
-            }}
-            spacing={2}
-            mb={2}
-          >
-            <Box>
-              {/* <Typography
-                variant="h6"
-                fontWeight={800}
+          <SectionHeading
+            icon={<Add />}
+            title="Custom Amenities"
+            description="Add facilities that are unique to this specific library."
+            action={
+              <Button
+                variant="outlined"
+                startIcon={<Add />}
+                onClick={handleOpenAddDialog}
+                disabled={saving}
                 sx={{
-                  color: "#111B4B",
+                  textTransform: "none",
+                  fontWeight: 750,
+                  borderRadius: 2.4,
+                  px: 2,
                 }}
               >
-                Custom Amenities
-              </Typography> */}
-
-              <Typography variant="body2" color="text.secondary" mt={0.5}>
-                Add any additional facilities specific to your library.
-              </Typography>
-            </Box>
-
-            <Button
-              variant="outlined"
-              startIcon={<Add />}
-              onClick={handleOpenAddDialog}
-              disabled={saving}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-                borderRadius: 1.5,
-              }}
-            >
-              Add Custom Amenity
-            </Button>
-          </Stack>
-
-          <Divider
-            sx={{
-              mb: 2,
-            }}
+                Add Custom Amenity
+              </Button>
+            }
           />
 
-          {/* =================================================
-                        EMPTY CUSTOM AMENITIES
-                    ================================================= */}
+          <Divider sx={{ mb: 2.25 }} />
 
           {customAmenities.length === 0 ? (
             <Box
               onClick={handleOpenAddDialog}
               sx={{
-                minHeight: 100,
+                minHeight: 130,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                border: "1px dashed #CBD5E1",
-                borderRadius: 2,
+                border: "1.5px dashed",
+                borderColor: alpha(theme.palette.primary.main, 0.25),
+                borderRadius: 3,
                 cursor: "pointer",
-                backgroundColor: "#FAFAFF",
-
+                bgcolor: alpha(theme.palette.primary.main, 0.018),
+                transition: "all 0.2s ease",
                 "&:hover": {
-                  borderColor: "#8B5CF6",
-                  backgroundColor: "#F8F5FF",
+                  borderColor: "primary.main",
+                  bgcolor: alpha(theme.palette.primary.main, 0.04),
                 },
               }}
             >
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Add
+              <Stack alignItems="center" spacing={1}>
+                <Box
                   sx={{
-                    color: "#7C3AED",
-                  }}
-                />
-
-                <Typography
-                  fontWeight={600}
-                  sx={{
-                    color: "#6D28D9",
+                    width: 44,
+                    height: 44,
+                    borderRadius: 2.2,
+                    display: "grid",
+                    placeItems: "center",
+                    bgcolor: alpha(theme.palette.primary.main, 0.08),
+                    color: "primary.main",
                   }}
                 >
-                  Add Custom Amenity
+                  <Add />
+                </Box>
+
+                <Typography fontWeight={800} color="primary.main">
+                  Add your first custom amenity
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary">
+                  Create a facility that is not included in the standard list.
                 </Typography>
               </Stack>
             </Box>
@@ -1328,46 +1411,47 @@ function Amenities() {
                 >
                   <Box
                     sx={{
-                      minHeight: 82,
+                      minHeight: 94,
                       p: 1.75,
-                      border: "1px solid #E2E8F0",
-                      borderRadius: 2,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: 3,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      backgroundColor: "#FAFAFF",
+                      bgcolor: "background.paper",
+                      transition:
+                        "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
+                      "&:hover": {
+                        transform: "translateY(-2px)",
+                        boxShadow: "0 10px 24px rgba(15,23,42,0.06)",
+                        borderColor: alpha(theme.palette.primary.main, 0.25),
+                      },
                     }}
                   >
                     <Stack
                       direction="row"
                       spacing={1.5}
                       alignItems="center"
-                      sx={{
-                        minWidth: 0,
-                      }}
+                      sx={{ minWidth: 0 }}
                     >
                       <Box
                         sx={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 2,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: "#EDE9FE",
-                          color: "#7C3AED",
+                          width: 44,
+                          height: 44,
+                          borderRadius: 2.2,
+                          display: "grid",
+                          placeItems: "center",
+                          bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                          color: "secondary.main",
                           flexShrink: 0,
                         }}
                       >
                         <Apartment />
                       </Box>
 
-                      <Box
-                        sx={{
-                          minWidth: 0,
-                        }}
-                      >
-                        <Typography fontWeight={700} noWrap>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography fontWeight={800} noWrap>
                           {amenity.name}
                         </Typography>
 
@@ -1376,6 +1460,7 @@ function Amenities() {
                             variant="caption"
                             color="text.secondary"
                             noWrap
+                            sx={{ display: "block", mt: 0.25 }}
                           >
                             {amenity.description}
                           </Typography>
@@ -1383,14 +1468,7 @@ function Amenities() {
                       </Box>
                     </Stack>
 
-                    <Stack
-                      direction="row"
-                      sx={{
-                        ml: 1,
-                      }}
-                    >
-                      {/* EDIT */}
-
+                    <Stack direction="row" sx={{ ml: 1 }}>
                       <IconButton
                         size="small"
                         onClick={() => handleOpenEditDialog(amenity)}
@@ -1398,8 +1476,6 @@ function Amenities() {
                       >
                         <Edit fontSize="small" />
                       </IconButton>
-
-                      {/* DELETE */}
 
                       <IconButton
                         size="small"
@@ -1418,15 +1494,22 @@ function Amenities() {
         </CardContent>
       </Card>
 
-      {/* =================================================
-                BOTTOM ACTION BAR
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* PREMIUM ACTION BAR */}
+      {/* ===================================================== */}
 
       <Card
+        elevation={0}
         sx={{
-          mt: 2,
-          borderRadius: 2,
-          border: "1px solid #E2E8F0",
+          position: { md: "sticky" },
+          bottom: { md: 16 },
+          zIndex: 5,
+          borderRadius: 3.5,
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: alpha(theme.palette.background.paper, 0.96),
+          backdropFilter: "blur(14px)",
+          boxShadow: "0 14px 40px rgba(15,23,42,0.10)",
         }}
       >
         <CardContent
@@ -1438,49 +1521,43 @@ function Amenities() {
           }}
         >
           <Stack
-            direction={{
-              xs: "column",
-              md: "row",
-            }}
+            direction={{ xs: "column", md: "row" }}
             justifyContent="space-between"
-            alignItems={{
-              xs: "stretch",
-              md: "center",
-            }}
+            alignItems={{ xs: "stretch", md: "center" }}
             spacing={2}
           >
-            {/* RESET */}
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Button
+                variant="text"
+                startIcon={<Refresh />}
+                onClick={handleReset}
+                disabled={loading || saving}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 700,
+                  borderRadius: 2,
+                }}
+              >
+                Reset changes
+              </Button>
 
-            <Button
-              variant="outlined"
-              startIcon={<Refresh />}
-              onClick={handleReset}
-              disabled={loading || saving}
-              sx={{
-                textTransform: "none",
-                fontWeight: 600,
-              }}
-            >
-              Reset to Default
-            </Button>
+              <Chip
+                size="small"
+                label={`${selectedCount} selected`}
+                sx={{ fontWeight: 700 }}
+              />
+            </Stack>
 
-            {/* RIGHT ACTIONS */}
-
-            <Stack
-              direction={{
-                xs: "column",
-                sm: "row",
-              }}
-              spacing={1.5}
-            >
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.25}>
               <Button
                 variant="outlined"
                 onClick={handleCancel}
                 disabled={saving}
                 sx={{
                   textTransform: "none",
-                  fontWeight: 600,
+                  fontWeight: 700,
                   minWidth: 110,
+                  borderRadius: 2.3,
                 }}
               >
                 Cancel
@@ -1499,8 +1576,13 @@ function Amenities() {
                 disabled={saving}
                 sx={{
                   textTransform: "none",
-                  fontWeight: 700,
-                  minWidth: 170,
+                  fontWeight: 800,
+                  minWidth: 180,
+                  borderRadius: 2.3,
+                  boxShadow: `0 8px 20px ${alpha(
+                    theme.palette.primary.main,
+                    0.22,
+                  )}`,
                 }}
               >
                 {saving ? "Saving..." : "Save Amenities"}
@@ -1510,26 +1592,58 @@ function Amenities() {
         </CardContent>
       </Card>
 
-      {/* =================================================
-                CUSTOM AMENITY DIALOG
-            ================================================= */}
+      {/* ===================================================== */}
+      {/* CUSTOM AMENITY DIALOG */}
+      {/* ===================================================== */}
 
       <Dialog
         open={dialogOpen}
         onClose={saving ? undefined : handleCloseDialog}
         fullWidth
         maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
       >
-        <DialogTitle
-          sx={{
-            fontWeight: 700,
-          }}
-        >
-          {editingCustomAmenity ? "Edit Custom Amenity" : "Add Custom Amenity"}
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.25 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: 2.2,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                color: "primary.main",
+              }}
+            >
+              {editingCustomAmenity ? <Edit /> : <Add />}
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={800}>
+                {editingCustomAmenity
+                  ? "Edit Custom Amenity"
+                  : "Add Custom Amenity"}
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                {editingCustomAmenity
+                  ? "Update the facility information shown to students."
+                  : "Add a facility that is unique to your library."}
+              </Typography>
+            </Box>
+          </Stack>
         </DialogTitle>
 
-        <DialogContent>
-          <Stack spacing={2} mt={1}>
+        <DialogContent sx={{ px: 3 }}>
+          <Stack spacing={2} mt={1.5}>
             <TextField
               fullWidth
               label="Amenity Name"
@@ -1563,17 +1677,21 @@ function Amenities() {
               inputProps={{
                 maxLength: 500,
               }}
+              helperText={`${customAmenity.description.length}/500`}
             />
           </Stack>
         </DialogContent>
 
-        <DialogActions
-          sx={{
-            px: 3,
-            pb: 2.5,
-          }}
-        >
-          <Button onClick={handleCloseDialog} disabled={saving}>
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
+          <Button
+            onClick={handleCloseDialog}
+            disabled={saving}
+            sx={{
+              textTransform: "none",
+              fontWeight: 700,
+              borderRadius: 2.2,
+            }}
+          >
             Cancel
           </Button>
 
@@ -1586,6 +1704,12 @@ function Amenities() {
                 <CircularProgress size={17} color="inherit" />
               ) : undefined
             }
+            sx={{
+              textTransform: "none",
+              fontWeight: 800,
+              borderRadius: 2.2,
+              minWidth: 150,
+            }}
           >
             {saving
               ? "Saving..."

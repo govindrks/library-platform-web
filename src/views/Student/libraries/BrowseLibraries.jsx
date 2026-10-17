@@ -13,6 +13,7 @@ import {
 } from "@mui/material";
 
 import {
+  AccessTime,
   ArrowForward,
   EventSeat,
   ImageOutlined,
@@ -50,6 +51,50 @@ const resolveImageUrl = (url) => {
     import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
   return `${backendUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+};
+
+// ============================================================
+// OPERATING HOURS HELPERS
+// ============================================================
+
+const formatTime = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  return String(value).slice(0, 5);
+};
+
+const getOperatingHours = (library) => {
+  if (library?.open24Hours === true) {
+    return {
+      label: "Open 24 Hours",
+
+      configured: true,
+
+      open24Hours: true,
+    };
+  }
+
+  if (library?.openingTime && library?.closingTime) {
+    return {
+      label: `${formatTime(library.openingTime)} - ${formatTime(
+        library.closingTime,
+      )}`,
+
+      configured: true,
+
+      open24Hours: false,
+    };
+  }
+
+  return {
+    label: "Hours not configured",
+
+    configured: false,
+
+    open24Hours: false,
+  };
 };
 
 // ============================================================
@@ -179,8 +224,11 @@ function BrowseLibraries() {
     <Box
       sx={{
         width: "100%",
+
         maxWidth: 1480,
+
         mx: "auto",
+
         pb: 5,
       }}
     >
@@ -212,11 +260,13 @@ function BrowseLibraries() {
             position: "absolute",
 
             width: 220,
+
             height: 220,
 
             borderRadius: "50%",
 
             right: -90,
+
             top: -120,
 
             background: "rgba(79,70,229,0.08)",
@@ -228,11 +278,13 @@ function BrowseLibraries() {
             position: "absolute",
 
             width: 120,
+
             height: 120,
 
             borderRadius: "50%",
 
             left: "42%",
+
             bottom: -85,
 
             background: "rgba(99,102,241,0.045)",
@@ -247,12 +299,14 @@ function BrowseLibraries() {
 
             p: {
               xs: 2.5,
+
               md: 3.5,
             },
 
             "&:last-child": {
               pb: {
                 xs: 2.5,
+
                 md: 3.5,
               },
             },
@@ -261,11 +315,13 @@ function BrowseLibraries() {
           <Stack
             direction={{
               xs: "column",
+
               lg: "row",
             }}
             justifyContent="space-between"
             alignItems={{
               xs: "stretch",
+
               lg: "center",
             }}
             spacing={3}
@@ -278,6 +334,7 @@ function BrowseLibraries() {
               <Box
                 sx={{
                   width: 58,
+
                   height: 58,
 
                   minWidth: 58,
@@ -342,6 +399,7 @@ function BrowseLibraries() {
               sx={{
                 width: {
                   xs: "100%",
+
                   lg: 460,
                 },
 
@@ -401,11 +459,13 @@ function BrowseLibraries() {
         <Stack
           direction={{
             xs: "column",
+
             sm: "row",
           }}
           justifyContent="space-between"
           alignItems={{
             xs: "flex-start",
+
             sm: "center",
           }}
           spacing={1}
@@ -440,6 +500,7 @@ function BrowseLibraries() {
             color="primary"
             sx={{
               fontWeight: 700,
+
               borderRadius: 2,
             }}
           />
@@ -521,6 +582,15 @@ function BrowseLibraries() {
                   }}
                 />
 
+                <Skeleton
+                  height={64}
+                  sx={{
+                    mt: 1.4,
+
+                    borderRadius: 2,
+                  }}
+                />
+
                 <Stack
                   direction="row"
                   spacing={1}
@@ -583,6 +653,7 @@ function BrowseLibraries() {
             <Box
               sx={{
                 width: 72,
+
                 height: 72,
 
                 mx: "auto",
@@ -683,6 +754,8 @@ function BrowseLibraries() {
 
             const reviewCount = Number(library.reviewCount ?? 0);
 
+            const operatingHours = getOperatingHours(library);
+
             const occupancy =
               totalSeats > 0
                 ? Math.round(((totalSeats - availableSeats) / totalSeats) * 100)
@@ -740,7 +813,9 @@ function BrowseLibraries() {
 
                     height: {
                       xs: 220,
+
                       sm: 225,
+
                       lg: 235,
                     },
 
@@ -796,9 +871,7 @@ function BrowseLibraries() {
                     </Stack>
                   )}
 
-                  {/* ===================================== */}
                   {/* IMAGE GRADIENT */}
-                  {/* ===================================== */}
 
                   <Box
                     sx={{
@@ -813,9 +886,7 @@ function BrowseLibraries() {
                     }}
                   />
 
-                  {/* ===================================== */}
                   {/* AVAILABILITY */}
-                  {/* ===================================== */}
 
                   <Chip
                     size="small"
@@ -829,6 +900,7 @@ function BrowseLibraries() {
                       position: "absolute",
 
                       top: 14,
+
                       right: 14,
 
                       minHeight: 32,
@@ -847,6 +919,7 @@ function BrowseLibraries() {
 
                       "& .MuiChip-label": {
                         px: 1,
+
                         color: "common.white",
                       },
 
@@ -858,9 +931,7 @@ function BrowseLibraries() {
                     }}
                   />
 
-                  {/* ===================================== */}
                   {/* OCCUPANCY */}
-                  {/* ===================================== */}
 
                   {totalSeats > 0 && (
                     <Chip
@@ -870,6 +941,7 @@ function BrowseLibraries() {
                         position: "absolute",
 
                         left: 14,
+
                         bottom: 14,
 
                         bgcolor: "rgba(15,23,42,0.78)",
@@ -967,6 +1039,7 @@ function BrowseLibraries() {
                       <Box
                         sx={{
                           width: 30,
+
                           height: 30,
 
                           borderRadius: 1.5,
@@ -999,6 +1072,127 @@ function BrowseLibraries() {
                               reviewCount === 1 ? "review" : "reviews"
                             })`}
                       </Typography>
+                    </Stack>
+
+                    {/* ================================= */}
+                    {/* OPERATING HOURS */}
+                    {/* ================================= */}
+
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="center"
+                      sx={{
+                        px: 1.25,
+
+                        py: 1.1,
+
+                        borderRadius: 2.3,
+
+                        bgcolor: operatingHours.configured
+                          ? operatingHours.open24Hours
+                            ? "rgba(34,197,94,0.07)"
+                            : "rgba(79,70,229,0.055)"
+                          : "action.hover",
+
+                        border: "1px solid",
+
+                        borderColor: operatingHours.configured
+                          ? operatingHours.open24Hours
+                            ? "rgba(34,197,94,0.16)"
+                            : "rgba(79,70,229,0.12)"
+                          : "divider",
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 32,
+
+                          height: 32,
+
+                          flexShrink: 0,
+
+                          borderRadius: 1.6,
+
+                          display: "flex",
+
+                          alignItems: "center",
+
+                          justifyContent: "center",
+
+                          bgcolor: operatingHours.configured
+                            ? operatingHours.open24Hours
+                              ? "rgba(34,197,94,0.11)"
+                              : "rgba(79,70,229,0.10)"
+                            : "action.hover",
+
+                          color: operatingHours.configured
+                            ? operatingHours.open24Hours
+                              ? "success.main"
+                              : "primary.main"
+                            : "text.disabled",
+                        }}
+                      >
+                        <AccessTime
+                          sx={{
+                            fontSize: 18,
+                          }}
+                        />
+                      </Box>
+
+                      <Box
+                        sx={{
+                          minWidth: 0,
+
+                          flex: 1,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "block",
+
+                            lineHeight: 1.2,
+
+                            fontWeight: 600,
+                          }}
+                        >
+                          Operating Hours
+                        </Typography>
+
+                        <Typography
+                          variant="body2"
+                          fontWeight={800}
+                          noWrap
+                          sx={{
+                            mt: 0.25,
+
+                            color: operatingHours.open24Hours
+                              ? "success.dark"
+                              : "text.primary",
+                          }}
+                        >
+                          {operatingHours.label}
+                        </Typography>
+                      </Box>
+
+                      {operatingHours.open24Hours && (
+                        <Chip
+                          size="small"
+                          label="24/7"
+                          color="success"
+                          sx={{
+                            height: 24,
+
+                            fontWeight: 800,
+
+                            "& .MuiChip-label": {
+                              px: 0.9,
+                            },
+                          }}
+                        />
+                      )}
                     </Stack>
 
                     {/* ================================= */}

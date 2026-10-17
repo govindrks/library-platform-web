@@ -38,7 +38,7 @@ const drawerWidth = 250;
 // STUDENT MENU
 // ============================================================
 
-/*
+/**
  * Shared Sidebar normally serves ADMIN / LIBRARY_OWNER through
  * VerticalLayout.
  *
@@ -142,7 +142,7 @@ const userMenu = [
 // NORMALIZE OWNER MENU
 // ============================================================
 
-/*
+/**
  * ownerMenu uses:
  *
  * section
@@ -215,6 +215,104 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     navigate(path);
 
     onMobileClose?.();
+  };
+
+  // ==========================================================
+  // ACTIVE ROUTE
+  // ==========================================================
+
+  const isActive = (path) => {
+    if (!path) {
+      return false;
+    }
+
+    const currentPath = location.pathname;
+
+    // --------------------------------------------------------
+    // STUDENT HELP & SUPPORT FALLBACK
+    // --------------------------------------------------------
+    //
+    // Normally USER uses StudentSidebar.
+    //
+    // Keep this here in case Shared Sidebar is ever used for
+    // a student.
+    // --------------------------------------------------------
+
+    if (path === "/student/help-support") {
+      return (
+        currentPath === "/student/help-support" ||
+        currentPath.startsWith("/student/help-support/") ||
+        currentPath.startsWith("/student/support/tickets/")
+      );
+    }
+
+    // --------------------------------------------------------
+    // ADMIN SUPPORT DASHBOARD
+    // --------------------------------------------------------
+    //
+    // Important:
+    //
+    // /admin/support should NOT also remain selected when the
+    // user opens /admin/support/tickets.
+    // --------------------------------------------------------
+
+    if (path === "/admin/support") {
+      return currentPath === "/admin/support";
+    }
+
+    // --------------------------------------------------------
+    // ADMIN SUPPORT TICKETS
+    // --------------------------------------------------------
+
+    if (path === "/admin/support/tickets") {
+      return (
+        currentPath === "/admin/support/tickets" ||
+        currentPath.startsWith("/admin/support/tickets/")
+      );
+    }
+
+    // --------------------------------------------------------
+    // OWNER HELP & SUPPORT
+    // --------------------------------------------------------
+    //
+    // Do not keep this selected when navigating to either of
+    // the dedicated support queues.
+    // --------------------------------------------------------
+
+    if (path === "/owner/help-support") {
+      return currentPath === "/owner/help-support";
+    }
+
+    // --------------------------------------------------------
+    // OWNER -> LIBRARYHUB SUPPORT TICKETS
+    // --------------------------------------------------------
+
+    if (path === "/owner/support/tickets") {
+      return (
+        currentPath === "/owner/support/tickets" ||
+        currentPath.startsWith("/owner/support/tickets/")
+      );
+    }
+
+    // --------------------------------------------------------
+    // STUDENT -> LIBRARY OWNER SUPPORT
+    // --------------------------------------------------------
+
+    if (path === "/owner/student-support") {
+      return (
+        currentPath === "/owner/student-support" ||
+        currentPath.startsWith("/owner/student-support/")
+      );
+    }
+
+    // --------------------------------------------------------
+    // DEFAULT
+    // --------------------------------------------------------
+
+    return (
+      currentPath === path ||
+      (path !== "/" && currentPath.startsWith(`${path}/`))
+    );
   };
 
   // ==========================================================
@@ -317,9 +415,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
           py: 2,
         }}
       >
-        {menuSections.map((section) => (
+        {menuSections.map((section, sectionIndex) => (
           <Box
-            key={section.title}
+            key={section.title || sectionIndex}
             sx={{
               mb: 2.5,
             }}
@@ -347,30 +445,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
               {section.items.map((item) => {
                 const Icon = item.icon;
 
-                /*
-                 * Exact route should be active.
-                 *
-                 * Child routes should keep the parent
-                 * sidebar item active.
-                 *
-                 * Example:
-                 *
-                 * /admin/libraries/12
-                 *
-                 * keeps:
-                 *
-                 * /admin/libraries
-                 *
-                 * selected.
-                 */
-                const active =
-                  location.pathname === item.path ||
-                  (item.path !== "/" &&
-                    location.pathname.startsWith(`${item.path}/`));
+                const active = isActive(item.path);
 
                 return (
                   <ListItemButton
-                    key={item.path}
+                    key={`${section.title}-${item.label}-${item.path}`}
                     selected={active}
                     onClick={() => handleNavigation(item.path)}
                     sx={{
@@ -415,6 +494,40 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                         fontWeight: active ? 600 : 500,
                       }}
                     />
+
+                    {/* =================================== */}
+                    {/* OPTIONAL BADGE */}
+                    {/* =================================== */}
+
+                    {item.badge != null && (
+                      <Box
+                        sx={{
+                          minWidth: 22,
+
+                          height: 22,
+
+                          px: 0.75,
+
+                          borderRadius: 50,
+
+                          backgroundColor: "primary.main",
+
+                          color: "primary.contrastText",
+
+                          display: "flex",
+
+                          alignItems: "center",
+
+                          justifyContent: "center",
+
+                          fontSize: 11,
+
+                          fontWeight: 800,
+                        }}
+                      >
+                        {item.badge}
+                      </Box>
+                    )}
                   </ListItemButton>
                 );
               })}
@@ -484,7 +597,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
       <Drawer
         variant="temporary"
-        open={mobileOpen}
+        open={Boolean(mobileOpen)}
         onClose={onMobileClose}
         ModalProps={{
           keepMounted: true,

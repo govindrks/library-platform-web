@@ -1,34 +1,34 @@
 import OwnerDashboard from "../../views/LibraryOwner/OwnerDashboard";
 
 import LibraryProfile from "../../views/LibraryOwner/LibraryProfile";
-
 import Amenities from "../../views/LibraryOwner/Amenities";
-
 import MembershipPlans from "../../views/LibraryOwner/MembershipPlans";
 
 import SlotManagement from "../../views/LibraryOwner/SlotManagement";
-
 import SeatMapping from "../../views/LibraryOwner/SeatMapping";
-
 import SeatAvailability from "../../views/LibraryOwner/SeatAvailability";
 
 import Bookings from "../../views/LibraryOwner/Bookings";
-
 import Members from "../../views/LibraryOwner/Members";
 
 import Payments from "../../views/LibraryOwner/Payments";
-
 import Refunds from "../../views/LibraryOwner/Refunds";
-
 import Invoices from "../../views/LibraryOwner/Invoices";
-
 import Coupons from "../../views/LibraryOwner/Coupons";
 
 import Revenue from "../../views/LibraryOwner/Revenue";
-
 import Occupancy from "../../views/LibraryOwner/Occupancy";
 
 import Reports from "../../views/Reports/Reports";
+
+// ============================================================
+// SUPPORT
+// ============================================================
+
+import HelpSupport from "../../views/LibraryOwner/support/HelpSupport";
+import MySupportTickets from "../../views/LibraryOwner/support/MySupportTickets";
+import StudentSupportTickets from "../../views/LibraryOwner/support/StudentSupportTickets";
+import OwnerSupportTicketDetails from "../../views/LibraryOwner/support/OwnerSupportTicketDetails";
 
 // ============================================================
 // CORE LIBRARY OWNER ROUTES
@@ -41,7 +41,6 @@ const ownerRoutes = [
 
   {
     path: "/owner/dashboard",
-
     element: <OwnerDashboard />,
   },
 
@@ -51,19 +50,16 @@ const ownerRoutes = [
 
   {
     path: "/owner/library",
-
     element: <LibraryProfile />,
   },
 
   {
     path: "/owner/amenities",
-
     element: <Amenities />,
   },
 
   {
     path: "/owner/membership-plans",
-
     element: <MembershipPlans />,
   },
 
@@ -73,19 +69,16 @@ const ownerRoutes = [
 
   {
     path: "/owner/slots",
-
     element: <SlotManagement />,
   },
 
   {
     path: "/owner/seat-mapping",
-
     element: <SeatMapping />,
   },
 
   {
     path: "/owner/seat-availability",
-
     element: <SeatAvailability />,
   },
 
@@ -95,13 +88,11 @@ const ownerRoutes = [
 
   {
     path: "/owner/bookings",
-
     element: <Bookings />,
   },
 
   {
     path: "/owner/members",
-
     element: <Members />,
   },
 
@@ -111,25 +102,21 @@ const ownerRoutes = [
 
   {
     path: "/owner/payments",
-
     element: <Payments />,
   },
 
   {
     path: "/owner/refunds",
-
     element: <Refunds />,
   },
 
   {
     path: "/owner/invoices",
-
     element: <Invoices />,
   },
 
   {
     path: "/owner/coupons",
-
     element: <Coupons />,
   },
 
@@ -139,24 +126,58 @@ const ownerRoutes = [
 
   {
     path: "/owner/revenue",
-
     element: <Revenue />,
   },
 
   {
     path: "/owner/occupancy",
-
     element: <Occupancy />,
   },
 
   // ==========================================================
-  // REPORTS LANDING PAGE
+  // REPORTS
   // ==========================================================
 
   {
     path: "/owner/reports",
-
     element: <Reports />,
+  },
+
+  // ==========================================================
+  // HELP & SUPPORT
+  // ==========================================================
+
+  {
+    path: "/owner/help-support",
+    element: <HelpSupport />,
+  },
+
+  // ==========================================================
+  // OWNER -> LIBRARYHUB SUPPORT
+  // ==========================================================
+
+  {
+    path: "/owner/support/tickets",
+    element: <MySupportTickets />,
+  },
+
+  {
+    path: "/owner/support/tickets/:ticketId",
+    element: <OwnerSupportTicketDetails />,
+  },
+
+  // ==========================================================
+  // STUDENT -> LIBRARY OWNER SUPPORT
+  // ==========================================================
+
+  {
+    path: "/owner/student-support",
+    element: <StudentSupportTickets />,
+  },
+
+  {
+    path: "/owner/student-support/:libraryId/tickets/:ticketId",
+    element: <OwnerSupportTicketDetails />,
   },
 ];
 

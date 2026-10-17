@@ -4,7 +4,9 @@ import {
   Autorenew,
   Dashboard,
   EventSeat,
+  ForumOutlined,
   Groups,
+  HelpOutlineOutlined,
   LibraryBooks,
   LocalOffer,
   Notifications,
@@ -12,6 +14,7 @@ import {
   Receipt,
   Replay,
   Settings,
+  SupportAgentOutlined,
   TrendingUp,
   WorkspacePremium,
 } from "@mui/icons-material";
@@ -162,6 +165,34 @@ const ownerMenu = [
   },
 
   // ==========================================================
+  // SUPPORT
+  // ==========================================================
+
+  {
+    section: "SUPPORT",
+
+    items: [
+      {
+        label: "Help & Support",
+        path: "/owner/help-support",
+        icon: HelpOutlineOutlined,
+      },
+
+      {
+        label: "My Support Tickets",
+        path: "/owner/support/tickets",
+        icon: ForumOutlined,
+      },
+
+      {
+        label: "Student Support",
+        path: "/owner/student-support",
+        icon: SupportAgentOutlined,
+      },
+    ],
+  },
+
+  // ==========================================================
   // INSIGHTS
   // ==========================================================
 
@@ -190,6 +221,22 @@ const ownerMenu = [
   },
 
   // ==========================================================
+  // AUTOMATION
+  // ==========================================================
+
+  {
+    section: "AUTOMATION",
+
+    items: [
+      {
+        label: "Automation Center",
+        path: "/owner/automation",
+        icon: Autorenew,
+      },
+    ],
+  },
+
+  // ==========================================================
   // SYSTEM
   // ==========================================================
 
@@ -207,22 +254,6 @@ const ownerMenu = [
         label: "Settings",
         path: "/owner/settings",
         icon: Settings,
-      },
-    ],
-  },
-
-  // ==========================================================
-  // AUTOMATION
-  // ==========================================================
-
-  {
-    section: "AUTOMATION",
-
-    items: [
-      {
-        label: "Automation Center",
-        path: "/owner/automation",
-        icon: Autorenew,
       },
     ],
   },

@@ -2,37 +2,63 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   FormControl,
   Grid,
+  InputAdornment,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
   Stack,
   TextField,
+  Tooltip,
   Typography,
+  alpha,
+  useTheme,
 } from "@mui/material";
 
 import SearchIcon from "@mui/icons-material/Search";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CancelOutlinedIcon from "@mui/icons-material/CancelOutlined";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import EventSeatRoundedIcon from "@mui/icons-material/EventSeatRounded";
+import PendingActionsRoundedIcon from "@mui/icons-material/PendingActionsRounded";
+import TaskAltRoundedIcon from "@mui/icons-material/TaskAltRounded";
+import HighlightOffRoundedIcon from "@mui/icons-material/HighlightOffRounded";
+import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
+import EmailOutlinedIcon from "@mui/icons-material/EmailOutlined";
+import AccessTimeRoundedIcon from "@mui/icons-material/AccessTimeRounded";
+import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
-import SeatChangeRequestStatus
-  from "../Common/Components/SeatChangeRequestStatus";
+import SeatChangeRequestStatus from "../Common/Components/SeatChangeRequestStatus";
 import OwnerReviewDialog from "./components/OwnerReviewDialog";
 
 import libraryApi from "../../api/libraryApi";
 import seatChangeRequestApi from "../../api/seatChangeRequestApi";
 
-// ============================================================
-// HELPERS
-// ============================================================
+const OWNER_SELECTED_LIBRARY_KEY = "ownerSelectedLibraryId";
+
+function getStoredOwnerLibraryId() {
+  const value = localStorage.getItem(OWNER_SELECTED_LIBRARY_KEY);
+  if (!value) return null;
+  const id = Number(value);
+  return Number.isFinite(id) ? id : null;
+}
+
+function storeOwnerLibraryId(libraryId) {
+  const id = Number(libraryId);
+  if (!Number.isFinite(id)) return;
+  localStorage.setItem(OWNER_SELECTED_LIBRARY_KEY, String(id));
+}
 
 function getErrorMessage(error, fallback = "Something went wrong.") {
   return (
@@ -44,27 +70,15 @@ function getErrorMessage(error, fallback = "Something went wrong.") {
 }
 
 function normalizeListResponse(response) {
-  if (Array.isArray(response)) {
-    return response;
-  }
-
-  if (Array.isArray(response?.content)) {
-    return response.content;
-  }
-
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.content)) return response.content;
   return [];
 }
 
 function formatDateTime(value) {
-  if (!value) {
-    return "-";
-  }
-
+  if (!value) return "-";
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+  if (Number.isNaN(date.getTime())) return value;
 
   return date.toLocaleString("en-IN", {
     day: "2-digit",
@@ -75,75 +89,128 @@ function formatDateTime(value) {
   });
 }
 
-// ============================================================
-// SEAT CHANGE REQUESTS
-// ============================================================
+function initials(name) {
+  if (!name) return "M";
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "M";
+  return parts
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+function mapRequest(request) {
+  return {
+    ...request,
+    requestId: request?.requestId ?? null,
+    studentId: request?.studentId ?? null,
+    studentName: request?.studentName || "Unknown Member",
+    studentEmail: request?.studentEmail || "",
+    profileImageUrl: request?.profileImageUrl || "",
+    subscriptionId: request?.subscriptionId ?? null,
+    currentSeatId: request?.currentSeatId ?? null,
+    currentSeat: request?.currentSeat || "-",
+    requestedSeatId: request?.requestedSeatId ?? null,
+    requestedSeat: request?.requestedSeat || "-",
+    reason: request?.reason || "",
+    rejectionReason: request?.rejectionReason || "",
+    status: request?.status || "PENDING",
+    requestedAt: request?.requestedAt || "",
+  };
+}
+
+function KpiCard({ icon, label, value, helper, tone = "primary" }) {
+  const theme = useTheme();
+  const palette = theme.palette[tone]?.main || theme.palette.primary.main;
+
+  return (
+    <Card
+      variant="outlined"
+      sx={{
+        height: "100%",
+        borderRadius: 3.2,
+        borderColor: alpha(palette, 0.14),
+        background: `linear-gradient(145deg, #fff 0%, ${alpha(palette, 0.035)} 100%)`,
+        boxShadow: "0 10px 30px rgba(15,23,42,0.045)",
+      }}
+    >
+      <CardContent sx={{ p: 2.35 }}>
+        <Stack direction="row" spacing={1.6} alignItems="center">
+          <Box
+            sx={{
+              width: 44,
+              height: 44,
+              borderRadius: 2.4,
+              display: "grid",
+              placeItems: "center",
+              bgcolor: alpha(palette, 0.09),
+              color: palette,
+              flexShrink: 0,
+            }}
+          >
+            {icon}
+          </Box>
+
+          <Box minWidth={0}>
+            <Typography variant="body2" color="text.secondary" fontWeight={650}>
+              {label}
+            </Typography>
+            <Typography variant="h5" fontWeight={900} sx={{ lineHeight: 1.15 }}>
+              {value}
+            </Typography>
+            {helper && (
+              <Typography variant="caption" color="text.secondary">
+                {helper}
+              </Typography>
+            )}
+          </Box>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
 
 function SeatChangeRequests() {
-  // ==========================================================
-  // ROUTER / NOTIFICATION DEEP LINK
-  // ==========================================================
-
+  const theme = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
   const fromNotification = Boolean(location.state?.fromNotification);
-
   const notificationReferenceId =
     location.state?.notificationReferenceId ?? null;
-
   const notificationReferenceType =
     location.state?.notificationReferenceType ?? null;
 
   const [highlightedRequestId, setHighlightedRequestId] = useState(null);
-
   const [resolvingNotificationTarget, setResolvingNotificationTarget] =
     useState(false);
-
   const [notificationTargetHandled, setNotificationTargetHandled] =
     useState(false);
-
-  // ==========================================================
-  // LIBRARY STATE
-  // ==========================================================
 
   const [libraries, setLibraries] = useState([]);
   const [libraryId, setLibraryId] = useState("");
   const [loadingLibraries, setLoadingLibraries] = useState(true);
 
-  // ==========================================================
-  // REQUEST DATA
-  // ==========================================================
-
   const [requests, setRequests] = useState([]);
   const [summary, setSummary] = useState(null);
   const [loadingRequests, setLoadingRequests] = useState(false);
 
-  // ==========================================================
-  // FILTERS
-  // ==========================================================
-
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
-
-  // ==========================================================
-  // REVIEW DIALOG
-  // ==========================================================
 
   const [reviewRequest, setReviewRequest] = useState(null);
   const [reviewAction, setReviewAction] = useState(null);
   const [processingReview, setProcessingReview] = useState(false);
 
-  // ==========================================================
-  // FEEDBACK
-  // ==========================================================
-
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // ==========================================================
-  // LOAD OWNER LIBRARIES
-  // ==========================================================
+  const selectedLibrary = useMemo(
+    () =>
+      libraries.find((library) => String(library.id) === String(libraryId)) ||
+      null,
+    [libraries, libraryId],
+  );
 
   const loadLibraries = useCallback(async () => {
     try {
@@ -151,9 +218,7 @@ function SeatChangeRequests() {
       setError("");
 
       const response = await libraryApi.getMyLibraries();
-
       const libraryList = normalizeListResponse(response);
-
       setLibraries(libraryList);
 
       if (libraryList.length === 0) {
@@ -163,36 +228,37 @@ function SeatChangeRequests() {
         return;
       }
 
+      const storedLibraryId = getStoredOwnerLibraryId();
+      const preferredLibrary = storedLibraryId
+        ? libraryList.find(
+            (library) => Number(library.id) === Number(storedLibraryId),
+          )
+        : null;
+
       setLibraryId((currentLibraryId) => {
-        const currentLibraryStillExists =
+        const currentStillExists =
           currentLibraryId &&
           libraryList.some(
             (library) => String(library.id) === String(currentLibraryId),
           );
 
-        if (currentLibraryStillExists) {
-          return String(currentLibraryId);
-        }
+        if (currentStillExists) return String(currentLibraryId);
 
-        return String(libraryList[0].id);
+        const nextLibraryId = String(preferredLibrary?.id ?? libraryList[0].id);
+        storeOwnerLibraryId(nextLibraryId);
+        return nextLibraryId;
       });
     } catch (err) {
       console.error("Failed to load owner libraries:", err);
-
       setLibraries([]);
       setLibraryId("");
       setRequests([]);
       setSummary(null);
-
       setError(getErrorMessage(err, "Unable to load your libraries."));
     } finally {
       setLoadingLibraries(false);
     }
   }, []);
-
-  // ==========================================================
-  // LOAD SEAT CHANGE REQUESTS
-  // ==========================================================
 
   const loadRequests = useCallback(async () => {
     if (!libraryId) {
@@ -207,36 +273,24 @@ function SeatChangeRequests() {
 
       const [requestsResponse, summaryResponse] = await Promise.all([
         seatChangeRequestApi.getLibraryRequests(libraryId, status),
-
         seatChangeRequestApi.getLibraryRequestSummary(libraryId),
       ]);
 
-      setRequests(normalizeListResponse(requestsResponse));
-
+      setRequests(normalizeListResponse(requestsResponse).map(mapRequest));
       setSummary(summaryResponse ?? null);
     } catch (err) {
       console.error("Failed to load seat change requests:", err);
-
       setRequests([]);
       setSummary(null);
-
       setError(getErrorMessage(err, "Unable to load seat change requests."));
     } finally {
       setLoadingRequests(false);
     }
   }, [libraryId, status]);
 
-  // ==========================================================
-  // INITIAL LIBRARY LOAD
-  // ==========================================================
-
   useEffect(() => {
     loadLibraries();
   }, [loadLibraries]);
-
-  // ==========================================================
-  // LOAD REQUESTS WHEN LIBRARY / STATUS CHANGES
-  // ==========================================================
 
   useEffect(() => {
     if (!libraryId) {
@@ -245,33 +299,16 @@ function SeatChangeRequests() {
       return;
     }
 
+    storeOwnerLibraryId(libraryId);
     loadRequests();
   }, [libraryId, loadRequests]);
 
-  // ==========================================================
-  // RESOLVE NOTIFICATION TARGET ACROSS OWNER LIBRARIES
-  // ==========================================================
-
   useEffect(() => {
-    if (!fromNotification) {
-      return;
-    }
-
-    if (notificationTargetHandled) {
-      return;
-    }
-
-    if (notificationReferenceType !== "SEAT_CHANGE_REQUEST") {
-      return;
-    }
-
-    if (!notificationReferenceId) {
-      return;
-    }
-
-    if (loadingLibraries || libraries.length === 0) {
-      return;
-    }
+    if (!fromNotification) return;
+    if (notificationTargetHandled) return;
+    if (notificationReferenceType !== "SEAT_CHANGE_REQUEST") return;
+    if (!notificationReferenceId) return;
+    if (loadingLibraries || libraries.length === 0) return;
 
     let cancelled = false;
 
@@ -281,16 +318,14 @@ function SeatChangeRequests() {
         setError("");
 
         for (const library of libraries) {
-          if (cancelled) {
-            return;
-          }
+          if (cancelled) return;
 
           const response = await seatChangeRequestApi.getLibraryRequests(
             library.id,
             "ALL",
           );
-
-          const libraryRequests = normalizeListResponse(response);
+          const libraryRequests =
+            normalizeListResponse(response).map(mapRequest);
 
           const matchingRequest = libraryRequests.find(
             (request) =>
@@ -299,23 +334,15 @@ function SeatChangeRequests() {
 
           if (matchingRequest) {
             setLibraryId(String(library.id));
-
+            storeOwnerLibraryId(library.id);
             setStatus("ALL");
             setSearch("");
-
             setHighlightedRequestId(matchingRequest.requestId);
-
             setSuccess(
               `Seat change request #${matchingRequest.requestId} opened from notification.`,
             );
-
             setNotificationTargetHandled(true);
-
-            navigate(location.pathname, {
-              replace: true,
-              state: null,
-            });
-
+            navigate(location.pathname, { replace: true, state: null });
             return;
           }
         }
@@ -323,36 +350,23 @@ function SeatChangeRequests() {
         setError(
           `Seat change request #${notificationReferenceId} could not be found in your libraries.`,
         );
-
         setNotificationTargetHandled(true);
-
-        navigate(location.pathname, {
-          replace: true,
-          state: null,
-        });
+        navigate(location.pathname, { replace: true, state: null });
       } catch (err) {
         console.error(
           "Failed to resolve notification seat-change request:",
           err,
         );
-
         setError(
           getErrorMessage(
             err,
             "Unable to open the seat change request from the notification.",
           ),
         );
-
         setNotificationTargetHandled(true);
-
-        navigate(location.pathname, {
-          replace: true,
-          state: null,
-        });
+        navigate(location.pathname, { replace: true, state: null });
       } finally {
-        if (!cancelled) {
-          setResolvingNotificationTarget(false);
-        }
+        if (!cancelled) setResolvingNotificationTarget(false);
       }
     };
 
@@ -372,53 +386,27 @@ function SeatChangeRequests() {
     navigate,
   ]);
 
-  // ==========================================================
-  // SCROLL TO HIGHLIGHTED REQUEST AFTER DATA LOADS
-  // ==========================================================
-
   useEffect(() => {
-    if (!highlightedRequestId) {
-      return;
-    }
-
-    if (loadingRequests) {
-      return;
-    }
+    if (!highlightedRequestId || loadingRequests) return;
 
     const exists = requests.some(
       (request) => String(request.requestId) === String(highlightedRequestId),
     );
-
-    if (!exists) {
-      return;
-    }
+    if (!exists) return;
 
     const timeoutId = window.setTimeout(() => {
       const element = document.getElementById(
         `seat-change-request-${highlightedRequestId}`,
       );
-
-      element?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
+      element?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 150);
 
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
+    return () => window.clearTimeout(timeoutId);
   }, [highlightedRequestId, loadingRequests, requests]);
-
-  // ==========================================================
-  // SEARCH FILTER
-  // ==========================================================
 
   const filteredRequests = useMemo(() => {
     const query = search.trim().toLowerCase();
-
-    if (!query) {
-      return requests;
-    }
+    if (!query) return requests;
 
     return requests.filter((request) => {
       const searchableValues = [
@@ -444,58 +432,37 @@ function SeatChangeRequests() {
     });
   }, [requests, search]);
 
-  // ==========================================================
-  // SUMMARY VALUES
-  // ==========================================================
-
   const totalRequests = Number(summary?.totalRequests ?? 0);
-
   const pendingRequests = Number(summary?.pendingRequests ?? 0);
-
   const approvedRequests = Number(summary?.approvedRequests ?? 0);
-
   const rejectedRequests = Number(summary?.rejectedRequests ?? 0);
 
-  // ==========================================================
-  // OPEN APPROVE DIALOG
-  // ==========================================================
+  const approvalRate =
+    approvedRequests + rejectedRequests > 0
+      ? Math.round(
+          (approvedRequests / (approvedRequests + rejectedRequests)) * 100,
+        )
+      : 0;
 
   const handleApprove = (request) => {
     setError("");
     setSuccess("");
-
     setReviewRequest(request);
     setReviewAction("APPROVE");
   };
 
-  // ==========================================================
-  // OPEN REJECT DIALOG
-  // ==========================================================
-
   const handleReject = (request) => {
     setError("");
     setSuccess("");
-
     setReviewRequest(request);
     setReviewAction("REJECT");
   };
 
-  // ==========================================================
-  // CLOSE REVIEW DIALOG
-  // ==========================================================
-
   const handleCloseReview = () => {
-    if (processingReview) {
-      return;
-    }
-
+    if (processingReview) return;
     setReviewRequest(null);
     setReviewAction(null);
   };
-
-  // ==========================================================
-  // REVIEW CONFIRM
-  // ==========================================================
 
   const handleReviewConfirm = async ({
     requestId,
@@ -524,13 +491,11 @@ function SeatChangeRequests() {
           libraryId,
           effectiveRequestId,
         );
-
         setSuccess(
           `Seat change request #${effectiveRequestId} approved successfully.`,
         );
       } else if (reviewedStatus === "REJECTED" || reviewAction === "REJECT") {
         const rejectionReason = ownerComment?.trim();
-
         if (!rejectionReason) {
           setError("Rejection reason is required.");
           return;
@@ -552,644 +517,708 @@ function SeatChangeRequests() {
 
       setReviewRequest(null);
       setReviewAction(null);
-
       await loadRequests();
     } catch (err) {
       console.error("Failed to review seat change request:", err);
-
       setError(getErrorMessage(err, "Unable to process seat change request."));
     } finally {
       setProcessingReview(false);
     }
   };
 
-  // ==========================================================
-  // LIBRARY CHANGE
-  // ==========================================================
-
   const handleLibraryChange = (event) => {
-    setLibraryId(String(event.target.value));
-
+    const nextLibraryId = String(event.target.value);
+    setLibraryId(nextLibraryId);
+    storeOwnerLibraryId(nextLibraryId);
     setSearch("");
     setStatus("ALL");
-
     setReviewRequest(null);
     setReviewAction(null);
-
     setHighlightedRequestId(null);
-
     setError("");
     setSuccess("");
   };
 
-  // ==========================================================
-  // STATUS CHANGE
-  // ==========================================================
-
   const handleStatusChange = (event) => {
     setStatus(event.target.value);
-
     setSearch("");
     setHighlightedRequestId(null);
-
     setError("");
   };
 
-  // ==========================================================
-  // RENDER
-  // ==========================================================
-
   return (
-    <Box>
-      {/* =================================================== */}
-      {/* PAGE HEADER */}
-      {/* =================================================== */}
-
-      <Stack
-        direction={{
-          xs: "column",
-          md: "row",
+    <Box sx={{ pb: 4 }}>
+      <Paper
+        variant="outlined"
+        sx={{
+          position: "relative",
+          overflow: "hidden",
+          p: { xs: 2.5, md: 3.2 },
+          mb: 3,
+          borderRadius: 4,
+          borderColor: alpha(theme.palette.primary.main, 0.12),
+          background: `linear-gradient(118deg, ${alpha(
+            theme.palette.primary.main,
+            0.08,
+          )} 0%, #fff 52%, ${alpha(theme.palette.info.main, 0.05)} 100%)`,
+          boxShadow: "0 14px 40px rgba(15,23,42,0.05)",
+          "&::after": {
+            content: '\"\"',
+            position: "absolute",
+            width: 190,
+            height: 190,
+            borderRadius: "50%",
+            right: -45,
+            top: -85,
+            bgcolor: alpha(theme.palette.primary.main, 0.05),
+          },
         }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "flex-start",
-          md: "center",
-        }}
-        spacing={2}
-        mb={3}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={700}>
-            Seat Change Requests
-          </Typography>
-
-          <Typography variant="body2" color="text.secondary" mt={0.5}>
-            Review and manage member seat change requests.
-          </Typography>
-        </Box>
-
-        <FormControl
-          size="small"
-          sx={{
-            minWidth: 220,
-          }}
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "stretch", md: "center" }}
+          spacing={2.5}
+          position="relative"
+          zIndex={1}
         >
-          <InputLabel>Library</InputLabel>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box
+              sx={{
+                width: 58,
+                height: 58,
+                borderRadius: 3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: "primary.main",
+                color: "common.white",
+                boxShadow: `0 10px 28px ${alpha(theme.palette.primary.main, 0.24)}`,
+                flexShrink: 0,
+              }}
+            >
+              <SwapHorizRoundedIcon sx={{ fontSize: 30 }} />
+            </Box>
 
-          <Select
-            value={libraryId}
-            label="Library"
-            disabled={loadingLibraries || resolvingNotificationTarget}
-            onChange={handleLibraryChange}
-          >
-            {libraries.map((library) => (
-              <MenuItem key={library.id} value={String(library.id)}>
-                {library.name}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Stack>
+            <Box>
+              <Typography
+                variant="h4"
+                fontWeight={900}
+                sx={{ letterSpacing: -0.6 }}
+              >
+                Seat Change Requests
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mt={0.4}>
+                Review member seat moves, understand the reason, and make a
+                clear decision.
+              </Typography>
 
-      {/* =================================================== */}
-      {/* NOTIFICATION RESOLUTION */}
-      {/* =================================================== */}
+              {selectedLibrary && (
+                <Chip
+                  size="small"
+                  label={selectedLibrary.name}
+                  sx={{
+                    mt: 1.3,
+                    fontWeight: 750,
+                    bgcolor: alpha(theme.palette.primary.main, 0.07),
+                    color: "primary.main",
+                  }}
+                />
+              )}
+            </Box>
+          </Stack>
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <FormControl
+              size="small"
+              sx={{ minWidth: { xs: "100%", sm: 220 } }}
+            >
+              <InputLabel>Library</InputLabel>
+              <Select
+                value={libraryId}
+                label="Library"
+                disabled={loadingLibraries || resolvingNotificationTarget}
+                onChange={handleLibraryChange}
+                sx={{ borderRadius: 2.2, bgcolor: "background.paper" }}
+              >
+                {libraries.map((library) => (
+                  <MenuItem key={library.id} value={String(library.id)}>
+                    {library.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Tooltip title="Refresh requests">
+              <span>
+                <Button
+                  variant="outlined"
+                  startIcon={
+                    loadingRequests ? (
+                      <CircularProgress size={16} />
+                    ) : (
+                      <RefreshRoundedIcon />
+                    )
+                  }
+                  disabled={!libraryId || loadingRequests}
+                  onClick={loadRequests}
+                  sx={{
+                    height: 40,
+                    borderRadius: 2.2,
+                    px: 2,
+                    fontWeight: 800,
+                    whiteSpace: "nowrap",
+                    bgcolor: "background.paper",
+                  }}
+                >
+                  Refresh
+                </Button>
+              </span>
+            </Tooltip>
+          </Stack>
+        </Stack>
+      </Paper>
 
       {resolvingNotificationTarget && (
         <Alert
           severity="info"
-          sx={{
-            mb: 3,
-          }}
+          sx={{ mb: 2.5, borderRadius: 2.5 }}
           icon={<CircularProgress size={18} />}
         >
           Opening the seat change request from your notification...
         </Alert>
       )}
 
-      {/* =================================================== */}
-      {/* SUCCESS MESSAGE */}
-      {/* =================================================== */}
-
       {success && (
         <Alert
           severity="success"
-          sx={{
-            mb: 3,
-          }}
+          sx={{ mb: 2.5, borderRadius: 2.5 }}
           onClose={() => setSuccess("")}
         >
           {success}
         </Alert>
       )}
 
-      {/* =================================================== */}
-      {/* ERROR MESSAGE */}
-      {/* =================================================== */}
-
       {error && (
         <Alert
           severity="error"
-          sx={{
-            mb: 3,
-          }}
+          sx={{ mb: 2.5, borderRadius: 2.5 }}
           onClose={() => setError("")}
         >
           {error}
         </Alert>
       )}
 
-      {/* =================================================== */}
-      {/* NO LIBRARY */}
-      {/* =================================================== */}
-
       {!loadingLibraries && libraries.length === 0 && (
-        <Alert
-          severity="info"
-          sx={{
-            mb: 3,
-          }}
-        >
+        <Alert severity="info" sx={{ mb: 3, borderRadius: 2.5 }}>
           No library is available for this owner account.
         </Alert>
       )}
 
-      {/* =================================================== */}
-      {/* SUMMARY CARDS */}
-      {/* =================================================== */}
-
       {libraryId && (
         <Grid container spacing={2} mb={3}>
-          <Grid
-            size={{
-              xs: 12,
-              sm: 6,
-              md: 3,
-            }}
-          >
-            <Card
-              sx={{
-                height: "100%",
-              }}
-            >
-              <CardContent>
-                <Typography variant="body2" color="text.secondary">
-                  Total Requests
-                </Typography>
-
-                <Typography variant="h5" fontWeight={700} mt={0.5}>
-                  {totalRequests}
-                </Typography>
-              </CardContent>
-            </Card>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <KpiCard
+              icon={<SwapHorizRoundedIcon />}
+              label="Total Requests"
+              value={totalRequests}
+              helper="All seat-change requests"
+              tone="primary"
+            />
           </Grid>
-
-          <Grid
-            size={{
-              xs: 12,
-              sm: 6,
-              md: 3,
-            }}
-          >
-            <Card
-              sx={{
-                height: "100%",
-              }}
-            >
-              <CardContent>
-                <Typography variant="body2" color="text.secondary">
-                  Pending
-                </Typography>
-
-                <Typography
-                  variant="h5"
-                  fontWeight={700}
-                  color="warning.main"
-                  mt={0.5}
-                >
-                  {pendingRequests}
-                </Typography>
-              </CardContent>
-            </Card>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <KpiCard
+              icon={<PendingActionsRoundedIcon />}
+              label="Pending"
+              value={pendingRequests}
+              helper="Requires owner decision"
+              tone="warning"
+            />
           </Grid>
-
-          <Grid
-            size={{
-              xs: 12,
-              sm: 6,
-              md: 3,
-            }}
-          >
-            <Card
-              sx={{
-                height: "100%",
-              }}
-            >
-              <CardContent>
-                <Typography variant="body2" color="text.secondary">
-                  Approved
-                </Typography>
-
-                <Typography
-                  variant="h5"
-                  fontWeight={700}
-                  color="success.main"
-                  mt={0.5}
-                >
-                  {approvedRequests}
-                </Typography>
-              </CardContent>
-            </Card>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <KpiCard
+              icon={<TaskAltRoundedIcon />}
+              label="Approved"
+              value={approvedRequests}
+              helper={`${approvalRate}% approval rate`}
+              tone="success"
+            />
           </Grid>
-
-          <Grid
-            size={{
-              xs: 12,
-              sm: 6,
-              md: 3,
-            }}
-          >
-            <Card
-              sx={{
-                height: "100%",
-              }}
-            >
-              <CardContent>
-                <Typography variant="body2" color="text.secondary">
-                  Rejected
-                </Typography>
-
-                <Typography
-                  variant="h5"
-                  fontWeight={700}
-                  color="error.main"
-                  mt={0.5}
-                >
-                  {rejectedRequests}
-                </Typography>
-              </CardContent>
-            </Card>
+          <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+            <KpiCard
+              icon={<HighlightOffRoundedIcon />}
+              label="Rejected"
+              value={rejectedRequests}
+              helper="Closed without seat move"
+              tone="error"
+            />
           </Grid>
         </Grid>
       )}
 
-      {/* =================================================== */}
-      {/* SEARCH / FILTER */}
-      {/* =================================================== */}
-
-      <Card
+      <Paper
+        variant="outlined"
         sx={{
-          mb: 3,
+          p: 2.2,
+          mb: 2.5,
+          borderRadius: 3.2,
+          borderColor: "divider",
+          boxShadow: "0 8px 24px rgba(15,23,42,0.03)",
         }}
       >
-        <CardContent>
-          <Stack
-            direction={{
-              xs: "column",
-              md: "row",
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1.5}
+          alignItems={{ xs: "stretch", md: "center" }}
+        >
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search member, request, subscription or seat..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" />
+                </InputAdornment>
+              ),
             }}
-            spacing={2}
+            sx={{
+              "& .MuiOutlinedInput-root": { borderRadius: 2.2 },
+              minWidth: { md: 340 },
+            }}
+          />
+
+          <FormControl size="small" sx={{ minWidth: 190 }}>
+            <InputLabel>Status</InputLabel>
+            <Select
+              value={status}
+              label="Status"
+              disabled={!libraryId}
+              onChange={handleStatusChange}
+              sx={{ borderRadius: 2.2 }}
+            >
+              <MenuItem value="ALL">All Requests</MenuItem>
+              <MenuItem value="PENDING">Pending</MenuItem>
+              <MenuItem value="APPROVED">Approved</MenuItem>
+              <MenuItem value="REJECTED">Rejected</MenuItem>
+            </Select>
+          </FormControl>
+
+          <Chip
+            size="small"
+            label={`${filteredRequests.length} visible`}
+            variant="outlined"
+            sx={{
+              fontWeight: 750,
+              alignSelf: { xs: "flex-start", md: "center" },
+            }}
+          />
+        </Stack>
+      </Paper>
+
+      {(loadingLibraries || loadingRequests) && (
+        <Paper variant="outlined" sx={{ borderRadius: 3.2, p: 5, mb: 3 }}>
+          <Stack
+            alignItems="center"
+            justifyContent="center"
+            spacing={1.5}
+            minHeight={180}
           >
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="Search member, request or seat..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <SearchIcon
-                    sx={{
-                      mr: 1,
-                      color: "text.secondary",
-                    }}
-                  />
-                ),
-              }}
-            />
-
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 180,
-              }}
-            >
-              <InputLabel>Status</InputLabel>
-
-              <Select
-                value={status}
-                label="Status"
-                disabled={!libraryId}
-                onChange={handleStatusChange}
-              >
-                <MenuItem value="ALL">All Requests</MenuItem>
-
-                <MenuItem value="PENDING">Pending</MenuItem>
-
-                <MenuItem value="APPROVED">Approved</MenuItem>
-
-                <MenuItem value="REJECTED">Rejected</MenuItem>
-              </Select>
-            </FormControl>
+            <CircularProgress />
+            <Typography variant="body2" color="text.secondary">
+              {loadingLibraries
+                ? "Loading libraries..."
+                : "Loading seat change requests..."}
+            </Typography>
           </Stack>
-        </CardContent>
-      </Card>
-
-      {/* =================================================== */}
-      {/* LIBRARY LOADING */}
-      {/* =================================================== */}
-
-      {loadingLibraries && (
-        <Card>
-          <CardContent>
-            <Stack
-              alignItems="center"
-              justifyContent="center"
-              spacing={1.5}
-              sx={{
-                minHeight: 200,
-              }}
-            >
-              <CircularProgress />
-
-              <Typography variant="body2" color="text.secondary">
-                Loading libraries...
-              </Typography>
-            </Stack>
-          </CardContent>
-        </Card>
+        </Paper>
       )}
-
-      {/* =================================================== */}
-      {/* REQUEST LOADING */}
-      {/* =================================================== */}
-
-      {!loadingLibraries && loadingRequests && (
-        <Card>
-          <CardContent>
-            <Stack
-              alignItems="center"
-              justifyContent="center"
-              spacing={1.5}
-              sx={{
-                minHeight: 220,
-              }}
-            >
-              <CircularProgress />
-
-              <Typography variant="body2" color="text.secondary">
-                Loading seat change requests...
-              </Typography>
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* =================================================== */}
-      {/* REQUEST CARDS */}
-      {/* =================================================== */}
 
       {!loadingLibraries && !loadingRequests && libraryId && (
-        <Grid container spacing={2}>
+        <Stack spacing={2}>
           {filteredRequests.map((request) => {
             const highlighted =
               String(highlightedRequestId) === String(request.requestId);
+            const isPending = request.status === "PENDING";
 
             return (
-              <Grid
-                size={{
-                  xs: 12,
-                }}
+              <Card
                 key={request.requestId}
+                id={`seat-change-request-${request.requestId}`}
+                variant="outlined"
+                sx={{
+                  borderRadius: 3.4,
+                  overflow: "hidden",
+                  borderWidth: highlighted ? 2 : 1,
+                  borderColor: highlighted
+                    ? "primary.main"
+                    : isPending
+                      ? alpha(theme.palette.warning.main, 0.18)
+                      : "divider",
+                  background: highlighted
+                    ? `linear-gradient(110deg, ${alpha(theme.palette.primary.main, 0.05)}, #fff 35%)`
+                    : "background.paper",
+                  boxShadow: highlighted
+                    ? `0 16px 38px ${alpha(theme.palette.primary.main, 0.12)}`
+                    : "0 8px 24px rgba(15,23,42,0.035)",
+                  transition: "all 0.25s ease",
+                }}
               >
-                <Card
-                  id={`seat-change-request-${request.requestId}`}
-                  sx={{
-                    border: highlighted ? "2px solid" : "1px solid",
-
-                    borderColor: highlighted ? "primary.main" : "divider",
-
-                    backgroundColor: highlighted
-                      ? "rgba(79, 70, 229, 0.04)"
-                      : "background.paper",
-
-                    boxShadow: highlighted ? 3 : 0,
-
-                    transition: "all 0.25s ease",
-                  }}
-                >
-                  <CardContent>
-                    <Stack spacing={2}>
-                      {/* REQUEST HEADER */}
-
+                <CardContent sx={{ p: { xs: 2.2, md: 2.6 } }}>
+                  <Stack spacing={2.2}>
+                    <Stack
+                      direction={{ xs: "column", md: "row" }}
+                      justifyContent="space-between"
+                      alignItems={{ xs: "flex-start", md: "center" }}
+                      spacing={2}
+                    >
                       <Stack
-                        direction={{
-                          xs: "column",
-                          md: "row",
-                        }}
-                        justifyContent="space-between"
-                        alignItems={{
-                          xs: "flex-start",
-                          md: "center",
-                        }}
-                        spacing={2}
+                        direction="row"
+                        spacing={1.5}
+                        alignItems="center"
+                        minWidth={0}
                       >
+                        <Avatar
+                          src={request.profileImageUrl || undefined}
+                          alt={request.studentName}
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            bgcolor: alpha(theme.palette.primary.main, 0.1),
+                            color: "primary.main",
+                            fontWeight: 850,
+                            border: "2px solid",
+                            borderColor: alpha(
+                              theme.palette.primary.main,
+                              0.14,
+                            ),
+                            flexShrink: 0,
+                          }}
+                        >
+                          {!request.profileImageUrl
+                            ? initials(request.studentName)
+                            : null}
+                        </Avatar>
+
+                        <Box minWidth={0}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                            flexWrap="wrap"
+                            useFlexGap
+                          >
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={850}
+                              noWrap
+                            >
+                              {request.studentName}
+                            </Typography>
+                            <Chip
+                              size="small"
+                              label={`#${request.requestId}`}
+                              variant="outlined"
+                              sx={{ height: 24, fontWeight: 750 }}
+                            />
+                          </Stack>
+
+                          <Stack
+                            direction="row"
+                            spacing={1.1}
+                            alignItems="center"
+                            mt={0.45}
+                            flexWrap="wrap"
+                            useFlexGap
+                          >
+                            {request.studentEmail && (
+                              <Stack
+                                direction="row"
+                                spacing={0.45}
+                                alignItems="center"
+                              >
+                                <EmailOutlinedIcon
+                                  sx={{ fontSize: 15, color: "text.secondary" }}
+                                />
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  {request.studentEmail}
+                                </Typography>
+                              </Stack>
+                            )}
+                            {request.subscriptionId && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                Subscription #{request.subscriptionId}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </Box>
+                      </Stack>
+
+                      <SeatChangeRequestStatus status={request.status} />
+                    </Stack>
+
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 2,
+                        borderRadius: 2.6,
+                        bgcolor: alpha(theme.palette.primary.main, 0.018),
+                        borderColor: alpha(theme.palette.primary.main, 0.09),
+                      }}
+                    >
+                      <Grid container spacing={2} alignItems="center">
+                        <Grid size={{ xs: 12, sm: 5 }}>
+                          <Stack
+                            direction="row"
+                            spacing={1.2}
+                            alignItems="center"
+                          >
+                            <Box
+                              sx={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 2,
+                                display: "grid",
+                                placeItems: "center",
+                                bgcolor: alpha(
+                                  theme.palette.text.primary,
+                                  0.05,
+                                ),
+                                color: "text.secondary",
+                              }}
+                            >
+                              <EventSeatRoundedIcon fontSize="small" />
+                            </Box>
+                            <Box>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                fontWeight={650}
+                              >
+                                Current Seat
+                              </Typography>
+                              <Typography variant="subtitle1" fontWeight={850}>
+                                {request.currentSeat}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </Grid>
+
+                        <Grid size={{ xs: 12, sm: 2 }}>
+                          <Box sx={{ display: "grid", placeItems: "center" }}>
+                            <ArrowForwardRoundedIcon color="primary" />
+                          </Box>
+                        </Grid>
+
+                        <Grid size={{ xs: 12, sm: 5 }}>
+                          <Stack
+                            direction="row"
+                            spacing={1.2}
+                            alignItems="center"
+                          >
+                            <Box
+                              sx={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 2,
+                                display: "grid",
+                                placeItems: "center",
+                                bgcolor: alpha(
+                                  theme.palette.primary.main,
+                                  0.08,
+                                ),
+                                color: "primary.main",
+                              }}
+                            >
+                              <EventSeatRoundedIcon fontSize="small" />
+                            </Box>
+                            <Box>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                fontWeight={650}
+                              >
+                                Requested Seat
+                              </Typography>
+                              <Typography
+                                variant="subtitle1"
+                                fontWeight={900}
+                                color="primary.main"
+                              >
+                                {request.requestedSeat}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+
+                    <Grid container spacing={2}>
+                      <Grid size={{ xs: 12, md: 8 }}>
                         <Box>
-                          <Typography fontWeight={700}>
-                            {request.studentName || "Unknown Member"}
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            fontWeight={700}
+                          >
+                            Member Reason
                           </Typography>
-
-                          <Typography variant="body2" color="text.secondary">
-                            Request #{request.requestId}
-                            {request.subscriptionId &&
-                              ` · Subscription #${request.subscriptionId}`}
+                          <Typography
+                            variant="body2"
+                            sx={{ mt: 0.5, lineHeight: 1.65 }}
+                          >
+                            {request.reason || "No reason was provided."}
                           </Typography>
+                        </Box>
+                      </Grid>
 
-                          {request.studentEmail && (
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <Stack
+                          direction="row"
+                          spacing={0.8}
+                          alignItems="flex-start"
+                        >
+                          <AccessTimeRoundedIcon
+                            sx={{
+                              fontSize: 17,
+                              mt: 0.2,
+                              color: "text.secondary",
+                            }}
+                          />
+                          <Box>
                             <Typography
                               variant="caption"
                               color="text.secondary"
-                            >
-                              {request.studentEmail}
-                            </Typography>
-                          )}
-                        </Box>
-
-                        <SeatChangeRequestStatus status={request.status} />
-                      </Stack>
-
-                      {/* REQUEST DETAILS */}
-
-                      <Stack
-                        direction={{
-                          xs: "column",
-                          sm: "row",
-                        }}
-                        spacing={{
-                          xs: 2,
-                          sm: 4,
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            minWidth: 120,
-                          }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            Current Seat
-                          </Typography>
-
-                          <Typography fontWeight={700}>
-                            {request.currentSeat || "-"}
-                          </Typography>
-                        </Box>
-
-                        <Box
-                          sx={{
-                            minWidth: 120,
-                          }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            Requested Seat
-                          </Typography>
-
-                          <Typography fontWeight={700}>
-                            {request.requestedSeat || "-"}
-                          </Typography>
-                        </Box>
-
-                        <Box
-                          sx={{
-                            flex: 1,
-                          }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            Reason
-                          </Typography>
-
-                          <Typography variant="body2">
-                            {request.reason || "-"}
-                          </Typography>
-                        </Box>
-
-                        <Box
-                          sx={{
-                            minWidth: 180,
-                          }}
-                        >
-                          <Typography variant="caption" color="text.secondary">
-                            Requested At
-                          </Typography>
-
-                          <Typography variant="body2">
-                            {formatDateTime(request.requestedAt)}
-                          </Typography>
-                        </Box>
-                      </Stack>
-
-                      {/* REJECTION REASON */}
-
-                      {request.status === "REJECTED" &&
-                        request.rejectionReason && (
-                          <Box
-                            sx={{
-                              p: 1.5,
-                              borderRadius: 1,
-                              bgcolor: "error.light",
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="error.dark"
                               fontWeight={700}
                             >
-                              Rejection Reason
+                              Requested At
                             </Typography>
-
                             <Typography
                               variant="body2"
-                              color="error.dark"
+                              fontWeight={700}
                               mt={0.25}
                             >
-                              {request.rejectionReason}
+                              {formatDateTime(request.requestedAt)}
                             </Typography>
                           </Box>
-                        )}
-
-                      {/* PENDING ACTIONS */}
-
-                      {request.status === "PENDING" && (
-                        <Stack
-                          direction="row"
-                          justifyContent="flex-end"
-                          spacing={1}
-                        >
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            disabled={processingReview}
-                            startIcon={<CancelOutlinedIcon />}
-                            onClick={() => handleReject(request)}
-                          >
-                            Reject
-                          </Button>
-
-                          <Button
-                            variant="contained"
-                            color="success"
-                            disabled={processingReview}
-                            startIcon={<CheckCircleIcon />}
-                            onClick={() => handleApprove(request)}
-                          >
-                            Approve
-                          </Button>
                         </Stack>
+                      </Grid>
+                    </Grid>
+
+                    {request.status === "REJECTED" &&
+                      request.rejectionReason && (
+                        <Box
+                          sx={{
+                            p: 1.7,
+                            borderRadius: 2.2,
+                            bgcolor: alpha(theme.palette.error.main, 0.055),
+                            border: "1px solid",
+                            borderColor: alpha(theme.palette.error.main, 0.14),
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            color="error.main"
+                            fontWeight={800}
+                          >
+                            Rejection Reason
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            color="error.dark"
+                            mt={0.35}
+                          >
+                            {request.rejectionReason}
+                          </Typography>
+                        </Box>
                       )}
-                    </Stack>
-                  </CardContent>
-                </Card>
-              </Grid>
+
+                    {isPending && (
+                      <Stack
+                        direction={{ xs: "column", sm: "row" }}
+                        justifyContent="flex-end"
+                        spacing={1}
+                        pt={0.2}
+                      >
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          disabled={processingReview}
+                          startIcon={<CancelOutlinedIcon />}
+                          onClick={() => handleReject(request)}
+                          sx={{ borderRadius: 2.2, fontWeight: 800 }}
+                        >
+                          Reject
+                        </Button>
+
+                        <Button
+                          variant="contained"
+                          color="success"
+                          disabled={processingReview}
+                          startIcon={<CheckCircleIcon />}
+                          onClick={() => handleApprove(request)}
+                          sx={{
+                            borderRadius: 2.2,
+                            fontWeight: 800,
+                            boxShadow: `0 8px 18px ${alpha(theme.palette.success.main, 0.22)}`,
+                          }}
+                        >
+                          Approve Seat Change
+                        </Button>
+                      </Stack>
+                    )}
+                  </Stack>
+                </CardContent>
+              </Card>
             );
           })}
 
-          {/* EMPTY STATE */}
-
           {filteredRequests.length === 0 && (
-            <Grid
-              size={{
-                xs: 12,
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 6,
+                borderRadius: 3.2,
+                textAlign: "center",
+                borderStyle: "dashed",
               }}
             >
-              <Card>
-                <CardContent>
-                  <Box
-                    sx={{
-                      py: 6,
-                      textAlign: "center",
-                    }}
-                  >
-                    <Typography variant="h6" fontWeight={700}>
-                      No seat change requests found
-                    </Typography>
-
-                    <Typography variant="body2" color="text.secondary" mt={0.5}>
-                      {search
-                        ? "No requests match your search."
-                        : status !== "ALL"
-                          ? `There are no ${status.toLowerCase()} seat change requests.`
-                          : "No member has submitted a seat change request yet."}
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
+              <Box
+                sx={{
+                  width: 58,
+                  height: 58,
+                  borderRadius: 3,
+                  display: "grid",
+                  placeItems: "center",
+                  mx: "auto",
+                  mb: 1.5,
+                  bgcolor: alpha(theme.palette.primary.main, 0.07),
+                  color: "primary.main",
+                }}
+              >
+                <SwapHorizRoundedIcon />
+              </Box>
+              <Typography variant="h6" fontWeight={850}>
+                No seat change requests found
+              </Typography>
+              <Typography variant="body2" color="text.secondary" mt={0.6}>
+                {search
+                  ? "No requests match your search."
+                  : status !== "ALL"
+                    ? `There are no ${status.toLowerCase()} seat change requests.`
+                    : "No member has submitted a seat change request yet."}
+              </Typography>
+            </Paper>
           )}
-        </Grid>
+        </Stack>
       )}
-
-      {/* =================================================== */}
-      {/* REVIEW DIALOG */}
-      {/* =================================================== */}
 
       <OwnerReviewDialog
         open={Boolean(reviewRequest)}

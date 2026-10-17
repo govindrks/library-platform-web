@@ -22,6 +22,7 @@ import {
   ArrowBack,
   ArrowForward,
   Call,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
   Close,
@@ -45,7 +46,6 @@ import studentLibraryApi from "../../../api/studentLibraryApi";
 // ============================================================
 // HELPERS
 // ============================================================
-
 const resolveImageUrl = (url) => {
   if (!url) {
     return null;
@@ -86,18 +86,46 @@ const formatTime = (value) => {
   return String(value).slice(0, 5);
 };
 
+const getOperatingHoursLabel = (library) => {
+  if (library?.open24Hours === true) {
+    return "Open 24 Hours";
+  }
+
+  if (library?.openingTime && library?.closingTime) {
+    return `${formatTime(library.openingTime)} - ${formatTime(
+      library.closingTime,
+    )}`;
+  }
+
+  return "Hours not configured";
+};
+
+const getOperatingHoursDescription = (library) => {
+  if (library?.open24Hours === true) {
+    return "Open all day, every day";
+  }
+
+  if (library?.openingTime && library?.closingTime) {
+    return "Library operating hours";
+  }
+
+  return "Operating hours have not been configured";
+};
+
 // ============================================================
 // STAT CARD
 // ============================================================
-
 function StatCard({ icon, value, label }) {
   return (
     <Card
       elevation={0}
       sx={{
         height: "100%",
+
         border: "1px solid",
+
         borderColor: "divider",
+
         borderRadius: 3,
       }}
     >
@@ -111,6 +139,7 @@ function StatCard({ icon, value, label }) {
           <Box
             sx={{
               display: "flex",
+
               color: "primary.main",
             }}
           >
@@ -133,12 +162,10 @@ function StatCard({ icon, value, label }) {
 // ============================================================
 // STUDENT LIBRARY DETAILS
 // ============================================================
-
 function StudentLibraryDetails() {
   // ==========================================================
   // ROUTER
   // ==========================================================
-
   const { libraryId } = useParams();
 
   const navigate = useNavigate();
@@ -146,7 +173,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // LIBRARY STATE
   // ==========================================================
-
   const [library, setLibrary] = useState(null);
 
   const [loading, setLoading] = useState(true);
@@ -156,7 +182,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // IMAGE SLIDER STATE
   // ==========================================================
-
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
@@ -166,16 +191,15 @@ function StudentLibraryDetails() {
   // ==========================================================
   // RATING SUMMARY
   // ==========================================================
-
   const [ratingSummary, setRatingSummary] = useState({
     averageRating: 0,
+
     totalReviews: 0,
   });
 
   // ==========================================================
   // CURRENT STUDENT REVIEW
   // ==========================================================
-
   const [existingReview, setExistingReview] = useState(null);
 
   const [loadingReview, setLoadingReview] = useState(false);
@@ -193,7 +217,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // LOAD LIBRARY
   // ==========================================================
-
   const loadLibrary = useCallback(async () => {
     try {
       setLoading(true);
@@ -202,7 +225,19 @@ function StudentLibraryDetails() {
 
       const data = await studentLibraryApi.getById(libraryId);
 
-      setLibrary(data || null);
+      setLibrary(
+        data
+          ? {
+              ...data,
+
+              open24Hours: Boolean(data?.open24Hours),
+
+              openingTime: data?.openingTime || "",
+
+              closingTime: data?.closingTime || "",
+            }
+          : null,
+      );
     } catch (requestError) {
       console.error("Student library details failed:", requestError);
 
@@ -220,7 +255,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // LOAD RATING SUMMARY
   // ==========================================================
-
   const loadRatingSummary = useCallback(async () => {
     if (!libraryId) {
       return;
@@ -239,6 +273,7 @@ function StudentLibraryDetails() {
 
       setRatingSummary({
         averageRating: 0,
+
         totalReviews: 0,
       });
     }
@@ -247,7 +282,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // LOAD CURRENT USER REVIEW
   // ==========================================================
-
   const loadMyReview = useCallback(async () => {
     if (!libraryId) {
       return;
@@ -293,7 +327,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // INITIAL DATA LOAD
   // ==========================================================
-
   useEffect(() => {
     loadLibrary();
   }, [loadLibrary]);
@@ -309,7 +342,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // AUTO CLEAR SUCCESS
   // ==========================================================
-
   useEffect(() => {
     if (!reviewSuccess) {
       return undefined;
@@ -327,7 +359,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // AUTO CLEAR ERROR
   // ==========================================================
-
   useEffect(() => {
     if (!reviewError) {
       return undefined;
@@ -346,6 +377,16 @@ function StudentLibraryDetails() {
   // AMENITIES
   // ==========================================================
 
+  /*
+   * The public library-details response contains both:
+   *
+   * 1. amenities       -> standard/master amenities
+   * 2. customAmenities -> owner-created amenities
+   *
+   * Keep them separate so custom amenities can retain their
+   * description and be visually identified in the student portal.
+   */
+
   const amenities = useMemo(() => {
     if (!Array.isArray(library?.amenities)) {
       return [];
@@ -354,10 +395,45 @@ function StudentLibraryDetails() {
     return library.amenities.map(getAmenityName).filter(Boolean);
   }, [library]);
 
+  const customAmenities = useMemo(() => {
+    if (!Array.isArray(library?.customAmenities)) {
+      return [];
+    }
+
+    return library.customAmenities
+      .map((amenity) => {
+        if (!amenity) {
+          return null;
+        }
+
+        if (typeof amenity === "string") {
+          return {
+            id: amenity,
+            name: amenity,
+            description: "",
+          };
+        }
+
+        const name = getAmenityName(amenity);
+
+        if (!name) {
+          return null;
+        }
+
+        return {
+          ...amenity,
+          name,
+          description: amenity.description || "",
+        };
+      })
+      .filter(Boolean);
+  }, [library]);
+
+  const totalAmenityCount = amenities.length + customAmenities.length;
+
   // ==========================================================
   // GALLERY
   // ==========================================================
-
   const galleryImages = useMemo(() => {
     if (!library) {
       return [];
@@ -366,11 +442,13 @@ function StudentLibraryDetails() {
     const images = Array.isArray(library.images) ? library.images : [];
 
     const normalized = images
+
       .map((image) => ({
         ...image,
 
         resolvedUrl: resolveImageUrl(image?.imageUrl),
       }))
+
       .filter((image) => image.resolvedUrl);
 
     const coverUrl = resolveImageUrl(library.coverImageUrl);
@@ -396,7 +474,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // KEEP IMAGE INDEX VALID
   // ==========================================================
-
   useEffect(() => {
     if (galleryImages.length === 0) {
       setSelectedImageIndex(0);
@@ -412,7 +489,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // AUTOMATIC IMAGE SLIDER
   // ==========================================================
-
   useEffect(() => {
     if (galleryImages.length <= 1 || sliderPaused || imagePreviewOpen) {
       return undefined;
@@ -432,7 +508,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // IMAGE SLIDER HANDLERS
   // ==========================================================
-
   const handlePreviousImage = () => {
     if (galleryImages.length === 0) {
       return;
@@ -472,7 +547,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // REVIEW SUBMIT / UPDATE
   // ==========================================================
-
   const handleSubmitReview = async () => {
     if (!studentRating) {
       setReviewError("Please select a rating.");
@@ -528,7 +602,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // LOADING
   // ==========================================================
-
   if (loading) {
     return (
       <Stack
@@ -549,7 +622,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // ERROR
   // ==========================================================
-
   if (error || !library) {
     return (
       <Box>
@@ -558,6 +630,7 @@ function StudentLibraryDetails() {
           onClick={() => navigate("/student/libraries")}
           sx={{
             mb: 2,
+
             textTransform: "none",
           }}
         >
@@ -572,7 +645,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // LIBRARY DATA
   // ==========================================================
-
   const totalSeats = Number(library.totalSeats ?? 0);
 
   const availableSeats = Number(library.availableSeats ?? 0);
@@ -585,7 +657,6 @@ function StudentLibraryDetails() {
   // ==========================================================
   // RATING DATA
   // ==========================================================
-
   const averageRating = Number(ratingSummary.averageRating ?? 0);
 
   const reviewCount = Number(ratingSummary.totalReviews ?? 0);
@@ -593,9 +664,10 @@ function StudentLibraryDetails() {
   // ==========================================================
   // LOCATION DATA
   // ==========================================================
-
   const address = [library.address, library.city, library.state]
+
     .filter(Boolean)
+
     .join(", ");
 
   const latitude = library.latitude ?? library.lat ?? null;
@@ -607,23 +679,24 @@ function StudentLibraryDetails() {
   // ==========================================================
   // SELECTED IMAGE
   // ==========================================================
-
   const selectedImage =
     galleryImages[selectedImageIndex] || galleryImages[0] || null;
 
   // ==========================================================
   // RENDER
   // ==========================================================
-
   return (
     <Box
       sx={{
         width: "100%",
+
         pb: 4,
       }}
     >
       {/* ===================================================== */}
+
       {/* BACK */}
+
       {/* ===================================================== */}
 
       <Button
@@ -631,7 +704,9 @@ function StudentLibraryDetails() {
         onClick={() => navigate("/student/libraries")}
         sx={{
           mb: 2,
+
           textTransform: "none",
+
           fontWeight: 700,
         }}
       >
@@ -639,7 +714,9 @@ function StudentLibraryDetails() {
       </Button>
 
       {/* ===================================================== */}
+
       {/* HERO */}
+
       {/* ===================================================== */}
 
       <Card
@@ -658,12 +735,15 @@ function StudentLibraryDetails() {
       >
         <Grid container>
           {/* ================================================= */}
+
           {/* IMAGE SLIDER */}
+
           {/* ================================================= */}
 
           <Grid
             size={{
               xs: 12,
+
               lg: 7,
             }}
           >
@@ -677,6 +757,7 @@ function StudentLibraryDetails() {
               sx={{
                 height: {
                   xs: 260,
+
                   md: 360,
                 },
 
@@ -690,7 +771,9 @@ function StudentLibraryDetails() {
               }}
             >
               {/* ============================================= */}
+
               {/* CURRENT IMAGE */}
+
               {/* ============================================= */}
 
               {selectedImage ? (
@@ -752,7 +835,9 @@ function StudentLibraryDetails() {
               )}
 
               {/* ============================================= */}
+
               {/* PREVIOUS */}
+
               {/* ============================================= */}
 
               {galleryImages.length > 1 && (
@@ -790,7 +875,9 @@ function StudentLibraryDetails() {
               )}
 
               {/* ============================================= */}
+
               {/* NEXT */}
+
               {/* ============================================= */}
 
               {galleryImages.length > 1 && (
@@ -828,7 +915,9 @@ function StudentLibraryDetails() {
               )}
 
               {/* ============================================= */}
+
               {/* DOT INDICATORS */}
+
               {/* ============================================= */}
 
               {galleryImages.length > 1 && (
@@ -879,7 +968,9 @@ function StudentLibraryDetails() {
               )}
 
               {/* ============================================= */}
+
               {/* IMAGE COUNTER */}
+
               {/* ============================================= */}
 
               {galleryImages.length > 1 && (
@@ -915,12 +1006,15 @@ function StudentLibraryDetails() {
           </Grid>
 
           {/* ================================================= */}
+
           {/* LIBRARY INFORMATION */}
+
           {/* ================================================= */}
 
           <Grid
             size={{
               xs: 12,
+
               lg: 5,
             }}
           >
@@ -928,6 +1022,7 @@ function StudentLibraryDetails() {
               sx={{
                 p: {
                   xs: 2.5,
+
                   md: 4,
                 },
 
@@ -949,7 +1044,9 @@ function StudentLibraryDetails() {
               </Typography>
 
               {/* ============================================= */}
+
               {/* RATING */}
+
               {/* ============================================= */}
 
               <Stack
@@ -978,7 +1075,9 @@ function StudentLibraryDetails() {
               </Stack>
 
               {/* ============================================= */}
+
               {/* ADDRESS */}
+
               {/* ============================================= */}
 
               {address && (
@@ -997,7 +1096,9 @@ function StudentLibraryDetails() {
               )}
 
               {/* ============================================= */}
+
               {/* HOURS */}
+
               {/* ============================================= */}
 
               <Stack
@@ -1010,14 +1111,15 @@ function StudentLibraryDetails() {
               >
                 <AccessTime color="primary" />
 
-                <Typography>
-                  {formatTime(library.openingTime)} -{" "}
-                  {formatTime(library.closingTime)}
+                <Typography fontWeight={700}>
+                  {getOperatingHoursLabel(library)}
                 </Typography>
               </Stack>
 
               {/* ============================================= */}
+
               {/* ACTIONS */}
+
               {/* ============================================= */}
 
               <Stack
@@ -1077,7 +1179,9 @@ function StudentLibraryDetails() {
       </Card>
 
       {/* ===================================================== */}
+
       {/* SEAT STATISTICS */}
+
       {/* ===================================================== */}
 
       <Grid
@@ -1090,6 +1194,7 @@ function StudentLibraryDetails() {
         <Grid
           size={{
             xs: 12,
+
             md: 4,
           }}
         >
@@ -1109,6 +1214,7 @@ function StudentLibraryDetails() {
         <Grid
           size={{
             xs: 12,
+
             md: 4,
           }}
         >
@@ -1129,6 +1235,7 @@ function StudentLibraryDetails() {
         <Grid
           size={{
             xs: 12,
+
             md: 4,
           }}
         >
@@ -1148,7 +1255,9 @@ function StudentLibraryDetails() {
       </Grid>
 
       {/* ===================================================== */}
+
       {/* ABOUT + HOURS */}
+
       {/* ===================================================== */}
 
       <Grid
@@ -1161,6 +1270,7 @@ function StudentLibraryDetails() {
         <Grid
           size={{
             xs: 12,
+
             lg: 7,
           }}
         >
@@ -1203,6 +1313,7 @@ function StudentLibraryDetails() {
         <Grid
           size={{
             xs: 12,
+
             lg: 5,
           }}
         >
@@ -1243,9 +1354,12 @@ function StudentLibraryDetails() {
                   bgcolor: "action.hover",
                 }}
               >
-                <Typography variant="h6" fontWeight={800}>
-                  {formatTime(library.openingTime)} -{" "}
-                  {formatTime(library.closingTime)}
+                <Typography
+                  variant="h6"
+                  fontWeight={800}
+                  color={library.open24Hours ? "success.main" : "text.primary"}
+                >
+                  {getOperatingHoursLabel(library)}
                 </Typography>
 
                 <Typography
@@ -1255,7 +1369,7 @@ function StudentLibraryDetails() {
                     mt: 0.5,
                   }}
                 >
-                  Library operating hours
+                  {getOperatingHoursDescription(library)}
                 </Typography>
               </Box>
             </CardContent>
@@ -1264,7 +1378,9 @@ function StudentLibraryDetails() {
       </Grid>
 
       {/* ===================================================== */}
+
       {/* RATE LIBRARY */}
+
       {/* ===================================================== */}
 
       <Card
@@ -1283,6 +1399,7 @@ function StudentLibraryDetails() {
           sx={{
             p: {
               xs: 2.5,
+
               md: 3,
             },
           }}
@@ -1314,12 +1431,15 @@ function StudentLibraryDetails() {
             </Box>
 
             {/* =============================================== */}
+
             {/* CURRENT RATING */}
+
             {/* =============================================== */}
 
             <Stack
               direction={{
                 xs: "column",
+
                 sm: "row",
               }}
               alignItems={{
@@ -1344,7 +1464,9 @@ function StudentLibraryDetails() {
             <Divider />
 
             {/* =============================================== */}
+
             {/* USER RATING */}
+
             {/* =============================================== */}
 
             <Box>
@@ -1388,7 +1510,9 @@ function StudentLibraryDetails() {
             </Box>
 
             {/* =============================================== */}
+
             {/* COMMENT */}
+
             {/* =============================================== */}
 
             <TextField
@@ -1462,46 +1586,78 @@ function StudentLibraryDetails() {
       </Card>
 
       {/* ===================================================== */}
+
       {/* AMENITIES */}
+
       {/* ===================================================== */}
 
       <Card
         elevation={0}
         sx={{
           border: "1px solid",
-
           borderColor: "divider",
-
           borderRadius: 3,
-
           mb: 2.5,
         }}
       >
         <CardContent>
           <Stack
-            direction="row"
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
             spacing={1.5}
-            alignItems="center"
+            alignItems={{
+              xs: "flex-start",
+              sm: "center",
+            }}
+            justifyContent="space-between"
             sx={{
               mb: 2,
             }}
           >
-            <Wifi color="primary" />
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Wifi color="primary" />
 
-            <Typography variant="h6" fontWeight={800}>
-              Amenities
-            </Typography>
+              <Box>
+                <Typography variant="h6" fontWeight={800}>
+                  Amenities
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary">
+                  Facilities available at this library
+                </Typography>
+              </Box>
+            </Stack>
+
+            {totalAmenityCount > 0 && (
+              <Chip
+                size="small"
+                color="primary"
+                variant="outlined"
+                label={`${totalAmenityCount} ${
+                  totalAmenityCount === 1 ? "Amenity" : "Amenities"
+                }`}
+                sx={{
+                  fontWeight: 700,
+                }}
+              />
+            )}
           </Stack>
 
-          {amenities.length === 0 ? (
+          {totalAmenityCount === 0 ? (
             <Typography color="text.secondary">
               No amenities are currently listed.
             </Typography>
           ) : (
             <Grid container spacing={1.5}>
+              {/* =============================================== */}
+              {/* STANDARD AMENITIES */}
+              {/* =============================================== */}
+
               {amenities.map((amenity, index) => (
                 <Grid
-                  key={`${amenity}-${index}`}
+                  key={`standard-${amenity}-${index}`}
                   size={{
                     xs: 12,
                     sm: 6,
@@ -1511,20 +1667,137 @@ function StudentLibraryDetails() {
                 >
                   <Box
                     sx={{
+                      height: "100%",
+                      minHeight: 76,
                       border: "1px solid",
-
                       borderColor: "divider",
-
-                      borderRadius: 2,
-
-                      p: 1.5,
-
-                      textAlign: "center",
-
+                      borderRadius: 2.5,
+                      px: 1.5,
+                      py: 1.35,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 1.15,
                       bgcolor: "background.paper",
+                      transition:
+                        "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
+                      "&:hover": {
+                        transform: "translateY(-2px)",
+                        borderColor: "primary.light",
+                        boxShadow: "0 8px 20px rgba(15,23,42,0.06)",
+                      },
                     }}
                   >
-                    <Typography fontWeight={600}>{amenity}</Typography>
+                    <Box
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        flexShrink: 0,
+                        borderRadius: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        bgcolor: "primary.50",
+                        color: "primary.main",
+                      }}
+                    >
+                      <CheckCircle fontSize="small" />
+                    </Box>
+
+                    <Typography
+                      variant="body2"
+                      fontWeight={700}
+                      sx={{
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {amenity}
+                    </Typography>
+                  </Box>
+                </Grid>
+              ))}
+
+              {/* =============================================== */}
+              {/* CUSTOM AMENITIES */}
+              {/* =============================================== */}
+
+              {customAmenities.map((amenity, index) => (
+                <Grid
+                  key={`custom-${amenity.id ?? amenity.name}-${index}`}
+                  size={{
+                    xs: 12,
+                    sm: 6,
+                    md: 4,
+                    lg: 3,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      height: "100%",
+                      minHeight: 76,
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: 2.5,
+                      px: 1.5,
+                      py: 1.35,
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 1.15,
+                      bgcolor: "background.paper",
+                      transition:
+                        "transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease",
+                      "&:hover": {
+                        transform: "translateY(-2px)",
+                        borderColor: "primary.light",
+                        boxShadow: "0 8px 20px rgba(15,23,42,0.06)",
+                      },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        flexShrink: 0,
+                        borderRadius: 2,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        bgcolor: "primary.50",
+                        color: "primary.main",
+                      }}
+                    >
+                      <CheckCircle fontSize="small" />
+                    </Box>
+
+                    <Box
+                      sx={{
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      <Typography
+                        variant="body2"
+                        fontWeight={700}
+                        sx={{
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        {amenity.name}
+                      </Typography>
+
+                      {amenity.description && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: "block",
+                            mt: 0.45,
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {amenity.description}
+                        </Typography>
+                      )}
+                    </Box>
                   </Box>
                 </Grid>
               ))}
@@ -1534,7 +1807,9 @@ function StudentLibraryDetails() {
       </Card>
 
       {/* ===================================================== */}
+
       {/* GALLERY THUMBNAILS */}
+
       {/* ===================================================== */}
 
       {galleryImages.length > 0 && (
@@ -1572,7 +1847,9 @@ function StudentLibraryDetails() {
                   key={image.id || `${image.resolvedUrl}-${index}`}
                   size={{
                     xs: 12,
+
                     sm: 6,
+
                     md: 3,
                   }}
                 >
@@ -1630,7 +1907,9 @@ function StudentLibraryDetails() {
       )}
 
       {/* ===================================================== */}
+
       {/* CONTACT & LOCATION */}
+
       {/* ===================================================== */}
 
       <Card
@@ -1663,6 +1942,7 @@ function StudentLibraryDetails() {
             <Grid
               size={{
                 xs: 12,
+
                 lg: 5,
               }}
             >
@@ -1722,6 +2002,7 @@ function StudentLibraryDetails() {
             <Grid
               size={{
                 xs: 12,
+
                 lg: 7,
               }}
             >
@@ -1777,7 +2058,9 @@ function StudentLibraryDetails() {
       </Card>
 
       {/* ===================================================== */}
+
       {/* FULL SCREEN IMAGE PREVIEW */}
+
       {/* ===================================================== */}
 
       <Dialog
@@ -1817,7 +2100,9 @@ function StudentLibraryDetails() {
           }}
         >
           {/* =============================================== */}
+
           {/* CLOSE */}
+
           {/* =============================================== */}
 
           <IconButton
@@ -1847,7 +2132,9 @@ function StudentLibraryDetails() {
           </IconButton>
 
           {/* =============================================== */}
+
           {/* PREVIOUS */}
+
           {/* =============================================== */}
 
           {galleryImages.length > 1 && (
@@ -1885,7 +2172,9 @@ function StudentLibraryDetails() {
           )}
 
           {/* =============================================== */}
+
           {/* LARGE IMAGE */}
+
           {/* =============================================== */}
 
           {selectedImage && (
@@ -1923,7 +2212,9 @@ function StudentLibraryDetails() {
           )}
 
           {/* =============================================== */}
+
           {/* NEXT */}
+
           {/* =============================================== */}
 
           {galleryImages.length > 1 && (
@@ -1961,7 +2252,9 @@ function StudentLibraryDetails() {
           )}
 
           {/* =============================================== */}
+
           {/* IMAGE COUNTER */}
+
           {/* =============================================== */}
 
           {galleryImages.length > 1 && (
