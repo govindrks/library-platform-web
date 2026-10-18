@@ -47,7 +47,6 @@ const drawerWidth = 250;
  * We still keep this USER menu valid as a safe fallback in case
  * Sidebar is ever rendered for a USER.
  */
-
 const userMenu = [
   {
     title: "OVERVIEW",
@@ -55,9 +54,7 @@ const userMenu = [
     items: [
       {
         label: "Dashboard",
-
         path: "/student/dashboard",
-
         icon: Dashboard,
       },
     ],
@@ -69,25 +66,19 @@ const userMenu = [
     items: [
       {
         label: "Browse Libraries",
-
         path: "/student/libraries",
-
         icon: LibraryBooks,
       },
 
       {
         label: "My Bookings",
-
         path: "/student/bookings",
-
         icon: CalendarMonth,
       },
 
       {
         label: "Membership",
-
         path: "/student/membership",
-
         icon: CardMembership,
       },
     ],
@@ -99,17 +90,13 @@ const userMenu = [
     items: [
       {
         label: "Payments",
-
         path: "/student/payments",
-
         icon: Payments,
       },
 
       {
         label: "Invoices",
-
         path: "/student/invoices",
-
         icon: ReceiptLong,
       },
     ],
@@ -121,17 +108,13 @@ const userMenu = [
     items: [
       {
         label: "Notifications",
-
         path: "/student/notifications",
-
         icon: Notifications,
       },
 
       {
         label: "My Profile",
-
         path: "/student/profile",
-
         icon: Person,
       },
     ],
@@ -153,7 +136,6 @@ const userMenu = [
  * title
  * items
  */
-
 const normalizeOwnerMenu = ownerMenu.map((section) => ({
   title: section.section,
 
@@ -231,12 +213,6 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     // --------------------------------------------------------
     // STUDENT HELP & SUPPORT FALLBACK
     // --------------------------------------------------------
-    //
-    // Normally USER uses StudentSidebar.
-    //
-    // Keep this here in case Shared Sidebar is ever used for
-    // a student.
-    // --------------------------------------------------------
 
     if (path === "/student/help-support") {
       return (
@@ -248,12 +224,6 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
     // --------------------------------------------------------
     // ADMIN SUPPORT DASHBOARD
-    // --------------------------------------------------------
-    //
-    // Important:
-    //
-    // /admin/support should NOT also remain selected when the
-    // user opens /admin/support/tickets.
     // --------------------------------------------------------
 
     if (path === "/admin/support") {
@@ -273,10 +243,6 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
     // --------------------------------------------------------
     // OWNER HELP & SUPPORT
-    // --------------------------------------------------------
-    //
-    // Do not keep this selected when navigating to either of
-    // the dedicated support queues.
     // --------------------------------------------------------
 
     if (path === "/owner/help-support") {
@@ -306,6 +272,46 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+    // OWNER BOOKINGS
+    // --------------------------------------------------------
+    //
+    // Keeps Bookings selected for:
+    //
+    // /owner/bookings
+    // /owner/bookings/create
+    // /owner/bookings/...
+    //
+    // --------------------------------------------------------
+
+    if (path === "/owner/bookings") {
+      return (
+        currentPath === "/owner/bookings" ||
+        currentPath.startsWith("/owner/bookings/")
+      );
+    }
+
+    // --------------------------------------------------------
+    // OWNER EXPENSES
+    // --------------------------------------------------------
+    //
+    // Expenses itself comes from ownerMenu.
+    //
+    // This rule keeps it highlighted for any future routes:
+    //
+    // /owner/expenses
+    // /owner/expenses/:expenseId
+    // /owner/expenses/analytics
+    //
+    // --------------------------------------------------------
+
+    if (path === "/owner/expenses") {
+      return (
+        currentPath === "/owner/expenses" ||
+        currentPath.startsWith("/owner/expenses/")
+      );
+    }
+
+    // --------------------------------------------------------
     // DEFAULT
     // --------------------------------------------------------
 
@@ -331,9 +337,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         backgroundColor: "background.paper",
       }}
     >
-      {/* ===================================================== */}
-      {/* LOGO */}
-      {/* ===================================================== */}
+      {/* =====================================================
+            LOGO
+           ===================================================== */}
 
       <Box
         sx={{
@@ -400,9 +406,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
       <Divider />
 
-      {/* ===================================================== */}
-      {/* NAVIGATION */}
-      {/* ===================================================== */}
+      {/* =====================================================
+            NAVIGATION
+           ===================================================== */}
 
       <Box
         sx={{
@@ -495,9 +501,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                       }}
                     />
 
-                    {/* =================================== */}
-                    {/* OPTIONAL BADGE */}
-                    {/* =================================== */}
+                    {/* ===================================
+                                  OPTIONAL BADGE
+                                 =================================== */}
 
                     {item.badge != null && (
                       <Box
@@ -536,9 +542,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         ))}
       </Box>
 
-      {/* ===================================================== */}
-      {/* FOOTER */}
-      {/* ===================================================== */}
+      {/* =====================================================
+            FOOTER
+           ===================================================== */}
 
       <Box
         sx={{
@@ -564,9 +570,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
   return (
     <>
-      {/* ===================================================== */}
-      {/* DESKTOP DRAWER */}
-      {/* ===================================================== */}
+      {/* =====================================================
+          DESKTOP DRAWER
+         ===================================================== */}
 
       <Drawer
         variant="permanent"
@@ -591,9 +597,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         {drawerContent}
       </Drawer>
 
-      {/* ===================================================== */}
-      {/* MOBILE DRAWER */}
-      {/* ===================================================== */}
+      {/* =====================================================
+          MOBILE DRAWER
+         ===================================================== */}
 
       <Drawer
         variant="temporary"

@@ -10,31 +10,40 @@ import SeatAvailability from "../../views/LibraryOwner/SeatAvailability";
 
 import Bookings from "../../views/LibraryOwner/Bookings";
 import Members from "../../views/LibraryOwner/Members";
+import CreateBooking from "../../views/LibraryOwner/CreateBooking";
 
 import Payments from "../../views/LibraryOwner/Payments";
 import Refunds from "../../views/LibraryOwner/Refunds";
 import Invoices from "../../views/LibraryOwner/Invoices";
 import Coupons from "../../views/LibraryOwner/Coupons";
+import Expenses from "../../views/LibraryOwner/Expenses";
 
 import Revenue from "../../views/LibraryOwner/Revenue";
 import Occupancy from "../../views/LibraryOwner/Occupancy";
 
 import Reports from "../../views/Reports/Reports";
 
+
 // ============================================================
 // SUPPORT
 // ============================================================
 
 import HelpSupport from "../../views/LibraryOwner/support/HelpSupport";
+
 import MySupportTickets from "../../views/LibraryOwner/support/MySupportTickets";
+
 import StudentSupportTickets from "../../views/LibraryOwner/support/StudentSupportTickets";
+
 import OwnerSupportTicketDetails from "../../views/LibraryOwner/support/OwnerSupportTicketDetails";
+
 
 // ============================================================
 // CORE LIBRARY OWNER ROUTES
 // ============================================================
 
 const ownerRoutes = [
+
+
   // ==========================================================
   // OWNER DASHBOARD
   // ==========================================================
@@ -43,6 +52,7 @@ const ownerRoutes = [
     path: "/owner/dashboard",
     element: <OwnerDashboard />,
   },
+
 
   // ==========================================================
   // LIBRARY
@@ -63,6 +73,7 @@ const ownerRoutes = [
     element: <MembershipPlans />,
   },
 
+
   // ==========================================================
   // SEATS
   // ==========================================================
@@ -82,6 +93,7 @@ const ownerRoutes = [
     element: <SeatAvailability />,
   },
 
+
   // ==========================================================
   // BOOKINGS
   // ==========================================================
@@ -92,9 +104,15 @@ const ownerRoutes = [
   },
 
   {
+    path: "/owner/bookings/create",
+    element: <CreateBooking />,
+  },
+
+  {
     path: "/owner/members",
     element: <Members />,
   },
+
 
   // ==========================================================
   // FINANCE
@@ -116,9 +134,15 @@ const ownerRoutes = [
   },
 
   {
+    path: "/owner/expenses",
+    element: <Expenses />,
+  },
+
+  {
     path: "/owner/coupons",
     element: <Coupons />,
   },
+
 
   // ==========================================================
   // INSIGHTS
@@ -134,6 +158,7 @@ const ownerRoutes = [
     element: <Occupancy />,
   },
 
+
   // ==========================================================
   // REPORTS
   // ==========================================================
@@ -143,6 +168,7 @@ const ownerRoutes = [
     element: <Reports />,
   },
 
+
   // ==========================================================
   // HELP & SUPPORT
   // ==========================================================
@@ -151,6 +177,7 @@ const ownerRoutes = [
     path: "/owner/help-support",
     element: <HelpSupport />,
   },
+
 
   // ==========================================================
   // OWNER -> LIBRARYHUB SUPPORT
@@ -166,6 +193,7 @@ const ownerRoutes = [
     element: <OwnerSupportTicketDetails />,
   },
 
+
   // ==========================================================
   // STUDENT -> LIBRARY OWNER SUPPORT
   // ==========================================================
@@ -180,5 +208,6 @@ const ownerRoutes = [
     element: <OwnerSupportTicketDetails />,
   },
 ];
+
 
 export default ownerRoutes;

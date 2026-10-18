@@ -86,7 +86,6 @@ const SEAT_TYPES = ["NORMAL", "PREMIUM", "FEMALE_ONLY", "WINDOW", "QUIET_ZONE"];
 
 const SEAT_STATUSES = [
   "AVAILABLE",
-  "BOOKED",
   "RESERVED",
   "RESERVED_FOR_GIRLS",
   "MAINTENANCE",
@@ -875,9 +874,7 @@ const SeatMapping = () => {
     () => ({
       total: seats.length,
 
-      available: seats.filter((seat) => seat.status === "AVAILABLE").length,
-
-      booked: seats.filter((seat) => seat.status === "BOOKED").length,
+      operational: seats.filter((seat) => seat.status === "AVAILABLE").length,
 
       reserved: seats.filter((seat) => seat.status === "RESERVED").length,
 
@@ -2743,12 +2740,15 @@ const SeatMapping = () => {
               </Typography>
 
               <Typography
-                variant="body1"
+                variant="body2"
                 color="text.secondary"
-                sx={{ mt: 0.7, maxWidth: 760 }}
+                sx={{
+                  mt: 0.7,
+                  maxWidth: 760,
+                  fontWeight: 650,
+                }}
               >
-                Design and manage your physical seating layout, aisles,
-                entrance, reception, seat types and availability.
+                Seat Mapping = physical configuration
               </Typography>
 
               {currentLibrary?.name && (
@@ -3159,17 +3159,17 @@ const SeatMapping = () => {
 
           <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
             <StatisticCard
-              label="Available"
-              value={statistics.available}
+              label="Operational"
+              value={statistics.operational}
               tone="success"
             />
           </Grid>
 
           <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
             <StatisticCard
-              label="Booked"
-              value={statistics.booked}
-              tone="error"
+              label="Gaps"
+              value={statistics.gaps}
+              tone="primary"
             />
           </Grid>
 
@@ -3319,7 +3319,7 @@ const SeatMapping = () => {
             <Stack direction="row" spacing={0.8} flexWrap="wrap" useFlexGap>
               <Chip
                 size="small"
-                label={`${statistics.available} Available`}
+                label={`${statistics.operational} Operational`}
                 sx={{
                   fontWeight: 700,
                   bgcolor: "#dcfce7",
@@ -3328,11 +3328,11 @@ const SeatMapping = () => {
               />
               <Chip
                 size="small"
-                label={`${statistics.booked} Booked`}
+                label={`${statistics.reserved + statistics.girlsReserved} Restricted`}
                 sx={{
                   fontWeight: 700,
-                  bgcolor: "#fee2e2",
-                  color: "#991b1b",
+                  bgcolor: "#eff6ff",
+                  color: "#1d4ed8",
                 }}
               />
               <Chip

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   Alert,
+  alpha,
   Box,
   Button,
   Card,
@@ -17,8 +18,11 @@ import {
   FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
+  LinearProgress,
   MenuItem,
+  Paper,
   Select,
   Stack,
   Switch,
@@ -31,27 +35,36 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useTheme,
 } from "@mui/material";
 
 import {
   AccessTime,
   Add,
+  ArrowForwardRounded,
   Assessment,
   Autorenew,
+  Bolt,
   CalendarMonth,
   CheckCircle,
   DeleteOutlineOutlined,
+  Description,
   Download,
   EditOutlined,
   ErrorOutlineOutlined,
+  FilterAltOutlined,
   Groups,
   History,
   InfoOutlined,
   InsertDriveFile,
   Payment,
+  PlayArrowRounded,
   ReceiptLong,
   Refresh,
+  Search,
   SettingsSuggest,
+  TaskAlt,
+  Timeline,
   ToggleOff,
 } from "@mui/icons-material";
 
@@ -68,6 +81,8 @@ const EMPTY_SUMMARY = {
   inactiveRules: 0,
   customRules: 0,
 };
+
+const OWNER_SELECTED_LIBRARY_KEY = "ownerSelectedLibraryId";
 
 const INITIAL_FORM = {
   type: "CUSTOM",
@@ -254,6 +269,28 @@ const NOTIFICATION_RECIPIENT_OPTIONS = [
 // ============================================================
 // HELPERS
 // ============================================================
+
+const getStoredOwnerLibraryId = () => {
+  const value = localStorage.getItem(OWNER_SELECTED_LIBRARY_KEY);
+
+  if (!value) {
+    return null;
+  }
+
+  const id = Number(value);
+
+  return Number.isFinite(id) ? id : null;
+};
+
+const storeOwnerLibraryId = (libraryId) => {
+  const id = Number(libraryId);
+
+  if (!Number.isFinite(id)) {
+    return;
+  }
+
+  localStorage.setItem(OWNER_SELECTED_LIBRARY_KEY, String(id));
+};
 
 const normalizeLibraries = (response) => {
   if (Array.isArray(response)) {
@@ -499,47 +536,81 @@ const getAvailableTemplateVariables = (triggerType) => {
 // SUMMARY CARD
 // ============================================================
 
-function SummaryCard({ title, value, icon }) {
+function SummaryCard({ title, value, subtitle, icon, tone = "primary" }) {
+  const theme = useTheme();
+
+  const toneColor =
+    tone === "success"
+      ? theme.palette.success.main
+      : tone === "warning"
+        ? theme.palette.warning.main
+        : tone === "error"
+          ? theme.palette.error.main
+          : tone === "info"
+            ? theme.palette.info.main
+            : theme.palette.primary.main;
+
   return (
     <Card
-      variant="outlined"
+      elevation={0}
       sx={{
         height: "100%",
+        border: "1px solid",
+        borderColor: alpha(toneColor, 0.16),
+        borderRadius: 3.5,
+        background: `linear-gradient(145deg, ${alpha(
+          toneColor,
+          0.055,
+        )} 0%, ${theme.palette.background.paper} 70%)`,
+        boxShadow: "0 12px 34px rgba(15, 23, 42, 0.045)",
+        transition: "transform 0.2s ease, box-shadow 0.2s ease",
+        "&:hover": {
+          transform: "translateY(-2px)",
+          boxShadow: "0 18px 42px rgba(15, 23, 42, 0.075)",
+        },
       }}
     >
-      <CardContent>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="center"
-        >
-          <Box>
-            <Typography variant="body2" color="text.secondary">
+      <CardContent sx={{ p: 2.4, "&:last-child": { pb: 2.4 } }}>
+        <Stack direction="row" justifyContent="space-between" spacing={2}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" color="text.secondary" fontWeight={700}>
               {title}
             </Typography>
 
-            <Typography variant="h4" fontWeight={800} mt={0.5}>
+            <Typography
+              variant="h4"
+              sx={{
+                mt: 0.4,
+                fontWeight: 900,
+                letterSpacing: "-0.04em",
+              }}
+            >
               {value}
             </Typography>
+
+            {subtitle && (
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block", mt: 0.35, lineHeight: 1.45 }}
+              >
+                {subtitle}
+              </Typography>
+            )}
           </Box>
 
           <Box
             sx={{
-              width: 44,
-
-              height: 44,
-
-              borderRadius: 2,
-
-              display: "flex",
-
-              justifyContent: "center",
-
-              alignItems: "center",
-
-              backgroundColor: "action.hover",
-
-              color: "primary.main",
+              width: 46,
+              height: 46,
+              borderRadius: 2.5,
+              display: "grid",
+              placeItems: "center",
+              bgcolor: alpha(toneColor, 0.1),
+              color: toneColor,
+              border: "1px solid",
+              borderColor: alpha(toneColor, 0.12),
+              flexShrink: 0,
             }}
           >
             {icon}
@@ -551,90 +622,269 @@ function SummaryCard({ title, value, icon }) {
 }
 
 // ============================================================
-// AUTOMATION RULE CARD
+// FLOW NODE
 // ============================================================
 
-function AutomationRuleCard({ rule, busyRuleId, onToggle, onEdit, onDelete }) {
-  const busy = busyRuleId === rule.id;
+function FlowNode({ eyebrow, title, subtitle, icon, tone = "primary" }) {
+  const theme = useTheme();
+
+  const toneColor =
+    tone === "success"
+      ? theme.palette.success.main
+      : tone === "warning"
+        ? theme.palette.warning.main
+        : tone === "info"
+          ? theme.palette.info.main
+          : theme.palette.primary.main;
+
+  const Icon = icon;
 
   return (
-    <Card
-      variant="outlined"
+    <Box
       sx={{
-        height: "100%",
+        flex: 1,
+        minWidth: 0,
+        p: 1.5,
+        borderRadius: 2.5,
+        border: "1px solid",
+        borderColor: alpha(toneColor, 0.14),
+        bgcolor: alpha(toneColor, 0.035),
+      }}
+    >
+      <Stack direction="row" spacing={1.1} alignItems="flex-start">
+        <Box
+          sx={{
+            width: 32,
+            height: 32,
+            borderRadius: 1.8,
+            display: "grid",
+            placeItems: "center",
+            color: toneColor,
+            bgcolor: alpha(toneColor, 0.09),
+            flexShrink: 0,
+          }}
+        >
+          <Icon sx={{ fontSize: 18 }} />
+        </Box>
 
-        transition: "all 0.2s ease",
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontWeight: 800, letterSpacing: "0.06em" }}
+          >
+            {eyebrow}
+          </Typography>
 
+          <Typography variant="body2" fontWeight={800} sx={{ mt: 0.15 }}>
+            {title}
+          </Typography>
+
+          {subtitle && (
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: "block", mt: 0.2, lineHeight: 1.4 }}
+            >
+              {subtitle}
+            </Typography>
+          )}
+        </Box>
+      </Stack>
+    </Box>
+  );
+}
+
+// ============================================================
+// WORKSPACE NAV ITEM
+// ============================================================
+
+function WorkspaceNavItem({
+  active,
+  icon,
+  label,
+  description,
+  count,
+  onClick,
+}) {
+  const theme = useTheme();
+  const Icon = icon;
+
+  return (
+    <Button
+      fullWidth
+      onClick={onClick}
+      sx={{
+        justifyContent: "flex-start",
+        textAlign: "left",
+        px: 1.2,
+        py: 1.2,
+        borderRadius: 2.5,
+        textTransform: "none",
+        color: active ? "primary.main" : "text.primary",
+        border: "1px solid",
+        borderColor: active
+          ? alpha(theme.palette.primary.main, 0.15)
+          : "transparent",
+        bgcolor: active
+          ? alpha(theme.palette.primary.main, 0.07)
+          : "transparent",
         "&:hover": {
-          borderColor: "primary.main",
-
-          boxShadow: 1,
+          bgcolor: alpha(theme.palette.primary.main, 0.05),
         },
       }}
     >
-      <CardContent
-        sx={{
-          p: 2.5,
-        }}
-      >
-        <Stack spacing={2}>
-          {/* HEADER */}
+      <Stack direction="row" spacing={1.2} alignItems="center" width="100%">
+        <Box
+          sx={{
+            width: 38,
+            height: 38,
+            display: "grid",
+            placeItems: "center",
+            borderRadius: 2,
+            color: active ? "primary.main" : "text.secondary",
+            bgcolor: active
+              ? alpha(theme.palette.primary.main, 0.09)
+              : "action.hover",
+            flexShrink: 0,
+          }}
+        >
+          <Icon fontSize="small" />
+        </Box>
 
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="body2" fontWeight={active ? 850 : 750}>
+            {label}
+          </Typography>
+
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block", lineHeight: 1.3 }}
+          >
+            {description}
+          </Typography>
+        </Box>
+
+        <Chip
+          size="small"
+          label={count}
+          sx={{ height: 22, minWidth: 28, fontWeight: 800, fontSize: 10 }}
+        />
+      </Stack>
+    </Button>
+  );
+}
+
+// ============================================================
+// AUTOMATION RULE CARD
+// ============================================================
+
+function AutomationRuleCard({
+  rule,
+  busyRuleId,
+  onToggle,
+  onEdit,
+  onDelete,
+  onViewActivity,
+}) {
+  const theme = useTheme();
+  const busy = busyRuleId === rule.id;
+
+  const conditionCount = Array.isArray(rule.conditions)
+    ? rule.conditions.length
+    : 0;
+
+  const actionCount = Array.isArray(rule.actions) ? rule.actions.length : 0;
+
+  const isCustom = rule.type === "CUSTOM";
+
+  const triggerLabel = isCustom
+    ? formatEnum(rule.triggerType || "CUSTOM")
+    : formatEnum(rule.type);
+
+  const actionLabel =
+    isCustom && actionCount > 0
+      ? formatEnum(rule.actions?.[0]?.type || "SEND_NOTIFICATION")
+      : rule.type === "DAILY_REPORT"
+        ? "Generate Report"
+        : rule.type === "INVOICE_GENERATION"
+          ? "Generate Invoice"
+          : "Run Workflow";
+
+  return (
+    <Card
+      elevation={0}
+      sx={{
+        height: "100%",
+        borderRadius: 3.5,
+        border: "1px solid",
+        borderColor: rule.enabled
+          ? alpha(theme.palette.primary.main, 0.18)
+          : "divider",
+        background: rule.enabled
+          ? `linear-gradient(145deg, ${alpha(
+              theme.palette.primary.main,
+              0.035,
+            )} 0%, ${theme.palette.background.paper} 72%)`
+          : "background.paper",
+        boxShadow: "0 12px 34px rgba(15,23,42,0.045)",
+        transition: "transform 0.2s ease, box-shadow 0.2s ease",
+        "&:hover": {
+          transform: "translateY(-2px)",
+          boxShadow: "0 18px 42px rgba(15,23,42,0.075)",
+        },
+      }}
+    >
+      <CardContent sx={{ p: 2.5, "&:last-child": { pb: 2.5 } }}>
+        <Stack spacing={2.1}>
           <Stack
             direction="row"
             justifyContent="space-between"
             alignItems="flex-start"
             spacing={2}
           >
-            <Stack direction="row" spacing={1.5} alignItems="center">
+            <Stack direction="row" spacing={1.4} alignItems="flex-start">
               <Box
                 sx={{
-                  width: 44,
-
-                  height: 44,
-
-                  display: "flex",
-
-                  justifyContent: "center",
-
-                  alignItems: "center",
-
-                  borderRadius: 2,
-
-                  backgroundColor: "action.hover",
-
+                  width: 46,
+                  height: 46,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 2.5,
+                  bgcolor: alpha(theme.palette.primary.main, 0.09),
                   color: "primary.main",
+                  flexShrink: 0,
                 }}
               >
                 {getRuleIcon(rule.type)}
               </Box>
 
-              <Box>
-                <Typography variant="subtitle1" fontWeight={700}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="subtitle1" fontWeight={850}>
                   {rule.name}
                 </Typography>
 
                 <Stack
                   direction="row"
                   spacing={0.75}
-                  mt={0.5}
+                  mt={0.55}
                   flexWrap="wrap"
                   useFlexGap
                 >
                   <Chip
                     size="small"
                     variant="outlined"
-                    label={formatEnum(rule.type)}
+                    label={isCustom ? "Custom" : "Built-in"}
+                    color={isCustom ? "primary" : "default"}
                   />
 
-                  {rule.type === "CUSTOM" && rule.triggerType && (
-                    <Chip
-                      size="small"
-                      color="primary"
-                      variant="outlined"
-                      label={formatEnum(rule.triggerType)}
-                    />
-                  )}
+                  <Chip
+                    size="small"
+                    color={rule.enabled ? "success" : "default"}
+                    variant="outlined"
+                    label={rule.enabled ? "Active" : "Inactive"}
+                  />
                 </Stack>
               </Box>
             </Stack>
@@ -649,77 +899,138 @@ function AutomationRuleCard({ rule, busyRuleId, onToggle, onEdit, onDelete }) {
             )}
           </Stack>
 
-          {/* DESCRIPTION */}
-
           <Typography
             variant="body2"
             color="text.secondary"
-            sx={{
-              minHeight: 40,
-            }}
+            sx={{ minHeight: 38, lineHeight: 1.55 }}
           >
             {rule.description || "No description configured."}
           </Typography>
 
-          <Divider />
-
-          {/* TRIGGER */}
-
-          <Stack direction="row" spacing={1} alignItems="center">
-            <AccessTime
-              sx={{
-                fontSize: 18,
-
-                color: "text.secondary",
-              }}
-            />
-
-            <Typography variant="body2" color="text.secondary">
-              {getTriggerText(rule)}
-            </Typography>
-          </Stack>
-
-          {/* CUSTOM INFO */}
-
-          {rule.type === "CUSTOM" && (
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              <Chip
-                size="small"
-                label={`${
-                  Array.isArray(rule.conditions) ? rule.conditions.length : 0
-                } condition(s)`}
+          <Box>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={1}
+              alignItems={{ xs: "stretch", md: "center" }}
+            >
+              <FlowNode
+                eyebrow="TRIGGER"
+                title={triggerLabel}
+                subtitle={getTriggerText(rule)}
+                icon={AccessTime}
+                tone="info"
               />
 
-              <Chip
-                size="small"
-                label={`${
-                  Array.isArray(rule.actions) ? rule.actions.length : 0
-                } action(s)`}
+              <ArrowForwardRounded
+                sx={{
+                  color: "text.disabled",
+                  alignSelf: "center",
+                  transform: { xs: "rotate(90deg)", md: "none" },
+                }}
+              />
+
+              <FlowNode
+                eyebrow="CONDITIONS"
+                title={
+                  isCustom
+                    ? `${conditionCount} condition${conditionCount === 1 ? "" : "s"}`
+                    : "Built-in checks"
+                }
+                subtitle={
+                  isCustom
+                    ? conditionCount > 0
+                      ? "All configured conditions must match"
+                      : "No extra conditions"
+                    : "Managed by LibraryHub"
+                }
+                icon={FilterAltOutlined}
+                tone="warning"
+              />
+
+              <ArrowForwardRounded
+                sx={{
+                  color: "text.disabled",
+                  alignSelf: "center",
+                  transform: { xs: "rotate(90deg)", md: "none" },
+                }}
+              />
+
+              <FlowNode
+                eyebrow="ACTION"
+                title={actionLabel}
+                subtitle={
+                  isCustom
+                    ? `${actionCount} configured action${actionCount === 1 ? "" : "s"}`
+                    : "Automatically executed"
+                }
+                icon={PlayArrowRounded}
+                tone="success"
               />
             </Stack>
+          </Box>
+
+          {(rule.lastRunAt || rule.nextRunAt) && (
+            <Paper
+              variant="outlined"
+              sx={{
+                p: 1.4,
+                borderRadius: 2.5,
+                bgcolor: "action.hover",
+              }}
+            >
+              <Grid container spacing={1.5}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    Last run
+                  </Typography>
+
+                  <Typography variant="body2" fontWeight={700}>
+                    {formatDateTime(rule.lastRunAt)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    Next run
+                  </Typography>
+
+                  <Typography variant="body2" fontWeight={700}>
+                    {formatDateTime(rule.nextRunAt)}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Paper>
           )}
 
-          {/* STATUS */}
+          <Divider />
 
           <Stack
-            direction="row"
+            direction={{ xs: "column", sm: "row" }}
             justifyContent="space-between"
-            alignItems="center"
+            alignItems={{ xs: "stretch", sm: "center" }}
+            spacing={1}
           >
-            <Chip
+            <Button
               size="small"
-              color={rule.enabled ? "success" : "default"}
-              label={rule.enabled ? "Active" : "Inactive"}
-            />
+              startIcon={<History />}
+              onClick={() => onViewActivity?.(rule)}
+              sx={{ textTransform: "none", fontWeight: 750 }}
+            >
+              View Activity
+            </Button>
 
-            <Stack direction="row" spacing={0.5}>
-              <Tooltip title="Edit automation">
-                <IconButton size="small" onClick={() => onEdit(rule)}>
-                  <EditOutlined fontSize="small" />
-                </IconButton>
-              </Tooltip>
+            <Stack direction="row" spacing={0.75} justifyContent="flex-end">
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EditOutlined />}
+                onClick={() => onEdit(rule)}
+                sx={{ textTransform: "none", fontWeight: 750 }}
+              >
+                Edit
+              </Button>
 
-              {rule.type === "CUSTOM" && (
+              {isCustom && (
                 <Tooltip title="Delete custom automation">
                   <IconButton
                     size="small"
@@ -732,22 +1043,6 @@ function AutomationRuleCard({ rule, busyRuleId, onToggle, onEdit, onDelete }) {
               )}
             </Stack>
           </Stack>
-
-          {(rule.lastRunAt || rule.nextRunAt) && (
-            <>
-              <Divider />
-
-              <Stack spacing={0.5}>
-                <Typography variant="caption" color="text.secondary">
-                  Last run: {formatDateTime(rule.lastRunAt)}
-                </Typography>
-
-                <Typography variant="caption" color="text.secondary">
-                  Next run: {formatDateTime(rule.nextRunAt)}
-                </Typography>
-              </Stack>
-            </>
-          )}
         </Stack>
       </CardContent>
     </Card>
@@ -759,6 +1054,8 @@ function AutomationRuleCard({ rule, busyRuleId, onToggle, onEdit, onDelete }) {
 // ============================================================
 
 function AutomationCenter() {
+  const theme = useTheme();
+
   // =========================================================
   // LIBRARIES
   // =========================================================
@@ -766,6 +1063,16 @@ function AutomationCenter() {
   const [libraries, setLibraries] = useState([]);
 
   const [selectedLibraryId, setSelectedLibraryId] = useState("");
+
+  // =========================================================
+  // WORKSPACE / FILTERS
+  // =========================================================
+
+  const [workspace, setWorkspace] = useState("workflows");
+
+  const [ruleSearch, setRuleSearch] = useState("");
+
+  const [ruleFilter, setRuleFilter] = useState("ALL");
 
   // =========================================================
   // AUTOMATION DATA
@@ -872,7 +1179,17 @@ function AutomationCenter() {
         setLibraries(data);
 
         if (data.length > 0) {
-          setSelectedLibraryId(String(data[0].id));
+          const storedId = getStoredOwnerLibraryId();
+
+          const storedExists =
+            storedId != null &&
+            data.some((library) => Number(library.id) === Number(storedId));
+
+          const nextId = storedExists ? storedId : data[0].id;
+
+          setSelectedLibraryId(String(nextId));
+
+          storeOwnerLibraryId(nextId);
         } else {
           setSelectedLibraryId("");
 
@@ -1558,6 +1875,76 @@ function AutomationCenter() {
   };
 
   // =========================================================
+  // PREMIUM VIEW METRICS
+  // =========================================================
+
+  const executionMetrics = useMemo(() => {
+    const total = executions.length;
+
+    const successCount = executions.filter(
+      (execution) => execution.status === "SUCCESS",
+    ).length;
+
+    const failedCount = executions.filter(
+      (execution) => execution.status === "FAILED",
+    ).length;
+
+    const skippedCount = executions.filter(
+      (execution) => execution.status === "SKIPPED",
+    ).length;
+
+    const processingCount = executions.filter(
+      (execution) => execution.status === "PROCESSING",
+    ).length;
+
+    const successRate = total > 0 ? (successCount / total) * 100 : 0;
+
+    return {
+      total,
+      successCount,
+      failedCount,
+      skippedCount,
+      processingCount,
+      successRate,
+    };
+  }, [executions]);
+
+  const filteredRules = useMemo(() => {
+    const query = ruleSearch.trim().toLowerCase();
+
+    return rules.filter((rule) => {
+      const matchesSearch =
+        !query ||
+        String(rule.name || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(rule.description || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(rule.type || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(rule.triggerType || "")
+          .toLowerCase()
+          .includes(query);
+
+      const matchesFilter =
+        ruleFilter === "ALL" ||
+        (ruleFilter === "ACTIVE" && rule.enabled) ||
+        (ruleFilter === "INACTIVE" && !rule.enabled) ||
+        (ruleFilter === "CUSTOM" && rule.type === "CUSTOM") ||
+        (ruleFilter === "BUILT_IN" && rule.type !== "CUSTOM");
+
+      return matchesSearch && matchesFilter;
+    });
+  }, [rules, ruleSearch, ruleFilter]);
+
+  const activeRulePercentage =
+    summary.totalRules > 0
+      ? (summary.activeRules / summary.totalRules) * 100
+      : 0;
+
+  // =========================================================
   // INITIAL PAGE LOADING
   // =========================================================
 
@@ -1585,590 +1972,967 @@ function AutomationCenter() {
   return (
     <Box>
       {/* ==================================================
-                HEADER
-            ================================================== */}
+          PREMIUM HEADER
+          ================================================== */}
 
-      <Stack
-        direction={{
-          xs: "column",
-          md: "row",
+      <Box
+        sx={{
+          mb: 3,
+          p: { xs: 2.5, md: 3.25 },
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: alpha(theme.palette.primary.main, 0.14),
+          background:
+            "linear-gradient(135deg, rgba(79,70,229,0.09) 0%, rgba(255,255,255,0.98) 54%, rgba(16,185,129,0.045) 100%)",
+          boxShadow: "0 18px 48px rgba(15, 23, 42, 0.055)",
         }}
-        justifyContent="space-between"
-        alignItems={{
-          xs: "flex-start",
-          md: "center",
-        }}
-        spacing={2}
-        mb={4}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={800}>
-            Automation Center
-          </Typography>
-
-          <Typography variant="body1" color="text.secondary" mt={0.5}>
-            Configure automated workflows for bookings, memberships, payments
-            and reports.
-          </Typography>
-        </Box>
-
         <Stack
-          direction={{
-            xs: "column",
-            sm: "row",
-          }}
-          spacing={1}
+          direction={{ xs: "column", lg: "row" }}
+          justifyContent="space-between"
+          alignItems={{ xs: "stretch", lg: "center" }}
+          spacing={2.5}
         >
-          <FormControl
-            size="small"
-            sx={{
-              minWidth: 210,
-            }}
-          >
-            <InputLabel>Library</InputLabel>
-
-            <Select
-              value={selectedLibraryId}
-              label="Library"
-              onChange={(event) => setSelectedLibraryId(event.target.value)}
+          <Stack direction="row" spacing={1.8} alignItems="center">
+            <Box
+              sx={{
+                width: 58,
+                height: 58,
+                borderRadius: 3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                boxShadow: "0 14px 30px rgba(79,70,229,0.22)",
+                flexShrink: 0,
+              }}
             >
-              {libraries.map((library) => (
-                <MenuItem key={library.id} value={String(library.id)}>
-                  {library.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              <Bolt sx={{ fontSize: 31 }} />
+            </Box>
 
-          <Button
-            variant="outlined"
-            startIcon={
-              refreshing ? <CircularProgress size={16} /> : <Refresh />
-            }
-            disabled={refreshing || !selectedLibraryId}
-            onClick={() => loadAutomationData(false)}
-          >
-            Refresh
-          </Button>
+            <Box>
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                flexWrap="wrap"
+                useFlexGap
+              >
+                <Typography
+                  variant="h4"
+                  sx={{ fontWeight: 900, letterSpacing: "-0.04em" }}
+                >
+                  Automation Center
+                </Typography>
 
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            disabled={!selectedLibraryId}
-            onClick={openCreateDialog}
-          >
-            Create Rule
-          </Button>
+                <Chip
+                  size="small"
+                  icon={<Autorenew fontSize="small" />}
+                  label="Workflow Engine"
+                  color="primary"
+                  variant="outlined"
+                  sx={{ fontWeight: 750 }}
+                />
+              </Stack>
+
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                mt={0.45}
+                sx={{ maxWidth: 760 }}
+              >
+                Build, monitor and manage automated workflows for bookings,
+                memberships, payments, notifications and reports.
+              </Typography>
+            </Box>
+          </Stack>
+
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <FormControl
+              size="small"
+              sx={{
+                minWidth: { xs: "100%", sm: 220 },
+                bgcolor: "background.paper",
+                borderRadius: 2,
+              }}
+            >
+              <InputLabel>Working Library</InputLabel>
+
+              <Select
+                value={selectedLibraryId}
+                label="Working Library"
+                onChange={(event) => {
+                  const value = event.target.value;
+
+                  setSelectedLibraryId(value);
+
+                  storeOwnerLibraryId(value);
+                }}
+              >
+                {libraries.map((library) => (
+                  <MenuItem key={library.id} value={String(library.id)}>
+                    {library.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Button
+              variant="outlined"
+              startIcon={
+                refreshing ? <CircularProgress size={16} /> : <Refresh />
+              }
+              disabled={refreshing || !selectedLibraryId}
+              onClick={() => loadAutomationData(false)}
+              sx={{
+                minHeight: 40,
+                borderRadius: 2.2,
+                textTransform: "none",
+                fontWeight: 800,
+                bgcolor: "background.paper",
+              }}
+            >
+              Refresh
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              disabled={!selectedLibraryId}
+              onClick={openCreateDialog}
+              sx={{
+                minHeight: 40,
+                borderRadius: 2.2,
+                px: 2.2,
+                textTransform: "none",
+                fontWeight: 850,
+                boxShadow: "0 10px 22px rgba(79,70,229,0.18)",
+              }}
+            >
+              New Automation
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
+      </Box>
 
       {/* ==================================================
-                CURRENT LIBRARY
-            ================================================== */}
+          MESSAGES
+          ================================================== */}
 
       {selectedLibrary && (
-        <Alert
-          severity="info"
-          sx={{
-            mb: 3,
-          }}
-        >
-          Automation rules shown below belong to{" "}
+        <Alert severity="info" sx={{ mb: 2.5, borderRadius: 2.5 }}>
+          You are managing automations for{" "}
           <strong>{selectedLibrary.name}</strong>.
         </Alert>
       )}
-
-      {/* ==================================================
-                ERROR
-            ================================================== */}
 
       {error && (
         <Alert
           severity="error"
           onClose={() => setError("")}
-          sx={{
-            mb: 3,
-          }}
+          sx={{ mb: 2.5, borderRadius: 2.5 }}
         >
           {error}
         </Alert>
       )}
-
-      {/* ==================================================
-                SUCCESS
-            ================================================== */}
 
       {success && (
         <Alert
           severity="success"
           icon={<CheckCircle />}
           onClose={() => setSuccess("")}
-          sx={{
-            mb: 3,
-          }}
+          sx={{ mb: 2.5, borderRadius: 2.5 }}
         >
           {success}
         </Alert>
       )}
 
       {/* ==================================================
-                SUMMARY
-            ================================================== */}
+          CONTROL METRICS
+          ================================================== */}
 
-      <Grid container spacing={2} mb={4}>
-        <Grid item xs={12} sm={6} lg={3}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} sm={6} xl={3}>
           <SummaryCard
-            title="Total Rules"
-            value={summary.totalRules}
-            icon={<Autorenew />}
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6} lg={3}>
-          <SummaryCard
-            title="Active"
+            title="Active Workflows"
             value={summary.activeRules}
-            icon={<CheckCircle />}
+            subtitle={`${activeRulePercentage.toFixed(0)}% of ${summary.totalRules} total rules`}
+            icon={<Bolt />}
+            tone="success"
           />
         </Grid>
 
-        <Grid item xs={12} sm={6} lg={3}>
+        <Grid item xs={12} sm={6} xl={3}>
           <SummaryCard
-            title="Inactive"
-            value={summary.inactiveRules}
-            icon={<ToggleOff />}
+            title="Execution Success"
+            value={`${executionMetrics.successRate.toFixed(0)}%`}
+            subtitle={`${executionMetrics.successCount} successful of ${executionMetrics.total} executions`}
+            icon={<TaskAlt />}
+            tone="success"
           />
         </Grid>
 
-        <Grid item xs={12} sm={6} lg={3}>
+        <Grid item xs={12} sm={6} xl={3}>
           <SummaryCard
-            title="Custom Rules"
-            value={summary.customRules}
-            icon={<SettingsSuggest />}
+            title="Recent Executions"
+            value={executionMetrics.total}
+            subtitle={`${executionMetrics.failedCount} failed • ${executionMetrics.skippedCount} skipped`}
+            icon={<Timeline />}
+            tone="info"
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6} xl={3}>
+          <SummaryCard
+            title="Generated Reports"
+            value={generatedReports.length}
+            subtitle="Automation-generated files"
+            icon={<Description />}
+            tone="primary"
           />
         </Grid>
       </Grid>
 
       {/* ==================================================
-                AUTOMATION RULES
-            ================================================== */}
+          AUTOMATION WORKSPACE
+          ================================================== */}
 
-      <Box>
-        <Typography variant="h5" fontWeight={800} mb={0.5}>
-          Automation Rules
-        </Typography>
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: { xs: "1fr", lg: "280px minmax(0, 1fr)" },
+          gap: 2.5,
+          alignItems: "start",
+        }}
+      >
+        <Card
+          elevation={0}
+          sx={{
+            border: "1px solid",
+            borderColor: "divider",
+            borderRadius: 3.5,
+            overflow: "hidden",
+            position: { lg: "sticky" },
+            top: { lg: 16 },
+          }}
+        >
+          <Box
+            sx={{
+              p: 2.2,
+              borderBottom: "1px solid",
+              borderColor: "divider",
+            }}
+          >
+            <Typography variant="subtitle1" fontWeight={850}>
+              Automation Map
+            </Typography>
 
-        <Typography variant="body2" color="text.secondary" mb={2}>
-          Enable, disable and configure automated workflows.
-        </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Configure, monitor and review output.
+            </Typography>
+          </Box>
 
-        {loading ? (
-          <Card>
-            <CardContent
-              sx={{
-                py: 9,
+          <Stack spacing={0.5} sx={{ p: 1 }}>
+            <WorkspaceNavItem
+              active={workspace === "workflows"}
+              icon={Bolt}
+              label="Workflows"
+              description="Rules, triggers and actions"
+              count={summary.totalRules}
+              onClick={() => setWorkspace("workflows")}
+            />
 
-                textAlign: "center",
-              }}
-            >
-              <CircularProgress />
+            <WorkspaceNavItem
+              active={workspace === "activity"}
+              icon={Timeline}
+              label="Activity"
+              description="Execution health and history"
+              count={executions.length}
+              onClick={() => setWorkspace("activity")}
+            />
 
-              <Typography mt={2} color="text.secondary">
-                Loading automation rules...
-              </Typography>
-            </CardContent>
-          </Card>
-        ) : rules.length > 0 ? (
-          <Grid container spacing={2}>
-            {rules.map((rule) => (
-              <Grid item xs={12} md={6} xl={4} key={rule.id}>
-                <AutomationRuleCard
-                  rule={rule}
-                  busyRuleId={busyRuleId}
-                  onToggle={handleToggle}
-                  onEdit={openEditDialog}
-                  onDelete={handleDelete}
-                />
-              </Grid>
-            ))}
-          </Grid>
-        ) : (
-          <Card>
-            <CardContent
-              sx={{
-                py: 8,
+            <WorkspaceNavItem
+              active={workspace === "reports"}
+              icon={Description}
+              label="Reports"
+              description="Generated automation files"
+              count={generatedReports.length}
+              onClick={() => setWorkspace("reports")}
+            />
+          </Stack>
 
-                textAlign: "center",
-              }}
-            >
-              <SettingsSuggest
+          <Divider />
+
+          <Box sx={{ p: 2 }}>
+            <Typography variant="caption" color="text.secondary">
+              Engine status
+            </Typography>
+
+            <Stack direction="row" spacing={1} alignItems="center" mt={0.75}>
+              <Box
                 sx={{
-                  fontSize: 58,
-
-                  color: "text.disabled",
+                  width: 9,
+                  height: 9,
+                  borderRadius: "50%",
+                  bgcolor:
+                    summary.activeRules > 0 ? "success.main" : "text.disabled",
+                  boxShadow:
+                    summary.activeRules > 0
+                      ? `0 0 0 4px ${alpha(theme.palette.success.main, 0.12)}`
+                      : "none",
                 }}
               />
 
-              <Typography variant="h6" fontWeight={700} mt={2}>
-                No automation rules
+              <Typography variant="body2" fontWeight={800}>
+                {summary.activeRules > 0
+                  ? "Automations active"
+                  : "No active rules"}
               </Typography>
+            </Stack>
+          </Box>
+        </Card>
 
-              <Typography variant="body2" color="text.secondary" mt={0.5}>
-                Create an automation rule to get started.
-              </Typography>
+        <Box sx={{ minWidth: 0 }}>
+          {/* ==================================================
+              WORKFLOWS
+              ================================================== */}
 
-              <Button
-                variant="contained"
-                startIcon={<Add />}
+          {workspace === "workflows" && (
+            <Stack spacing={2.5}>
+              <Card
+                elevation={0}
                 sx={{
-                  mt: 2,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 3.5,
                 }}
-                onClick={openCreateDialog}
               >
-                Create Rule
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-      </Box>
+                <CardContent sx={{ p: 2.5 }}>
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "stretch", md: "center" }}
+                    spacing={2}
+                  >
+                    <Box>
+                      <Typography variant="h6" fontWeight={850}>
+                        Automation Workflows
+                      </Typography>
 
-      {/* ==================================================
-                GENERATED REPORTS
-            ================================================== */}
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        mt={0.25}
+                      >
+                        Each workflow is mapped as trigger → conditions →
+                        action.
+                      </Typography>
+                    </Box>
 
-      <Box mt={5}>
-        <Stack
-          direction={{
-            xs: "column",
-            sm: "row",
-          }}
-          justifyContent="space-between"
-          alignItems={{
-            xs: "flex-start",
-            sm: "center",
-          }}
-          spacing={1}
-          mb={2}
-        >
-          <Box>
-            <Typography variant="h5" fontWeight={800}>
-              Generated Reports
-            </Typography>
-
-            <Typography variant="body2" color="text.secondary" mt={0.5}>
-              Reports automatically generated by your automation rules.
-            </Typography>
-          </Box>
-
-          <Chip
-            icon={<InsertDriveFile />}
-            label={`${generatedReports.length} file(s)`}
-            variant="outlined"
-          />
-        </Stack>
-
-        <Card variant="outlined">
-          {generatedReports.length > 0 ? (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Report</TableCell>
-
-                    <TableCell>Date</TableCell>
-
-                    <TableCell>Format</TableCell>
-
-                    <TableCell>Automation</TableCell>
-
-                    <TableCell>Generated</TableCell>
-
-                    <TableCell align="right">Action</TableCell>
-                  </TableRow>
-                </TableHead>
-
-                <TableBody>
-                  {generatedReports.map((report) => (
-                    <TableRow key={report.id} hover>
-                      <TableCell>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <InsertDriveFile fontSize="small" color="primary" />
-
-                          <Typography variant="body2" fontWeight={600}>
-                            {report.fileName}
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-
-                      <TableCell>{report.reportDate || "-"}</TableCell>
-
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={report.format || "-"}
-                          color={report.format === "PDF" ? "error" : "success"}
-                          variant="outlined"
-                        />
-                      </TableCell>
-
-                      <TableCell>{report.ruleName || "-"}</TableCell>
-
-                      <TableCell>{formatDateTime(report.createdAt)}</TableCell>
-
-                      <TableCell align="right">
-                        <Button
-                          size="small"
-                          startIcon={
-                            downloadingReportId === report.id ? (
-                              <CircularProgress size={15} />
-                            ) : (
-                              <Download />
-                            )
-                          }
-                          disabled={downloadingReportId === report.id}
-                          onClick={() => handleDownloadReport(report)}
-                        >
-                          Download
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <CardContent
-              sx={{
-                py: 6,
-
-                textAlign: "center",
-              }}
-            >
-              <Assessment
-                sx={{
-                  fontSize: 48,
-
-                  color: "text.disabled",
-                }}
-              />
-
-              <Typography fontWeight={700} mt={1}>
-                No generated reports yet
-              </Typography>
-
-              <Typography variant="body2" color="text.secondary" mt={0.5}>
-                Daily PDF and Excel reports will appear here after the Daily
-                Report automation executes.
-              </Typography>
-            </CardContent>
-          )}
-        </Card>
-      </Box>
-
-      {/* ==================================================
-                EXECUTION HISTORY
-            ================================================== */}
-
-      <Box mt={5} mb={4}>
-        <Stack
-          direction={{
-            xs: "column",
-            sm: "row",
-          }}
-          justifyContent="space-between"
-          alignItems={{
-            xs: "flex-start",
-            sm: "center",
-          }}
-          spacing={1}
-          mb={2}
-        >
-          <Box>
-            <Typography variant="h5" fontWeight={800}>
-              Execution History
-            </Typography>
-
-            <Typography variant="body2" color="text.secondary" mt={0.5}>
-              Recent automation executions for this library. Click a row to view
-              execution details.
-            </Typography>
-          </Box>
-
-          <Chip
-            icon={<History />}
-            label={`${executions.length} execution(s)`}
-            variant="outlined"
-          />
-        </Stack>
-
-        <Card variant="outlined">
-          {executions.length > 0 ? (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Automation</TableCell>
-
-                    <TableCell>Reference</TableCell>
-
-                    <TableCell>Status</TableCell>
-
-                    <TableCell>Started</TableCell>
-
-                    <TableCell>Completed</TableCell>
-
-                    <TableCell>Result</TableCell>
-                  </TableRow>
-                </TableHead>
-
-                <TableBody>
-                  {executions.map((execution) => (
-                    <TableRow
-                      key={execution.id}
-                      hover
-                      onClick={() => handleOpenExecution(execution)}
-                      sx={{
-                        cursor: "pointer",
+                    <TextField
+                      size="small"
+                      placeholder="Search automations..."
+                      value={ruleSearch}
+                      onChange={(event) => setRuleSearch(event.target.value)}
+                      sx={{ minWidth: { xs: "100%", md: 280 } }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Search fontSize="small" />
+                          </InputAdornment>
+                        ),
                       }}
-                    >
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={600}>
-                          {execution.ruleName || `Rule #${execution.ruleId}`}
-                        </Typography>
-                      </TableCell>
+                    />
+                  </Stack>
 
-                      <TableCell>
-                        <Typography variant="body2">
-                          {formatReference(execution)}
-                        </Typography>
-                      </TableCell>
+                  <Stack
+                    direction="row"
+                    spacing={0.8}
+                    flexWrap="wrap"
+                    useFlexGap
+                    mt={2}
+                  >
+                    {[
+                      ["ALL", `All ${rules.length}`],
+                      ["ACTIVE", `Active ${summary.activeRules}`],
+                      ["INACTIVE", `Inactive ${summary.inactiveRules}`],
+                      [
+                        "BUILT_IN",
+                        `Built-in ${Math.max(rules.length - summary.customRules, 0)}`,
+                      ],
+                      ["CUSTOM", `Custom ${summary.customRules}`],
+                    ].map(([value, label]) => (
+                      <Chip
+                        key={value}
+                        clickable
+                        label={label}
+                        color={ruleFilter === value ? "primary" : "default"}
+                        variant={ruleFilter === value ? "filled" : "outlined"}
+                        onClick={() => setRuleFilter(value)}
+                        sx={{ fontWeight: 750 }}
+                      />
+                    ))}
+                  </Stack>
+                </CardContent>
+              </Card>
 
-                      <TableCell>
-                        <Chip
-                          size="small"
-                          label={execution.status || "-"}
-                          color={getExecutionStatusColor(execution.status)}
-                        />
-                      </TableCell>
+              {loading ? (
+                <Card
+                  elevation={0}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 3.5,
+                  }}
+                >
+                  <CardContent sx={{ py: 9, textAlign: "center" }}>
+                    <CircularProgress />
 
-                      <TableCell>
-                        {formatDateTime(execution.startedAt)}
-                      </TableCell>
-
-                      <TableCell>
-                        {formatDateTime(execution.completedAt)}
-                      </TableCell>
-
-                      <TableCell>
-                        {execution.status === "FAILED" ? (
-                          <Tooltip
-                            title={
-                              execution.errorMessage ||
-                              "Automation execution failed."
-                            }
-                          >
-                            <Stack
-                              direction="row"
-                              spacing={0.5}
-                              alignItems="center"
-                            >
-                              <ErrorOutlineOutlined
-                                fontSize="small"
-                                color="error"
-                              />
-
-                              <Typography variant="body2" color="error.main">
-                                Failed
-                              </Typography>
-                            </Stack>
-                          </Tooltip>
-                        ) : execution.status === "SUCCESS" ? (
-                          <Stack
-                            direction="row"
-                            spacing={0.5}
-                            alignItems="center"
-                          >
-                            <CheckCircle fontSize="small" color="success" />
-
-                            <Typography variant="body2">Completed</Typography>
-                          </Stack>
-                        ) : execution.status === "SKIPPED" ? (
-                          <Tooltip
-                            title={
-                              execution.errorMessage ||
-                              "Automation execution was skipped."
-                            }
-                          >
-                            <Stack
-                              direction="row"
-                              spacing={0.5}
-                              alignItems="center"
-                            >
-                              <InfoOutlined fontSize="small" color="info" />
-
-                              <Typography
-                                variant="body2"
-                                color="text.secondary"
-                              >
-                                Skipped
-                              </Typography>
-                            </Stack>
-                          </Tooltip>
-                        ) : (
-                          <Stack
-                            direction="row"
-                            spacing={0.75}
-                            alignItems="center"
-                          >
-                            <CircularProgress size={14} />
-
-                            <Typography variant="body2" color="text.secondary">
-                              Processing
-                            </Typography>
-                          </Stack>
-                        )}
-                      </TableCell>
-                    </TableRow>
+                    <Typography mt={2} color="text.secondary">
+                      Loading automation workflows...
+                    </Typography>
+                  </CardContent>
+                </Card>
+              ) : filteredRules.length > 0 ? (
+                <Stack spacing={2}>
+                  {filteredRules.map((rule) => (
+                    <AutomationRuleCard
+                      key={rule.id}
+                      rule={rule}
+                      busyRuleId={busyRuleId}
+                      onToggle={handleToggle}
+                      onEdit={openEditDialog}
+                      onDelete={handleDelete}
+                      onViewActivity={() => setWorkspace("activity")}
+                    />
                   ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          ) : (
-            <CardContent
-              sx={{
-                py: 6,
+                </Stack>
+              ) : (
+                <Card
+                  elevation={0}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 3.5,
+                  }}
+                >
+                  <CardContent sx={{ py: 8, textAlign: "center" }}>
+                    <SettingsSuggest
+                      sx={{ fontSize: 58, color: "text.disabled" }}
+                    />
 
-                textAlign: "center",
-              }}
-            >
-              <History
-                sx={{
-                  fontSize: 48,
+                    <Typography variant="h6" fontWeight={800} mt={2}>
+                      No matching automations
+                    </Typography>
 
-                  color: "text.disabled",
-                }}
-              />
+                    <Typography variant="body2" color="text.secondary" mt={0.5}>
+                      Change your filters or create a new automation workflow.
+                    </Typography>
 
-              <Typography fontWeight={700} mt={1}>
-                No automation executions yet
-              </Typography>
-
-              <Typography variant="body2" color="text.secondary" mt={0.5}>
-                Booking reminders, membership reminders, payment automations and
-                custom workflows will appear here after execution.
-              </Typography>
-            </CardContent>
+                    <Button
+                      variant="contained"
+                      startIcon={<Add />}
+                      sx={{ mt: 2, textTransform: "none", fontWeight: 800 }}
+                      onClick={openCreateDialog}
+                    >
+                      Create Automation
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </Stack>
           )}
-        </Card>
+
+          {/* ==================================================
+              ACTIVITY
+              ================================================== */}
+
+          {workspace === "activity" && (
+            <Stack spacing={2.5}>
+              <Card
+                elevation={0}
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 3.5,
+                }}
+              >
+                <CardContent sx={{ p: 2.6 }}>
+                  <Stack
+                    direction={{ xs: "column", md: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "stretch", md: "center" }}
+                    spacing={2}
+                  >
+                    <Box>
+                      <Typography variant="h6" fontWeight={850}>
+                        Execution Health
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        mt={0.25}
+                      >
+                        Reliability of recent automation runs.
+                      </Typography>
+                    </Box>
+
+                    <Chip
+                      icon={<TaskAlt />}
+                      label={`${executionMetrics.successRate.toFixed(0)}% success`}
+                      color={
+                        executionMetrics.failedCount > 0 ? "warning" : "success"
+                      }
+                      variant="outlined"
+                      sx={{ fontWeight: 800 }}
+                    />
+                  </Stack>
+
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.min(
+                      Math.max(executionMetrics.successRate, 0),
+                      100,
+                    )}
+                    color={
+                      executionMetrics.failedCount > 0 ? "warning" : "success"
+                    }
+                    sx={{ mt: 2.4, height: 9, borderRadius: 99 }}
+                  />
+
+                  <Grid container spacing={1.5} mt={0.7}>
+                    {[
+                      [
+                        "Successful",
+                        executionMetrics.successCount,
+                        "success.main",
+                      ],
+                      ["Failed", executionMetrics.failedCount, "error.main"],
+                      ["Skipped", executionMetrics.skippedCount, "info.main"],
+                      [
+                        "Processing",
+                        executionMetrics.processingCount,
+                        "warning.main",
+                      ],
+                    ].map(([label, value, color]) => (
+                      <Grid item xs={6} md={3} key={label}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 1.6,
+                            borderRadius: 2.5,
+                            textAlign: "center",
+                          }}
+                        >
+                          <Typography
+                            variant="h5"
+                            fontWeight={900}
+                            color={color}
+                          >
+                            {value}
+                          </Typography>
+
+                          <Typography variant="caption" color="text.secondary">
+                            {label}
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </CardContent>
+              </Card>
+
+              <Card
+                elevation={0}
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 3.5,
+                  overflow: "hidden",
+                }}
+              >
+                <CardContent sx={{ pb: 1.5 }}>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    spacing={1}
+                  >
+                    <Box>
+                      <Typography variant="h6" fontWeight={850}>
+                        Execution History
+                      </Typography>
+
+                      <Typography variant="body2" color="text.secondary">
+                        Click an execution to inspect its trigger, action logs
+                        and result.
+                      </Typography>
+                    </Box>
+
+                    <Chip
+                      icon={<History />}
+                      label={`${executions.length} execution(s)`}
+                      variant="outlined"
+                    />
+                  </Stack>
+                </CardContent>
+
+                {executions.length > 0 ? (
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: "action.hover" }}>
+                          <TableCell>Automation</TableCell>
+                          <TableCell>Reference</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Started</TableCell>
+                          <TableCell>Completed</TableCell>
+                          <TableCell>Result</TableCell>
+                        </TableRow>
+                      </TableHead>
+
+                      <TableBody>
+                        {executions.map((execution) => (
+                          <TableRow
+                            key={execution.id}
+                            hover
+                            onClick={() => handleOpenExecution(execution)}
+                            sx={{ cursor: "pointer" }}
+                          >
+                            <TableCell>
+                              <Typography variant="body2" fontWeight={700}>
+                                {execution.ruleName ||
+                                  `Rule #${execution.ruleId}`}
+                              </Typography>
+                            </TableCell>
+
+                            <TableCell>{formatReference(execution)}</TableCell>
+
+                            <TableCell>
+                              <Chip
+                                size="small"
+                                label={execution.status || "-"}
+                                color={getExecutionStatusColor(
+                                  execution.status,
+                                )}
+                              />
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDateTime(execution.startedAt)}
+                            </TableCell>
+
+                            <TableCell>
+                              {formatDateTime(execution.completedAt)}
+                            </TableCell>
+
+                            <TableCell>
+                              <Stack
+                                direction="row"
+                                spacing={0.7}
+                                alignItems="center"
+                              >
+                                {getActionStatusIcon(execution.status)}
+
+                                <Typography
+                                  variant="body2"
+                                  color={
+                                    execution.status === "FAILED"
+                                      ? "error.main"
+                                      : "text.primary"
+                                  }
+                                >
+                                  {execution.status === "FAILED"
+                                    ? "Failed"
+                                    : execution.status === "SUCCESS"
+                                      ? "Completed"
+                                      : execution.status === "SKIPPED"
+                                        ? "Skipped"
+                                        : "Processing"}
+                                </Typography>
+                              </Stack>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <CardContent sx={{ py: 7, textAlign: "center" }}>
+                    <History sx={{ fontSize: 48, color: "text.disabled" }} />
+
+                    <Typography fontWeight={800} mt={1}>
+                      No automation executions yet
+                    </Typography>
+
+                    <Typography variant="body2" color="text.secondary" mt={0.5}>
+                      Workflow executions will appear here after automation
+                      activity begins.
+                    </Typography>
+                  </CardContent>
+                )}
+              </Card>
+            </Stack>
+          )}
+
+          {/* ==================================================
+              REPORTS
+              ================================================== */}
+
+          {workspace === "reports" && (
+            <Stack spacing={2.5}>
+              <Card
+                elevation={0}
+                sx={{
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 3.5,
+                }}
+              >
+                <CardContent sx={{ p: 2.6 }}>
+                  <Stack
+                    direction={{ xs: "column", sm: "row" }}
+                    justifyContent="space-between"
+                    alignItems={{ xs: "flex-start", sm: "center" }}
+                    spacing={1}
+                  >
+                    <Box>
+                      <Typography variant="h6" fontWeight={850}>
+                        Generated Reports
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        mt={0.25}
+                      >
+                        Files automatically produced by report workflows.
+                      </Typography>
+                    </Box>
+
+                    <Chip
+                      icon={<InsertDriveFile />}
+                      label={`${generatedReports.length} file(s)`}
+                      variant="outlined"
+                    />
+                  </Stack>
+                </CardContent>
+              </Card>
+
+              {generatedReports.length > 0 ? (
+                <Grid container spacing={2}>
+                  {generatedReports.map((report) => (
+                    <Grid item xs={12} md={6} key={report.id}>
+                      <Card
+                        elevation={0}
+                        sx={{
+                          height: "100%",
+                          border: "1px solid",
+                          borderColor: "divider",
+                          borderRadius: 3.5,
+                          transition:
+                            "transform 0.2s ease, box-shadow 0.2s ease",
+                          "&:hover": {
+                            transform: "translateY(-2px)",
+                            boxShadow: "0 16px 36px rgba(15,23,42,0.07)",
+                          },
+                        }}
+                      >
+                        <CardContent sx={{ p: 2.4 }}>
+                          <Stack spacing={1.8}>
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                              alignItems="flex-start"
+                              spacing={1.5}
+                            >
+                              <Stack
+                                direction="row"
+                                spacing={1.3}
+                                alignItems="center"
+                              >
+                                <Box
+                                  sx={{
+                                    width: 44,
+                                    height: 44,
+                                    borderRadius: 2.4,
+                                    display: "grid",
+                                    placeItems: "center",
+                                    bgcolor: alpha(
+                                      theme.palette.primary.main,
+                                      0.08,
+                                    ),
+                                    color: "primary.main",
+                                  }}
+                                >
+                                  <InsertDriveFile />
+                                </Box>
+
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography
+                                    variant="body1"
+                                    fontWeight={850}
+                                    noWrap
+                                  >
+                                    {report.fileName}
+                                  </Typography>
+
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                  >
+                                    {report.ruleName || "Automation Report"}
+                                  </Typography>
+                                </Box>
+                              </Stack>
+
+                              <Chip
+                                size="small"
+                                label={report.format || "-"}
+                                color={
+                                  report.format === "PDF" ? "error" : "success"
+                                }
+                                variant="outlined"
+                              />
+                            </Stack>
+
+                            <Divider />
+
+                            <Grid container spacing={1.5}>
+                              <Grid item xs={6}>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Report date
+                                </Typography>
+
+                                <Typography variant="body2" fontWeight={700}>
+                                  {report.reportDate || "-"}
+                                </Typography>
+                              </Grid>
+
+                              <Grid item xs={6}>
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                >
+                                  Generated
+                                </Typography>
+
+                                <Typography variant="body2" fontWeight={700}>
+                                  {formatDateTime(report.createdAt)}
+                                </Typography>
+                              </Grid>
+                            </Grid>
+
+                            <Button
+                              variant="outlined"
+                              startIcon={
+                                downloadingReportId === report.id ? (
+                                  <CircularProgress size={15} />
+                                ) : (
+                                  <Download />
+                                )
+                              }
+                              disabled={downloadingReportId === report.id}
+                              onClick={() => handleDownloadReport(report)}
+                              sx={{
+                                alignSelf: "flex-start",
+                                textTransform: "none",
+                                fontWeight: 800,
+                              }}
+                            >
+                              Download Report
+                            </Button>
+                          </Stack>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              ) : (
+                <Card
+                  elevation={0}
+                  sx={{
+                    border: "1px solid",
+                    borderColor: "divider",
+                    borderRadius: 3.5,
+                  }}
+                >
+                  <CardContent sx={{ py: 7, textAlign: "center" }}>
+                    <Assessment sx={{ fontSize: 50, color: "text.disabled" }} />
+
+                    <Typography variant="h6" fontWeight={800} mt={1.5}>
+                      No generated reports yet
+                    </Typography>
+
+                    <Typography variant="body2" color="text.secondary" mt={0.5}>
+                      PDF and Excel reports will appear here after a report
+                      automation runs.
+                    </Typography>
+                  </CardContent>
+                </Card>
+              )}
+            </Stack>
+          )}
+        </Box>
       </Box>
 
       {/* ==================================================
                 CREATE / EDIT RULE DIALOG
             ================================================== */}
 
-      <Dialog open={dialogOpen} onClose={closeDialog} fullWidth maxWidth="md">
-        <DialogTitle>
-          {editingRule ? "Edit Automation Rule" : "Create Automation Rule"}
+      <Dialog
+        open={dialogOpen}
+        onClose={closeDialog}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            px: 3,
+            py: 2.4,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+            background: `linear-gradient(135deg, ${alpha(
+              theme.palette.primary.main,
+              0.07,
+            )} 0%, ${theme.palette.background.paper} 75%)`,
+          }}
+        >
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Box
+              sx={{
+                width: 42,
+                height: 42,
+                borderRadius: 2.2,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                color: "primary.main",
+              }}
+            >
+              <Bolt />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                {editingRule ? "Edit Automation" : "Create Automation"}
+              </Typography>
+
+              <Typography variant="caption" color="text.secondary">
+                Configure the trigger, conditions and action for this workflow.
+              </Typography>
+            </Box>
+          </Stack>
         </DialogTitle>
 
         <DialogContent>

@@ -1,4 +1,5 @@
 import {
+  Add,
   CalendarMonth,
   CheckCircle,
   Close,
@@ -51,9 +52,12 @@ import {
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useNavigate } from "react-router-dom";
+
 import bookingApi from "../../api/bookingApi";
 
 import libraryApi from "../../api/libraryApi";
+import getImageUrl from "../../utility/imageUrl";
 
 // ============================================================
 
@@ -186,6 +190,60 @@ function formatCurrency(value) {
   });
 }
 
+function getInitials(name) {
+  const normalized = String(name || "").trim();
+
+  if (!normalized) {
+    return "M";
+  }
+
+  return normalized
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+function BookingMemberAvatar({ booking, size = 40, fontSize = 13 }) {
+  const theme = useTheme();
+  const profileImageUrl = booking?.profileImageUrl || "";
+
+  return (
+    <Avatar
+      src={profileImageUrl ? getImageUrl(profileImageUrl) : undefined}
+      alt={booking?.memberName || "Member"}
+      imgProps={{ referrerPolicy: "no-referrer" }}
+      sx={{
+        width: size,
+        height: size,
+        fontSize,
+        fontWeight: 850,
+        color: "primary.main",
+        bgcolor: alpha(theme.palette.primary.main, 0.09),
+        border: "2px solid",
+        borderColor: alpha(theme.palette.primary.main, 0.14),
+        boxShadow: `0 4px 14px ${alpha(theme.palette.primary.main, 0.08)}`,
+        flexShrink: 0,
+      }}
+    >
+      {!profileImageUrl ? getInitials(booking?.memberName) : null}
+    </Avatar>
+  );
+}
+
+function formatGender(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return String(value)
+    .replaceAll("_", " ")
+
+    .toLowerCase()
+
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 function resolvePaymentStatus(booking) {
   const value =
     booking?.paymentStatus ||
@@ -228,6 +286,8 @@ function mapBookingToUi(booking) {
     email: booking?.memberEmail || booking?.email || "-",
 
     phone: booking?.memberPhone || booking?.phone || "-",
+
+    gender: booking?.gender || "",
 
     profileImageUrl: booking?.profileImageUrl || "",
 
@@ -336,6 +396,8 @@ function mapBookingDetailsToUi(details, fallbackBooking) {
 
     phone:
       details?.memberPhone || details?.phone || fallbackBooking?.phone || "-",
+
+    gender: details?.gender || fallbackBooking?.gender || "",
 
     profileImageUrl:
       details?.profileImageUrl || fallbackBooking?.profileImageUrl || "",
@@ -482,11 +544,8 @@ function DetailItem({ label, value, children }) {
         variant="caption"
         sx={{
           color: "text.secondary",
-
           fontWeight: 650,
-
           display: "block",
-
           mb: 0.4,
         }}
       >
@@ -561,27 +620,7 @@ function BookingDetailsDialog({ booking, open, onClose, loading }) {
             spacing={2}
           >
             <Stack direction="row" spacing={1.5} alignItems="center">
-              <Box
-                sx={{
-                  width: 44,
-
-                  height: 44,
-
-                  borderRadius: 2.5,
-
-                  display: "grid",
-
-                  placeItems: "center",
-
-                  bgcolor: "primary.main",
-
-                  color: "common.white",
-
-                  boxShadow: `0 8px 22px ${alpha(theme.palette.primary.main, 0.25)}`,
-                }}
-              >
-                <EventSeat />
-              </Box>
+              <BookingMemberAvatar booking={booking} size={48} fontSize={16} />
 
               <Box>
                 <Typography variant="h6" fontWeight={850}>
@@ -681,47 +720,17 @@ function BookingDetailsDialog({ booking, open, onClose, loading }) {
                     Member
                   </Typography>
 
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Avatar
-                      src={booking?.profileImageUrl || undefined}
-                      alt={booking?.memberName || "Member"}
-                      sx={{
-                        width: 58,
-                        height: 58,
-                        flexShrink: 0,
-                        bgcolor: alpha(theme.palette.primary.main, 0.1),
-                        color: "primary.main",
-                        fontWeight: 850,
-                        fontSize: 20,
-                        border: "2px solid",
-                        borderColor: alpha(theme.palette.primary.main, 0.15),
-                      }}
-                    >
-                      {!booking?.profileImageUrl
-                        ? booking?.memberName
-                            ?.trim()
-                            ?.charAt(0)
-                            ?.toUpperCase() || "M"
-                        : null}
-                    </Avatar>
+                  <Stack spacing={1.8}>
+                    <DetailItem label="Name" value={booking?.memberName} />
 
-                    <Box minWidth={0}>
-                      <Typography variant="subtitle1" fontWeight={850} noWrap>
-                        {booking?.memberName || "-"}
-                      </Typography>
+                    <DetailItem label="Phone" value={booking?.phone} />
 
-                      <Typography variant="body2" color="text.secondary" noWrap>
-                        {booking?.phone || "-"}
-                      </Typography>
+                    <DetailItem
+                      label="Gender"
+                      value={formatGender(booking?.gender)}
+                    />
 
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        noWrap
-                      >
-                        {booking?.email || "-"}
-                      </Typography>
-                    </Box>
+                    <DetailItem label="Email" value={booking?.email} />
                   </Stack>
                 </Paper>
               </Grid>
@@ -941,7 +950,6 @@ function KpiCard({ icon, label, value, helper, tone = "primary" }) {
 
         borderColor: alpha(
           theme.palette[tone]?.main || theme.palette.primary.main,
-
           0.14,
         ),
 
@@ -970,7 +978,6 @@ function KpiCard({ icon, label, value, helper, tone = "primary" }) {
 
               bgcolor: alpha(
                 theme.palette[tone]?.main || theme.palette.primary.main,
-
                 0.09,
               ),
 
@@ -1011,6 +1018,8 @@ function KpiCard({ icon, label, value, helper, tone = "primary" }) {
 
 function Bookings() {
   const theme = useTheme();
+
+  const navigate = useNavigate();
 
   const [libraries, setLibraries] = useState([]);
 
@@ -1239,7 +1248,6 @@ function Bookings() {
         searchableValues.some((value) =>
           String(value ?? "")
             .toLowerCase()
-
             .includes(query),
         );
 
@@ -1439,6 +1447,8 @@ function Bookings() {
 
   return (
     <Box sx={{ pb: 4 }}>
+      {/* PREMIUM HEADER */}
+
       <Paper
         variant="outlined"
         sx={{
@@ -1546,7 +1556,33 @@ function Bookings() {
             </Box>
           </Stack>
 
-          <Stack direction="row" spacing={1.2}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.2}>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              disabled={!libraryId}
+              onClick={() =>
+                navigate("/owner/bookings/create", {
+                  state: {
+                    libraryId: Number(libraryId),
+
+                    libraryName: selectedLibrary?.name || null,
+                  },
+                })
+              }
+              sx={{
+                borderRadius: 2.4,
+
+                px: 2.2,
+
+                fontWeight: 850,
+
+                boxShadow: `0 10px 24px ${alpha(theme.palette.primary.main, 0.2)}`,
+              }}
+            >
+              Create Booking
+            </Button>
+
             <Button
               variant="outlined"
               startIcon={
@@ -1581,6 +1617,8 @@ function Bookings() {
           {success}
         </Alert>
       )}
+
+      {/* LIBRARY CONTEXT */}
 
       <Paper
         variant="outlined"
@@ -1634,6 +1672,8 @@ function Bookings() {
         </Stack>
       </Paper>
 
+      {/* KPI SUMMARY */}
+
       <Grid container spacing={2} mb={3}>
         <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
           <KpiCard
@@ -1675,6 +1715,8 @@ function Bookings() {
           />
         </Grid>
       </Grid>
+
+      {/* FILTER BAR */}
 
       <Paper
         variant="outlined"
@@ -1802,6 +1844,8 @@ function Bookings() {
           </Button>
         </Stack>
       </Paper>
+
+      {/* BOOKING TABLE */}
 
       <Card
         variant="outlined"
@@ -1948,30 +1992,11 @@ function Bookings() {
                           spacing={1.4}
                           alignItems="center"
                         >
-                          <Avatar
-                            src={booking.profileImageUrl || undefined}
-                            alt={booking.memberName || "Member"}
-                            sx={{
-                              width: 38,
-                              height: 38,
-                              flexShrink: 0,
-                              bgcolor: alpha(theme.palette.primary.main, 0.1),
-                              color: "primary.main",
-                              fontWeight: 800,
-                              border: "2px solid",
-                              borderColor: alpha(
-                                theme.palette.primary.main,
-                                0.14,
-                              ),
-                            }}
-                          >
-                            {!booking.profileImageUrl
-                              ? booking.memberName
-                                  ?.trim()
-                                  ?.charAt(0)
-                                  ?.toUpperCase() || "M"
-                              : null}
-                          </Avatar>
+                          <BookingMemberAvatar
+                            booking={booking}
+                            size={40}
+                            fontSize={13}
+                          />
 
                           <Box minWidth={0}>
                             <Typography variant="body2" fontWeight={750} noWrap>
@@ -2169,6 +2194,8 @@ function Bookings() {
           rowsPerPageOptions={[5, 10, 25]}
         />
       </Card>
+
+      {/* ACTION MENU */}
 
       <Menu
         anchorEl={menuAnchor}

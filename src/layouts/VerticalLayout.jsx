@@ -8,94 +8,87 @@ import Sidebar from "../views/Common/Components/Sidebar";
 const drawerWidth = 250;
 
 function VerticalLayout() {
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-    const [mobileOpen, setMobileOpen] = useState(false);
+  const handleMenuClick = () => {
+    setMobileOpen(true);
+  };
 
-    const handleMenuClick = () => {
-        setMobileOpen(true);
-    };
+  const handleMobileClose = () => {
+    setMobileOpen(false);
+  };
 
-    const handleMobileClose = () => {
-        setMobileOpen(false);
-    };
+  return (
+    <Box
+      sx={{
+        minHeight: "100vh",
+        width: "100%",
+        backgroundColor: "background.default",
+        overflowX: "hidden",
+      }}
+    >
+      {/* =========================================
+          SIDEBAR
+         ========================================= */}
 
-    return (
+      <Sidebar
+        mobileOpen={mobileOpen}
+        onMobileClose={handleMobileClose}
+      />
+
+      {/* =========================================
+          HEADER
+         ========================================= */}
+
+      <Header
+        onMenuClick={handleMenuClick}
+      />
+
+      {/* =========================================
+          MAIN CONTENT
+         ========================================= */}
+
+      <Box
+        component="main"
+        sx={{
+          width: {
+            xs: "100%",
+            md: `calc(100% - ${drawerWidth}px)`,
+          },
+
+          marginLeft: {
+            xs: 0,
+            md: `${drawerWidth}px`,
+          },
+
+          minHeight: "100vh",
+
+          boxSizing: "border-box",
+
+          pt: "76px",
+
+          overflowX: "hidden",
+        }}
+      >
         <Box
-            sx={{
-                minHeight: "100vh",
-                width: "100%",
-                backgroundColor: "background.default",
-                overflowX: "hidden",
-            }}
+          sx={{
+            width: "100%",
+            minWidth: 0,
+            boxSizing: "border-box",
+
+            p: {
+              xs: 1.5,
+              sm: 2,
+              md: 2.5,
+              lg: 3,
+            },
+          }}
         >
-
-            {/* =========================================
-                SIDEBAR
-            ========================================= */}
-
-            <Sidebar
-                mobileOpen={mobileOpen}
-                onMobileClose={handleMobileClose}
-            />
-
-
-            {/* =========================================
-                HEADER
-            ========================================= */}
-
-            <Header
-                onMenuClick={handleMenuClick}
-            />
-
-
-            {/* =========================================
-                MAIN CONTENT
-            ========================================= */}
-
-            <Box
-                component="main"
-                sx={{
-                    width: {
-                        xs: "100%",
-                        md: `calc(100% - ${drawerWidth}px)`,
-                    },
-
-                    marginLeft: {
-                        xs: 0,
-                        md: `${drawerWidth}px`,
-                    },
-
-                    minHeight: "100vh",
-
-                    boxSizing: "border-box",
-
-                    pt: "72px",
-
-                    overflowX: "hidden",
-                }}
-            >
-
-                <Box
-                    sx={{
-                        width: "100%",
-                        minWidth: 0,
-                        boxSizing: "border-box",
-
-                        p: {
-                            xs: 1.5,
-                            sm: 2,
-                            md: 2.5,
-                            lg: 3,
-                        },
-                    }}
-                >
-                    <Outlet />
-                </Box>
-
-            </Box>
-
+          <Outlet />
         </Box>
-    );
+      </Box>
+    </Box>
+  );
 }
 
 export default VerticalLayout;

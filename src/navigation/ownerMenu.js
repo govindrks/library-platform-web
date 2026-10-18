@@ -16,6 +16,7 @@ import {
   Settings,
   SupportAgentOutlined,
   TrendingUp,
+  TrendingDown,
   WorkspacePremium,
 } from "@mui/icons-material";
 
@@ -145,6 +146,12 @@ const ownerMenu = [
       },
 
       {
+        label: "Expenses",
+        path: "/owner/expenses",
+        icon: TrendingDown,
+      },
+
+      {
         label: "Refunds",
         path: "/owner/refunds",
         icon: Replay,
@@ -164,33 +171,6 @@ const ownerMenu = [
     ],
   },
 
-  // ==========================================================
-  // SUPPORT
-  // ==========================================================
-
-  {
-    section: "SUPPORT",
-
-    items: [
-      {
-        label: "Help & Support",
-        path: "/owner/help-support",
-        icon: HelpOutlineOutlined,
-      },
-
-      {
-        label: "My Support Tickets",
-        path: "/owner/support/tickets",
-        icon: ForumOutlined,
-      },
-
-      {
-        label: "Student Support",
-        path: "/owner/student-support",
-        icon: SupportAgentOutlined,
-      },
-    ],
-  },
 
   // ==========================================================
   // INSIGHTS
@@ -232,6 +212,34 @@ const ownerMenu = [
         label: "Automation Center",
         path: "/owner/automation",
         icon: Autorenew,
+      },
+    ],
+  },
+
+  // ==========================================================
+  // SUPPORT
+  // ==========================================================
+
+  {
+    section: "SUPPORT",
+
+    items: [
+      {
+        label: "Help & Support",
+        path: "/owner/help-support",
+        icon: HelpOutlineOutlined,
+      },
+
+      {
+        label: "My Support Tickets",
+        path: "/owner/support/tickets",
+        icon: ForumOutlined,
+      },
+
+      {
+        label: "Student Support",
+        path: "/owner/student-support",
+        icon: SupportAgentOutlined,
       },
     ],
   },

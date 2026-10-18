@@ -29,6 +29,12 @@ const bookingApi = {
 
     getBookingById: async (bookingId) => {
 
+        if (!bookingId) {
+            throw new Error(
+                "Booking ID is required."
+            );
+        }
+
         const response = await api.get(
             `/api/bookings/${bookingId}`
         );
@@ -38,6 +44,12 @@ const bookingApi = {
 
 
     cancelBooking: async (bookingId) => {
+
+        if (!bookingId) {
+            throw new Error(
+                "Booking ID is required."
+            );
+        }
 
         const response = await api.put(
             `/api/bookings/${bookingId}/cancel`
@@ -53,6 +65,12 @@ const bookingApi = {
 
     getLibraryBookings: async (libraryId) => {
 
+        if (!libraryId) {
+            throw new Error(
+                "Library ID is required."
+            );
+        }
+
         const response = await api.get(
             `/api/libraries/${libraryId}/bookings`
         );
@@ -62,6 +80,12 @@ const bookingApi = {
 
 
     getLibraryBookingSummary: async (libraryId) => {
+
+        if (!libraryId) {
+            throw new Error(
+                "Library ID is required."
+            );
+        }
 
         const response = await api.get(
             `/api/libraries/${libraryId}/bookings/summary`
@@ -76,6 +100,18 @@ const bookingApi = {
         bookingId
     ) => {
 
+        if (!libraryId) {
+            throw new Error(
+                "Library ID is required."
+            );
+        }
+
+        if (!bookingId) {
+            throw new Error(
+                "Booking ID is required."
+            );
+        }
+
         const response = await api.get(
             `/api/libraries/${libraryId}/bookings/${bookingId}`
         );
@@ -89,8 +125,70 @@ const bookingApi = {
         bookingId
     ) => {
 
+        if (!libraryId) {
+            throw new Error(
+                "Library ID is required."
+            );
+        }
+
+        if (!bookingId) {
+            throw new Error(
+                "Booking ID is required."
+            );
+        }
+
         const response = await api.put(
             `/api/libraries/${libraryId}/bookings/${bookingId}/cancel`
+        );
+
+        return response.data;
+    },
+
+
+    // =========================================================
+    // LIBRARY OWNER - MANUAL BOOKING
+    // =========================================================
+    //
+    // POST
+    // /api/libraries/{libraryId}/bookings/manual
+    //
+    // Backend handles:
+    //
+    // - existing member OR new walk-in member
+    // - membership plan validation
+    // - membership end-date calculation
+    // - slot validation
+    // - seat locking
+    // - seat restriction validation
+    // - seat/date/slot conflict validation
+    // - authoritative member/seat pricing
+    // - optional coupon
+    // - ACTIVE subscription
+    // - ACTIVE booking
+    // - MANUAL SUCCESS payment
+    //
+    // =========================================================
+
+    createManualBooking: async (
+        libraryId,
+        payload
+    ) => {
+
+        if (!libraryId) {
+            throw new Error(
+                "Library ID is required."
+            );
+        }
+
+        if (!payload) {
+            throw new Error(
+                "Manual booking payload is required."
+            );
+        }
+
+        const response = await api.post(
+            `/api/libraries/${libraryId}/bookings/manual`,
+            payload
         );
 
         return response.data;
