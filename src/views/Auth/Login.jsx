@@ -20,7 +20,7 @@ import {
   Typography,
 } from "@mui/material";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -61,6 +61,59 @@ function Login() {
   const [error, setError] = useState("");
 
   const [success, setSuccess] = useState("");
+
+  // ==========================================================
+  // ORIGINAL DESTINATION
+  // ==========================================================
+
+  const destination = location.state?.from || null;
+
+  // ==========================================================
+  // PRESERVE COMPLETE RETURN STATE
+  // ==========================================================
+  //
+  // This is important for flows such as:
+  //
+  // Public Library
+  // -> Membership Plan
+  // -> Floor
+  // -> Slot
+  // -> Date
+  // -> Seat
+  // -> Login
+  // -> Return to SeatAvailability
+  //
+  // Do not reduce this state to only seatId/libraryId.
+  //
+  // ==========================================================
+
+  const returnState = useMemo(
+    () => ({
+      action: location.state?.action,
+
+      libraryId: location.state?.libraryId,
+
+      membershipPlanId: location.state?.membershipPlanId,
+
+      membershipPlanName: location.state?.membershipPlanName,
+
+      floorId: location.state?.floorId,
+
+      slotId: location.state?.slotId,
+
+      seatId: location.state?.seatId,
+
+      /*
+       * Keep both for compatibility with older flows.
+       */
+      date: location.state?.date,
+
+      startDate: location.state?.startDate,
+
+      endDate: location.state?.endDate,
+    }),
+    [location.state],
+  );
 
   // ==========================================================
   // NAVIGATION MESSAGE
@@ -181,20 +234,21 @@ function Login() {
       // ====================================================
       // LOAD CANONICAL PROFILE
       // ====================================================
+      //
+      // AuthContext owns profile synchronization.
+      //
+      // This loads:
+      //
+      // id
+      // fullName
+      // phone
+      // email
+      // gender
+      // role
+      // profileImageUrl
+      //
+      // ====================================================
 
-      /*
-       * AuthContext owns profile synchronization.
-       *
-       * This loads:
-       *
-       * id
-       * fullName
-       * phone
-       * email
-       * gender
-       * role
-       * profileImageUrl
-       */
       let authenticatedUser = loginUser;
 
       try {
@@ -207,31 +261,46 @@ function Login() {
         /*
          * Authentication itself succeeded.
          *
-         * A temporary profile hydration failure should not
-         * prevent the user from entering the application.
+         * A temporary profile hydration failure
+         * should not block login.
          */
+
         console.warn("Unable to refresh profile after login:", profileError);
       }
 
       // ====================================================
       // RETURN TO ORIGINAL DESTINATION
       // ====================================================
-
-      const destination = location.state?.from;
+      //
+      // IMPORTANT:
+      //
+      // If login came from public booking, return to exactly
+      // where the user was and preserve the full selection.
+      //
+      // Example:
+      //
+      // /libraries/3/seats
+      //
+      // state:
+      // {
+      //   action: "BOOK_SEAT",
+      //   libraryId: 3,
+      //   membershipPlanId: 8,
+      //   membershipPlanName: "Day",
+      //   floorId: 1,
+      //   slotId: 2,
+      //   seatId: 146,
+      //   startDate: "2026-10-19",
+      //   endDate: "2026-11-17"
+      // }
+      //
+      // ====================================================
 
       if (destination) {
         navigate(destination, {
           replace: true,
 
-          state: {
-            action: location.state?.action,
-
-            seatId: location.state?.seatId,
-
-            libraryId: location.state?.libraryId,
-
-            date: location.state?.date,
-          },
+          state: returnState,
         });
 
         return;
@@ -302,6 +371,30 @@ function Login() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ==========================================================
+  // REGISTER
+  // ==========================================================
+  //
+  // Registration must preserve exactly the same booking
+  // context as login.
+  //
+  // Login
+  // -> Register
+  // -> Login / authenticated
+  // -> original public booking
+  //
+  // ==========================================================
+
+  const handleRegister = () => {
+    navigate("/register", {
+      state: {
+        from: destination,
+
+        ...returnState,
+      },
+    });
   };
 
   // ==========================================================
@@ -394,6 +487,22 @@ function Login() {
           </Box>
 
           {/* ================================================= */}
+          {/* BOOKING CONTEXT */}
+          {/* ================================================= */}
+
+          {destination && returnState.action === "BOOK_SEAT" && (
+            <Alert
+              severity="info"
+              sx={{
+                borderRadius: 2.5,
+              }}
+            >
+              Sign in to continue your seat booking. Your selected plan, floor,
+              slot, date and seat will be restored automatically.
+            </Alert>
+          )}
+
+          {/* ================================================= */}
           {/* SUCCESS */}
           {/* ================================================= */}
 
@@ -478,7 +587,7 @@ function Login() {
               />
 
               {/* ================================================= */}
-              {/* REMEMBER ME / FORGOT PASSWORD */}
+              {/* REMEMBER / FORGOT */}
               {/* ================================================= */}
 
               <Box
@@ -527,8 +636,19 @@ function Login() {
                 fullWidth
                 disabled={loading}
                 endIcon={<ArrowForward />}
+                sx={{
+                  minHeight: 50,
+
+                  borderRadius: 2.25,
+
+                  fontWeight: 800,
+                }}
               >
-                {loading ? "Signing in..." : "Sign In"}
+                {loading
+                  ? "Signing in..."
+                  : destination && returnState.action === "BOOK_SEAT"
+                    ? "Sign In & Continue Booking"
+                    : "Sign In"}
               </Button>
             </Stack>
           </Box>
@@ -544,21 +664,7 @@ function Login() {
               type="button"
               underline="hover"
               disabled={loading}
-              onClick={() =>
-                navigate("/register", {
-                  state: {
-                    from: location.state?.from,
-
-                    action: location.state?.action,
-
-                    seatId: location.state?.seatId,
-
-                    libraryId: location.state?.libraryId,
-
-                    date: location.state?.date,
-                  },
-                })
-              }
+              onClick={handleRegister}
             >
               Create account
             </Link>

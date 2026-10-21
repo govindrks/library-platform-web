@@ -1,6 +1,9 @@
 import { Navigate, Outlet } from "react-router-dom";
 
-import { Box, CircularProgress } from "@mui/material";
+import {
+  Box,
+  CircularProgress,
+} from "@mui/material";
 
 import { useAuth } from "../context/AuthContext";
 
@@ -9,7 +12,11 @@ import { useAuth } from "../context/AuthContext";
 // ============================================================
 
 function PublicRoute() {
-  const { isAuthenticated, role, initializing } = useAuth();
+  const {
+    isAuthenticated,
+    role,
+    initializing,
+  } = useAuth();
 
   // ==========================================================
   // AUTH INITIALIZATION
@@ -36,10 +43,11 @@ function PublicRoute() {
   // ==========================================================
   // NOT AUTHENTICATED
   // ==========================================================
+  //
+  // Login and Register are accessible when logged out.
+  //
+  // ==========================================================
 
-  /*
-   * Login and Register are accessible when logged out.
-   */
   if (!isAuthenticated) {
     return <Outlet />;
   }
@@ -49,7 +57,12 @@ function PublicRoute() {
   // ==========================================================
 
   if (role === "ADMIN") {
-    return <Navigate to="/admin/dashboard" replace />;
+    return (
+      <Navigate
+        to="/admin/dashboard"
+        replace
+      />
+    );
   }
 
   // ==========================================================
@@ -57,7 +70,12 @@ function PublicRoute() {
   // ==========================================================
 
   if (role === "LIBRARY_OWNER") {
-    return <Navigate to="/owner/dashboard" replace />;
+    return (
+      <Navigate
+        to="/owner/dashboard"
+        replace
+      />
+    );
   }
 
   // ==========================================================
@@ -65,18 +83,29 @@ function PublicRoute() {
   // ==========================================================
 
   if (role === "USER") {
-    return <Navigate to="/student/dashboard" replace />;
+    return (
+      <Navigate
+        to="/student/dashboard"
+        replace
+      />
+    );
   }
 
   // ==========================================================
   // UNKNOWN ROLE
   // ==========================================================
+  //
+  // Send unknown authenticated roles through the generic
+  // dashboard dispatcher.
+  //
+  // ==========================================================
 
-  /*
-   * Send unknown authenticated roles through the generic
-   * dashboard dispatcher.
-   */
-  return <Navigate to="/dashboard" replace />;
+  return (
+    <Navigate
+      to="/dashboard"
+      replace
+    />
+  );
 }
 
 export default PublicRoute;

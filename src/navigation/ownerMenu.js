@@ -2,6 +2,7 @@ import {
   AccessTime,
   Assessment,
   Autorenew,
+  ContactPhoneRounded,
   Dashboard,
   EventSeat,
   ForumOutlined,
@@ -15,8 +16,8 @@ import {
   Replay,
   Settings,
   SupportAgentOutlined,
-  TrendingUp,
   TrendingDown,
+  TrendingUp,
   WorkspacePremium,
 } from "@mui/icons-material";
 
@@ -118,6 +119,12 @@ const ownerMenu = [
       },
 
       {
+        label: "Membership Enquiries",
+        path: "/owner/enquiries",
+        icon: ContactPhoneRounded,
+      },
+
+      {
         label: "Seat Change Requests",
         path: "/owner/seat-change-requests",
         icon: EventSeat,
@@ -170,7 +177,6 @@ const ownerMenu = [
       },
     ],
   },
-
 
   // ==========================================================
   // INSIGHTS

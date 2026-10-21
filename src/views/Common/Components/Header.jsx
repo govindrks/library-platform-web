@@ -40,7 +40,7 @@ import {
   useTheme,
 } from "@mui/material";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -69,7 +69,7 @@ const IMAGE_ROLES = {
 };
 
 // ============================================================
-// SEARCH DESTINATIONS
+// OWNER SEARCH ITEMS
 // ============================================================
 
 const OWNER_SEARCH_ITEMS = [
@@ -102,7 +102,7 @@ const OWNER_SEARCH_ITEMS = [
     description: "Manage library bookings",
     path: "/owner/bookings",
     icon: LibraryBooksRounded,
-    keywords: "booking reservations seats",
+    keywords: "booking reservation seats",
   },
 
   {
@@ -150,7 +150,7 @@ const OWNER_SEARCH_ITEMS = [
     description: "Automation workflows",
     path: "/owner/automation",
     icon: AutoAwesomeRounded,
-    keywords: "automation workflow rules execution",
+    keywords: "automation workflow rules executions",
   },
 
   {
@@ -161,6 +161,10 @@ const OWNER_SEARCH_ITEMS = [
     keywords: "settings preferences booking notifications",
   },
 ];
+
+// ============================================================
+// ADMIN SEARCH ITEMS
+// ============================================================
 
 const ADMIN_SEARCH_ITEMS = [
   {
@@ -179,6 +183,10 @@ const ADMIN_SEARCH_ITEMS = [
     keywords: "settings platform",
   },
 ];
+
+// ============================================================
+// MEMBER SEARCH ITEMS
+// ============================================================
 
 const MEMBER_SEARCH_ITEMS = [
   {
@@ -199,16 +207,17 @@ const MEMBER_SEARCH_ITEMS = [
 ];
 
 // ============================================================
-// GENERAL HELPERS
+// HELPERS
 // ============================================================
 
 const getInitials = (name) => {
-  if (!name) {
+  const normalized = String(name || "").trim();
+
+  if (!normalized) {
     return "U";
   }
 
-  return name
-    .trim()
+  return normalized
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
@@ -234,7 +243,7 @@ const formatRole = (role) => {
       return String(role)
         .toLowerCase()
         .replace(/_/g, " ")
-        .replace(/\b\w/g, (char) => char.toUpperCase());
+        .replace(/\b\w/g, (character) => character.toUpperCase());
   }
 };
 
@@ -271,11 +280,11 @@ const resolveImageRole = (image) => {
     return image.imageRole;
   }
 
-  if (image?.profile) {
+  if (image?.profile === true) {
     return IMAGE_ROLES.PROFILE;
   }
 
-  if (image?.cover) {
+  if (image?.cover === true) {
     return IMAGE_ROLES.COVER;
   }
 
@@ -293,17 +302,17 @@ const resolveLibraryProfileImage = (library) => {
     images.find((image) => resolveImageRole(image) === IMAGE_ROLES.PROFILE) ||
     null;
 
-  const rawUrl = profileImage?.imageUrl || library?.profileImageUrl || "";
+  const rawImageUrl = profileImage?.imageUrl || library?.profileImageUrl || "";
 
-  if (!rawUrl) {
+  if (!rawImageUrl) {
     return "";
   }
 
-  return getImageUrl(rawUrl);
+  return getImageUrl(rawImageUrl);
 };
 
 // ============================================================
-// COMPONENT
+// HEADER
 // ============================================================
 
 function Header({ onMenuClick }) {
@@ -315,17 +324,19 @@ function Header({ onMenuClick }) {
 
   const { user, role, logout } = useAuth();
 
-  const { unreadCount } = useNotifications();
+  const { unreadCount = 0 } = useNotifications();
 
   // =========================================================
-  // USER INFORMATION
+  // USER
   // =========================================================
 
   const userName = user?.fullName?.trim() || "User";
 
   const userRole = role || user?.role || null;
 
-  const userProfileImageUrl = user?.profileImageUrl || "";
+  const userProfileImageUrl = user?.profileImageUrl
+    ? getImageUrl(user.profileImageUrl)
+    : "";
 
   const isAdmin = userRole === "ADMIN";
 
@@ -362,7 +373,7 @@ function Header({ onMenuClick }) {
   const [libraryIdentityVersion, setLibraryIdentityVersion] = useState(0);
 
   // =========================================================
-  // SEARCH STATE
+  // SEARCH
   // =========================================================
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -384,21 +395,21 @@ function Header({ onMenuClick }) {
   );
 
   // =========================================================
-  // LIBRARY PROFILE IMAGE
+  // SELECTED LIBRARY PROFILE IMAGE
   // =========================================================
 
   const libraryProfileImageUrl = useMemo(() => {
-    const detailsImage = resolveLibraryProfileImage(selectedLibraryDetails);
+    const detailedImage = resolveLibraryProfileImage(selectedLibraryDetails);
 
-    if (detailsImage) {
-      return detailsImage;
+    if (detailedImage) {
+      return detailedImage;
     }
 
     return resolveLibraryProfileImage(selectedLibrarySummary);
   }, [selectedLibraryDetails, selectedLibrarySummary]);
 
   // =========================================================
-  // HEADER IDENTITY
+  // HEADER DISPLAY IDENTITY
   // =========================================================
 
   const headerDisplayName = isLibraryOwner
@@ -437,7 +448,7 @@ function Header({ onMenuClick }) {
     const query = searchQuery.trim().toLowerCase();
 
     if (!query) {
-      return searchItems.slice(0, 6);
+      return searchItems.slice(0, 7);
     }
 
     return searchItems
@@ -489,18 +500,19 @@ function Header({ onMenuClick }) {
           return;
         }
 
-        const stored = getStoredLibraryId();
+        const storedId = getStoredLibraryId();
 
-        const storedExists =
-          stored != null && list.some((item) => Number(item.id) === stored);
+        const storedLibraryExists =
+          storedId != null &&
+          list.some((library) => Number(library.id) === Number(storedId));
 
-        const nextId = storedExists ? stored : list[0].id;
+        const nextLibraryId = storedLibraryExists ? storedId : list[0].id;
 
-        setSelectedLibraryId(String(nextId));
+        setSelectedLibraryId(String(nextLibraryId));
 
-        localStorage.setItem(OWNER_SELECTED_LIBRARY_KEY, String(nextId));
+        localStorage.setItem(OWNER_SELECTED_LIBRARY_KEY, String(nextLibraryId));
       } catch (error) {
-        console.error("Unable to load owner libraries in header:", error);
+        console.error("Unable to load owner libraries in Header:", error);
       } finally {
         if (active) {
           setLoadingLibraries(false);
@@ -516,53 +528,39 @@ function Header({ onMenuClick }) {
   }, [isLibraryOwner]);
 
   // =========================================================
-  // LOAD SELECTED LIBRARY IDENTITY
+  // LOAD SELECTED LIBRARY DETAILS
   // =========================================================
 
-  useEffect(() => {
+  const loadSelectedLibraryIdentity = useCallback(async () => {
     if (!isLibraryOwner || !selectedLibraryId) {
       setSelectedLibraryDetails(null);
 
       return;
     }
 
-    let active = true;
+    try {
+      setLoadingLibraryIdentity(true);
 
-    const loadLibraryIdentity = async () => {
-      try {
-        setLoadingLibraryIdentity(true);
+      const details = await libraryApi.getOwnerLibraryDetails(
+        Number(selectedLibraryId),
+      );
 
-        const details = await libraryApi.getOwnerLibraryDetails(
-          Number(selectedLibraryId),
-        );
+      setSelectedLibraryDetails(details || null);
+    } catch (error) {
+      console.error("Unable to load selected library identity:", error);
 
-        if (!active) {
-          return;
-        }
+      setSelectedLibraryDetails(null);
+    } finally {
+      setLoadingLibraryIdentity(false);
+    }
+  }, [isLibraryOwner, selectedLibraryId]);
 
-        setSelectedLibraryDetails(details || null);
-      } catch (error) {
-        console.error("Unable to load library identity for header:", error);
-
-        if (active) {
-          setSelectedLibraryDetails(null);
-        }
-      } finally {
-        if (active) {
-          setLoadingLibraryIdentity(false);
-        }
-      }
-    };
-
-    loadLibraryIdentity();
-
-    return () => {
-      active = false;
-    };
-  }, [isLibraryOwner, selectedLibraryId, libraryIdentityVersion]);
+  useEffect(() => {
+    loadSelectedLibraryIdentity();
+  }, [loadSelectedLibraryIdentity, libraryIdentityVersion]);
 
   // =========================================================
-  // SYNC OWNER LIBRARY CHANGES
+  // SYNC LIBRARY SELECTION
   // =========================================================
 
   useEffect(() => {
@@ -573,9 +571,13 @@ function Header({ onMenuClick }) {
     const handleLibraryChanged = (event) => {
       const id = Number(event?.detail?.libraryId);
 
-      if (Number.isFinite(id)) {
-        setSelectedLibraryId(String(id));
+      if (!Number.isFinite(id)) {
+        return;
       }
+
+      setSelectedLibraryId(String(id));
+
+      setSelectedLibraryDetails(null);
     };
 
     const handleStorage = (event) => {
@@ -585,9 +587,13 @@ function Header({ onMenuClick }) {
 
       const id = Number(event.newValue);
 
-      if (Number.isFinite(id)) {
-        setSelectedLibraryId(String(id));
+      if (!Number.isFinite(id)) {
+        return;
       }
+
+      setSelectedLibraryId(String(id));
+
+      setSelectedLibraryDetails(null);
     };
 
     window.addEventListener("owner-library-changed", handleLibraryChanged);
@@ -602,7 +608,7 @@ function Header({ onMenuClick }) {
   }, [isLibraryOwner]);
 
   // =========================================================
-  // SYNC LIBRARY PROFILE IMAGE CHANGES
+  // LIVE PROFILE / IMAGE REFRESH
   // =========================================================
 
   useEffect(() => {
@@ -611,14 +617,17 @@ function Header({ onMenuClick }) {
     }
 
     const handleLibraryProfileUpdated = (event) => {
-      const libraryId = Number(event?.detail?.libraryId);
+      const updatedLibraryId = Number(event?.detail?.libraryId);
 
-      if (
-        Number.isFinite(libraryId) &&
-        libraryId === Number(selectedLibraryId)
-      ) {
-        setLibraryIdentityVersion((previous) => previous + 1);
+      if (!Number.isFinite(updatedLibraryId)) {
+        return;
       }
+
+      if (updatedLibraryId !== Number(selectedLibraryId)) {
+        return;
+      }
+
+      setLibraryIdentityVersion((previous) => previous + 1);
     };
 
     window.addEventListener(
@@ -669,7 +678,7 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
-  // NOTIFICATION NAVIGATION
+  // NOTIFICATIONS
   // =========================================================
 
   const handleNotificationNavigation = () => {
@@ -697,20 +706,20 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
-  // SETTINGS NAVIGATION
+  // SETTINGS
   // =========================================================
 
   const handleSettingsNavigation = () => {
     handleUserMenuClose();
 
-    if (isAdmin) {
-      navigate("/admin/settings");
+    if (isLibraryOwner) {
+      navigate("/owner/settings");
 
       return;
     }
 
-    if (isLibraryOwner) {
-      navigate("/owner/settings");
+    if (isAdmin) {
+      navigate("/admin/settings");
 
       return;
     }
@@ -725,20 +734,20 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
-  // PROFILE NAVIGATION
+  // PROFILE
   // =========================================================
 
   const handleProfileNavigation = () => {
     handleUserMenuClose();
 
-    if (isUser) {
-      navigate("/student/profile");
+    if (isLibraryOwner) {
+      navigate("/owner/library");
 
       return;
     }
 
-    if (isLibraryOwner) {
-      navigate("/owner/library");
+    if (isUser) {
+      navigate("/student/profile");
 
       return;
     }
@@ -789,9 +798,11 @@ function Header({ onMenuClick }) {
   const handleSearchSubmit = (event) => {
     event.preventDefault();
 
-    if (filteredSearchItems.length > 0) {
-      navigateFromSearch(filteredSearchItems[0]);
+    if (filteredSearchItems.length === 0) {
+      return;
     }
+
+    navigateFromSearch(filteredSearchItems[0]);
   };
 
   // =========================================================
@@ -859,17 +870,15 @@ function Header({ onMenuClick }) {
       sx={{
         width: {
           xs: "100%",
-
           md: `calc(100% - ${drawerWidth}px)`,
         },
 
         ml: {
           xs: 0,
-
           md: `${drawerWidth}px`,
         },
 
-        bgcolor: alpha(theme.palette.background.paper, 0.94),
+        bgcolor: alpha(theme.palette.background.paper, 0.96),
 
         color: "text.primary",
 
@@ -890,15 +899,12 @@ function Header({ onMenuClick }) {
 
           px: {
             xs: 1.5,
-
             sm: 2,
-
             md: 3,
           },
 
           gap: {
             xs: 1,
-
             md: 1.5,
           },
         }}
@@ -912,7 +918,6 @@ function Header({ onMenuClick }) {
           sx={{
             display: {
               xs: "flex",
-
               md: "none",
             },
           }}
@@ -928,13 +933,11 @@ function Header({ onMenuClick }) {
           sx={{
             minWidth: {
               xs: 0,
-
               md: 185,
             },
 
             display: {
               xs: "none",
-
               sm: "block",
             },
           }}
@@ -970,7 +973,7 @@ function Header({ onMenuClick }) {
         </Box>
 
         {/* =====================================================
-            OWNER LIBRARY SELECTOR
+            LIBRARY SELECTOR
            ===================================================== */}
 
         {isLibraryOwner && (
@@ -979,51 +982,54 @@ function Header({ onMenuClick }) {
             sx={{
               display: {
                 xs: "none",
-
                 md: "flex",
               },
 
               alignItems: "center",
 
-              minWidth: 210,
+              minWidth: 220,
 
               height: 44,
 
               px: 0.7,
 
-              borderRadius: 2.5,
+              borderRadius: 999,
 
-              borderColor: alpha(theme.palette.primary.main, 0.14),
+              borderColor: alpha(theme.palette.primary.main, 0.15),
 
               bgcolor: alpha(theme.palette.primary.main, 0.025),
+
+              transition: "all 0.2s ease",
+
+              "&:hover": {
+                borderColor: alpha(theme.palette.primary.main, 0.3),
+              },
             }}
           >
             <Avatar
               src={libraryProfileImageUrl || undefined}
+              alt={headerDisplayName}
               sx={{
-                width: 30,
-
-                height: 30,
+                width: 31,
+                height: 31,
 
                 bgcolor: "primary.main",
 
-                color: "primary.contrastText",
-
-                fontSize: 11,
+                fontSize: 10,
 
                 fontWeight: 850,
 
-                mr: 0.6,
+                mr: 0.65,
               }}
             >
               {!libraryProfileImageUrl ? headerInitials : null}
             </Avatar>
 
             {loadingLibraries ? (
-              <Stack direction="row" alignItems="center" spacing={1} px={1}>
-                <CircularProgress size={16} />
+              <Stack direction="row" spacing={1} alignItems="center" px={1}>
+                <CircularProgress size={15} />
 
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="caption" color="text.secondary">
                   Loading...
                 </Typography>
               </Stack>
@@ -1041,7 +1047,7 @@ function Header({ onMenuClick }) {
                   minWidth: 0,
 
                   "& .MuiSelect-select": {
-                    py: 0.6,
+                    py: 0.7,
 
                     pr: "28px !important",
 
@@ -1068,7 +1074,7 @@ function Header({ onMenuClick }) {
         )}
 
         {/* =====================================================
-            GLOBAL SEARCH
+            SEARCH
            ===================================================== */}
 
         <Paper
@@ -1079,7 +1085,6 @@ function Header({ onMenuClick }) {
           sx={{
             display: {
               xs: "none",
-
               sm: "flex",
             },
 
@@ -1087,10 +1092,8 @@ function Header({ onMenuClick }) {
 
             width: {
               sm: 220,
-
               lg: 340,
-
-              xl: 420,
+              xl: 430,
             },
 
             height: 44,
@@ -1101,17 +1104,17 @@ function Header({ onMenuClick }) {
               md: 0.5,
             },
 
-            backgroundColor: "#FFFFFF",
+            bgcolor: "#FFFFFF",
 
             border: "1px solid",
 
             borderColor: searchAnchor
-              ? alpha(theme.palette.primary.main, 0.45)
+              ? alpha(theme.palette.primary.main, 0.5)
               : alpha(theme.palette.divider, 0.95),
 
             borderRadius: 999,
 
-            transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+            transition: "all 0.2s ease",
 
             boxShadow: searchAnchor
               ? `0 0 0 3px ${alpha(theme.palette.primary.main, 0.08)}`
@@ -1122,7 +1125,7 @@ function Header({ onMenuClick }) {
             },
 
             "&:focus-within": {
-              borderColor: theme.palette.primary.main,
+              borderColor: "primary.main",
 
               boxShadow: `0 0 0 3px ${alpha(theme.palette.primary.main, 0.08)}`,
             },
@@ -1174,7 +1177,7 @@ function Header({ onMenuClick }) {
 
                 lineHeight: "40px",
 
-                backgroundColor: "transparent !important",
+                bgcolor: "transparent !important",
 
                 color: `${theme.palette.text.primary} !important`,
 
@@ -1217,11 +1220,12 @@ function Header({ onMenuClick }) {
             sx={{
               display: {
                 xs: "none",
-
                 lg: "inline-flex",
               },
 
               fontWeight: 800,
+
+              height: 27,
             }}
           />
         )}
@@ -1235,7 +1239,6 @@ function Header({ onMenuClick }) {
             sx={{
               display: {
                 xs: "none",
-
                 sm: "inline-flex",
               },
             }}
@@ -1262,7 +1265,7 @@ function Header({ onMenuClick }) {
             sx={{
               bgcolor:
                 unreadCount > 0
-                  ? alpha(theme.palette.error.main, 0.045)
+                  ? alpha(theme.palette.error.main, 0.05)
                   : "transparent",
             }}
           >
@@ -1278,7 +1281,7 @@ function Header({ onMenuClick }) {
         </Tooltip>
 
         {/* =====================================================
-            HEADER IDENTITY
+            PROFILE
            ===================================================== */}
 
         <ButtonBase
@@ -1287,12 +1290,11 @@ function Header({ onMenuClick }) {
             borderRadius: 2.5,
 
             px: {
-              xs: 0.3,
-
-              sm: 0.75,
+              xs: 0.25,
+              sm: 0.7,
             },
 
-            py: 0.45,
+            py: 0.4,
 
             ml: 0.2,
 
@@ -1312,7 +1314,6 @@ function Header({ onMenuClick }) {
               <Box
                 sx={{
                   width: 38,
-
                   height: 38,
 
                   display: "grid",
@@ -1320,20 +1321,20 @@ function Header({ onMenuClick }) {
                   placeItems: "center",
                 }}
               >
-                <CircularProgress size={22} />
+                <CircularProgress size={21} />
               </Box>
             ) : (
               <Avatar
                 src={headerProfileImageUrl || undefined}
                 alt={headerDisplayName}
                 sx={{
-                  width: 38,
+                  width: 39,
 
-                  height: 38,
+                  height: 39,
 
                   bgcolor: "primary.main",
 
-                  fontSize: 13,
+                  fontSize: 12,
 
                   fontWeight: 850,
 
@@ -1343,7 +1344,7 @@ function Header({ onMenuClick }) {
 
                   boxShadow: `0 0 0 3px ${alpha(
                     theme.palette.primary.main,
-                    0.06,
+                    0.055,
                   )}`,
                 }}
               >
@@ -1355,7 +1356,6 @@ function Header({ onMenuClick }) {
               sx={{
                 display: {
                   xs: "none",
-
                   md: "block",
                 },
 
@@ -1369,7 +1369,7 @@ function Header({ onMenuClick }) {
                 fontWeight={800}
                 noWrap
                 sx={{
-                  lineHeight: 1.15,
+                  lineHeight: 1.2,
                 }}
               >
                 {headerDisplayName}
@@ -1385,7 +1385,6 @@ function Header({ onMenuClick }) {
               sx={{
                 display: {
                   xs: "none",
-
                   md: "block",
                 },
 
@@ -1396,7 +1395,7 @@ function Header({ onMenuClick }) {
         </ButtonBase>
 
         {/* =====================================================
-            USER MENU
+            PROFILE MENU
            ===================================================== */}
 
         <MuiMenu
@@ -1418,7 +1417,7 @@ function Header({ onMenuClick }) {
               sx: {
                 mt: 1,
 
-                minWidth: 275,
+                minWidth: 280,
 
                 borderRadius: 3,
 
@@ -1426,7 +1425,7 @@ function Header({ onMenuClick }) {
 
                 borderColor: "divider",
 
-                boxShadow: "0 18px 50px rgba(15,23,42,0.12)",
+                boxShadow: "0 20px 55px rgba(15,23,42,0.13)",
               },
             },
           }}
@@ -1435,19 +1434,19 @@ function Header({ onMenuClick }) {
             sx={{
               px: 2,
 
-              pt: 1.6,
+              pt: 1.7,
 
-              pb: 1.4,
+              pb: 1.5,
             }}
           >
-            <Stack direction="row" spacing={1.25} alignItems="center">
+            <Stack direction="row" spacing={1.3} alignItems="center">
               <Avatar
                 src={headerProfileImageUrl || undefined}
                 alt={headerDisplayName}
                 sx={{
-                  width: 46,
+                  width: 48,
 
-                  height: 46,
+                  height: 48,
 
                   bgcolor: "primary.main",
 
@@ -1473,6 +1472,21 @@ function Header({ onMenuClick }) {
                 <Typography variant="caption" color="text.secondary">
                   {userRoleLabel}
                 </Typography>
+
+                {isLibraryOwner && selectedLibraryDetails?.city && (
+                  <Typography
+                    variant="caption"
+                    color="text.disabled"
+                    sx={{
+                      display: "block",
+                    }}
+                  >
+                    {selectedLibraryDetails.city}
+                    {selectedLibraryDetails?.state
+                      ? `, ${selectedLibraryDetails.state}`
+                      : ""}
+                  </Typography>
+                )}
               </Box>
             </Stack>
           </Box>
@@ -1533,7 +1547,7 @@ function Header({ onMenuClick }) {
 
           <Divider
             sx={{
-              my: 0.8,
+              my: 0.7,
             }}
           />
 
@@ -1592,9 +1606,9 @@ function Header({ onMenuClick }) {
 
                 borderColor: "divider",
 
-                backgroundColor: "background.paper",
+                bgcolor: "background.paper",
 
-                boxShadow: "0 20px 60px rgba(15, 23, 42, 0.14)",
+                boxShadow: "0 20px 60px rgba(15,23,42,0.14)",
 
                 overflow: "hidden",
               },
@@ -1676,7 +1690,7 @@ function Header({ onMenuClick }) {
                     selected={selected}
                     onClick={() => navigateFromSearch(item)}
                     sx={{
-                      minHeight: 56,
+                      minHeight: 57,
 
                       px: 1.2,
 
@@ -1693,24 +1707,15 @@ function Header({ onMenuClick }) {
                       },
 
                       "&:hover": {
-                        backgroundColor: alpha(
-                          theme.palette.primary.main,
-                          0.055,
-                        ),
+                        bgcolor: alpha(theme.palette.primary.main, 0.055),
                       },
 
                       "&.Mui-selected": {
-                        backgroundColor: alpha(
-                          theme.palette.primary.main,
-                          0.075,
-                        ),
+                        bgcolor: alpha(theme.palette.primary.main, 0.075),
                       },
 
                       "&.Mui-selected:hover": {
-                        backgroundColor: alpha(
-                          theme.palette.primary.main,
-                          0.11,
-                        ),
+                        bgcolor: alpha(theme.palette.primary.main, 0.11),
                       },
                     }}
                   >
@@ -1731,7 +1736,7 @@ function Header({ onMenuClick }) {
 
                           borderRadius: 2,
 
-                          backgroundColor: selected
+                          bgcolor: selected
                             ? alpha(theme.palette.primary.main, 0.12)
                             : alpha(theme.palette.primary.main, 0.065),
 
@@ -1804,7 +1809,7 @@ function Header({ onMenuClick }) {
 
                   borderRadius: 2.5,
 
-                  backgroundColor: alpha(theme.palette.primary.main, 0.055),
+                  bgcolor: alpha(theme.palette.primary.main, 0.055),
 
                   color: "text.disabled",
                 }}
@@ -1835,6 +1840,8 @@ function Header({ onMenuClick }) {
             </Box>
           )}
 
+          {/* SEARCH FOOTER */}
+
           {filteredSearchItems.length > 0 && (
             <>
               <Divider />
@@ -1845,7 +1852,7 @@ function Header({ onMenuClick }) {
 
                   py: 1,
 
-                  backgroundColor: alpha(theme.palette.action.hover, 0.4),
+                  bgcolor: alpha(theme.palette.action.hover, 0.4),
                 }}
               >
                 <Typography variant="caption" color="text.secondary">

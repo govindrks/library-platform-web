@@ -1,21 +1,32 @@
 import {
+  Add,
   AddPhotoAlternateOutlined,
+  AnalyticsOutlined,
+  ArchiveOutlined,
   CheckCircle,
   CloudUploadOutlined,
+  ContentCopyOutlined,
   DeleteOutlineOutlined,
+  DownloadOutlined,
   Edit,
   EventSeat,
   ImageOutlined,
+  LaunchOutlined,
+  LinkOutlined,
   LocationOn,
   LockOutlined,
   MoreVert,
   MyLocation,
   PhotoCameraOutlined,
   PublicOutlined,
+  QrCode2Outlined,
   Save,
+  WhatsApp,
   Star,
   VisibilityOffOutlined,
   VisibilityOutlined,
+  PauseCircleOutlineOutlined,
+  PlayCircleOutlineOutlined,
 } from "@mui/icons-material";
 
 import {
@@ -27,6 +38,10 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   FormControlLabel,
@@ -47,6 +62,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import libraryApi from "../../api/libraryApi";
+import membershipPlanApi from "../../api/membershipPlanApi";
+import qrCampaignApi from "../../api/qrCampaignApi";
+import seatApi from "../../api/seatApi";
+import slotApi from "../../api/slotApi";
 import getImageUrl from "../../utility/imageUrl";
 
 // ============================================================
@@ -56,6 +75,20 @@ import getImageUrl from "../../utility/imageUrl";
 const GOOGLE_MAPS_SCRIPT_ID = "libraryhub-google-maps-script";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+const OWNER_SELECTED_LIBRARY_KEY = "ownerSelectedLibraryId";
+
+const getStoredOwnerLibraryId = () => {
+  const value = localStorage.getItem(OWNER_SELECTED_LIBRARY_KEY);
+
+  if (!value) {
+    return null;
+  }
+
+  const id = Number(value);
+
+  return Number.isFinite(id) ? id : null;
+};
 
 // ============================================================
 // IMAGE TYPES
@@ -100,6 +133,61 @@ const IMAGE_ROLES = {
   PROFILE: "PROFILE",
   COVER: "COVER",
   GALLERY: "GALLERY",
+};
+
+// ============================================================
+// ADVANCED QR CAMPAIGNS
+// ============================================================
+
+const QR_CAMPAIGN_TYPES = [
+  {
+    value: "PROFILE",
+    label: "Profile",
+    description: "Track visits to the public library profile.",
+  },
+  {
+    value: "POSTER",
+    label: "Poster",
+    description: "Track scans from a printable poster or physical location.",
+  },
+  {
+    value: "MEMBERSHIP_ENQUIRY",
+    label: "Membership Enquiry",
+    description: "Send visitors to a membership enquiry experience.",
+  },
+  {
+    value: "DIRECT_BOOKING",
+    label: "Direct Booking",
+    description:
+      "Open seat booking with optional plan, floor, slot or seat preselection.",
+  },
+];
+
+const EMPTY_QR_CAMPAIGN_FORM = {
+  name: "",
+  description: "",
+  type: "POSTER",
+  status: "ACTIVE",
+  source: "",
+  headline: "",
+  callToAction: "",
+  membershipPlanId: "",
+  floorId: "",
+  slotId: "",
+  seatId: "",
+};
+
+const EMPTY_QR_POSTER_FORM = {
+  title: "",
+  subtitle: "Your perfect study space is one scan away.",
+  callToAction: "",
+  showAddress: true,
+  showPhone: true,
+  showCampaignName: false,
+  showTrackingUrl: false,
+  showMembershipPlans: true,
+  showSeatAvailability: true,
+  showOnlineBooking: true,
 };
 
 // ============================================================
@@ -172,6 +260,102 @@ const displayEnum = (value) => {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+};
+
+const formatPercent = (value) => {
+  const number = Number(value ?? 0);
+
+  if (!Number.isFinite(number)) {
+    return "0.00%";
+  }
+
+  return `${number.toFixed(2)}%`;
+};
+
+const formatQrScanDateTime = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const optionalNumber = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
+};
+
+const normalizeArrayResponse = (response) => {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  if (Array.isArray(response?.content)) {
+    return response.content;
+  }
+
+  if (Array.isArray(response?.data)) {
+    return response.data;
+  }
+
+  return [];
+};
+
+const resolveSeatFloorId = (seat) =>
+  seat?.floorId ?? seat?.floor?.id ?? seat?.floor?.floorId ?? null;
+
+const formatSlotLabel = (slot) => {
+  const name =
+    slot?.name || slot?.slotName || slot?.shiftName || `Slot ${slot?.id}`;
+  const start = slot?.startTime ? String(slot.startTime).slice(0, 5) : "";
+  const end = slot?.endTime ? String(slot.endTime).slice(0, 5) : "";
+
+  return start && end ? `${name} · ${start} - ${end}` : name;
+};
+
+const copyTextToClipboard = async (value) => {
+  if (!value) {
+    throw new Error("Nothing to copy.");
+  }
+
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  const copied = document.execCommand("copy");
+  textarea.remove();
+
+  if (!copied) {
+    throw new Error("Browser clipboard copy failed.");
+  }
 };
 
 const getImageTypeHint = (type) => {
@@ -531,6 +715,77 @@ function LibraryProfile() {
   const [success, setSuccess] = useState("");
 
   // ==========================================================
+  // QR STATE
+  // ==========================================================
+
+  const [qrInfo, setQrInfo] = useState(null);
+
+  const [qrPreviewUrl, setQrPreviewUrl] = useState("");
+
+  const [qrLoading, setQrLoading] = useState(false);
+
+  const [qrDownloading, setQrDownloading] = useState(false);
+
+  const [qrCopying, setQrCopying] = useState(false);
+
+  // ==========================================================
+  // ADVANCED QR CAMPAIGN STATE
+  // ==========================================================
+
+  const [qrCampaigns, setQrCampaigns] = useState([]);
+
+  const [qrCampaignLoading, setQrCampaignLoading] = useState(false);
+
+  const [qrCampaignSaving, setQrCampaignSaving] = useState(false);
+
+  const [qrCampaignBusyId, setQrCampaignBusyId] = useState(null);
+
+  const [qrCampaignDialogOpen, setQrCampaignDialogOpen] = useState(false);
+
+  const [qrCampaignEditingId, setQrCampaignEditingId] = useState(null);
+
+  const [qrCampaignForm, setQrCampaignForm] = useState(EMPTY_QR_CAMPAIGN_FORM);
+
+  // ==========================================================
+  // DIRECT BOOKING QR OPTIONS
+  // ==========================================================
+
+  const [qrDirectBookingOptionsLoading, setQrDirectBookingOptionsLoading] =
+    useState(false);
+
+  const [qrMembershipPlans, setQrMembershipPlans] = useState([]);
+
+  const [qrFloors, setQrFloors] = useState([]);
+
+  const [qrSlots, setQrSlots] = useState([]);
+
+  const [qrSeats, setQrSeats] = useState([]);
+
+  // ==========================================================
+  // QR CAMPAIGN ANALYTICS STATE
+  // ==========================================================
+
+  const [qrAnalyticsDialogOpen, setQrAnalyticsDialogOpen] = useState(false);
+
+  const [qrAnalyticsCampaign, setQrAnalyticsCampaign] = useState(null);
+
+  const [qrAnalyticsData, setQrAnalyticsData] = useState(null);
+
+  const [qrAnalyticsLoading, setQrAnalyticsLoading] = useState(false);
+
+  // ==========================================================
+  // PRINTABLE QR POSTER STATE
+  // ==========================================================
+
+  const [posterCampaign, setPosterCampaign] = useState(null);
+
+  const [posterDialogOpen, setPosterDialogOpen] = useState(false);
+
+  const [posterDownloading, setPosterDownloading] = useState(false);
+
+  const [posterForm, setPosterForm] = useState(EMPTY_QR_POSTER_FORM);
+
+  // ==========================================================
   // MAP STATE
   // ==========================================================
 
@@ -636,6 +891,40 @@ function LibraryProfile() {
     [library.images],
   );
 
+  const qrCampaignTotals = useMemo(
+    () =>
+      qrCampaigns.reduce(
+        (totals, campaign) => ({
+          campaigns: totals.campaigns + 1,
+          totalScans: totals.totalScans + Number(campaign?.totalScans || 0),
+          enquiries: totals.enquiries + Number(campaign?.enquiries || 0),
+          bookingStarts:
+            totals.bookingStarts + Number(campaign?.bookingStarts || 0),
+          completedBookings:
+            totals.completedBookings + Number(campaign?.completedBookings || 0),
+        }),
+        {
+          campaigns: 0,
+          totalScans: 0,
+          enquiries: 0,
+          bookingStarts: 0,
+          completedBookings: 0,
+        },
+      ),
+    [qrCampaigns],
+  );
+
+  const qrFilteredSeats = useMemo(() => {
+    if (!qrCampaignForm.floorId) {
+      return qrSeats;
+    }
+
+    return qrSeats.filter(
+      (seat) =>
+        String(resolveSeatFloorId(seat)) === String(qrCampaignForm.floorId),
+    );
+  }, [qrCampaignForm.floorId, qrSeats]);
+
   // ==========================================================
   // MAP BACKEND RESPONSE
   // ==========================================================
@@ -733,7 +1022,19 @@ function LibraryProfile() {
         return;
       }
 
-      const currentLibrary = libraries[0];
+      const storedLibraryId = getStoredOwnerLibraryId();
+
+      const currentLibrary =
+        (storedLibraryId != null
+          ? libraries.find(
+              (item) => Number(item.id) === Number(storedLibraryId),
+            )
+          : null) || libraries[0];
+
+      localStorage.setItem(
+        OWNER_SELECTED_LIBRARY_KEY,
+        String(currentLibrary.id),
+      );
 
       await refreshLibrary(currentLibrary.id, currentLibrary);
     } catch (requestError) {
@@ -748,6 +1049,855 @@ function LibraryProfile() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    const handleLibraryChanged = async (event) => {
+      const libraryId = Number(event?.detail?.libraryId);
+
+      if (!Number.isFinite(libraryId) || libraryId === Number(library.id)) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError("");
+        setSuccess("");
+        setQrInfo(null);
+        setQrPreviewUrl("");
+
+        await refreshLibrary(libraryId);
+      } catch (requestError) {
+        setError(
+          getErrorMessage(requestError, "Unable to switch library profile."),
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    window.addEventListener("owner-library-changed", handleLibraryChanged);
+
+    return () => {
+      window.removeEventListener("owner-library-changed", handleLibraryChanged);
+    };
+  }, [library.id, refreshLibrary]);
+
+  // ==========================================================
+  // HEADER PROFILE REFRESH EVENT
+  // ==========================================================
+
+  const notifyLibraryProfileUpdated = useCallback((libraryId) => {
+    if (!libraryId) {
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("owner-library-profile-updated", {
+        detail: {
+          libraryId: Number(libraryId),
+        },
+      }),
+    );
+  }, []);
+
+  // ==========================================================
+  // QR LOAD
+  // ==========================================================
+
+  const loadLibraryQr = useCallback(async () => {
+    if (!library.id) {
+      setQrInfo(null);
+
+      setQrPreviewUrl((previous) => {
+        if (previous) {
+          window.URL.revokeObjectURL(previous);
+        }
+
+        return "";
+      });
+
+      return;
+    }
+
+    try {
+      setQrLoading(true);
+      setError("");
+
+      // ========================================================
+      // LOAD QR METADATA
+      // ========================================================
+
+      const info = await libraryApi.getLibraryQr(library.id);
+
+      setQrInfo(info);
+
+      // ========================================================
+      // LOAD INLINE QR PREVIEW
+      // ========================================================
+      //
+      // Backend:
+      //
+      // GET
+      // /api/libraries/{libraryId}/qr/png?download=false
+      //
+      // The response is a Blob. The browser converts it into an
+      // object URL used by the <img> preview below.
+      //
+      // ========================================================
+
+      const blob = await libraryApi.getLibraryQrPreview(library.id);
+
+      if (!blob) {
+        throw new Error("QR preview image was not returned.");
+      }
+
+      const objectUrl = window.URL.createObjectURL(blob);
+
+      setQrPreviewUrl((previous) => {
+        if (previous) {
+          window.URL.revokeObjectURL(previous);
+        }
+
+        return objectUrl;
+      });
+    } catch (requestError) {
+      console.error("Unable to load library QR:", requestError);
+
+      setQrInfo(null);
+
+      setQrPreviewUrl((previous) => {
+        if (previous) {
+          window.URL.revokeObjectURL(previous);
+        }
+
+        return "";
+      });
+
+      setError(
+        getErrorMessage(requestError, "Unable to load permanent library QR."),
+      );
+    } finally {
+      setQrLoading(false);
+    }
+  }, [library.id]);
+
+  // ==========================================================
+  // QR OBJECT URL CLEANUP
+  // ==========================================================
+
+  useEffect(() => {
+    loadLibraryQr();
+
+    return () => {
+      setQrPreviewUrl((current) => {
+        if (current) {
+          window.URL.revokeObjectURL(current);
+        }
+
+        return "";
+      });
+    };
+  }, [loadLibraryQr]);
+
+  // ==========================================================
+  // COPY PUBLIC LINK
+  // ==========================================================
+
+  const handleCopyPublicLink = async () => {
+    if (!qrInfo?.publicUrl) {
+      return;
+    }
+
+    try {
+      setQrCopying(true);
+      setError("");
+      setSuccess("");
+
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(qrInfo.publicUrl);
+      } else {
+        const textarea = document.createElement("textarea");
+
+        textarea.value = qrInfo.publicUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        textarea.style.pointerEvents = "none";
+
+        document.body.appendChild(textarea);
+
+        textarea.focus();
+        textarea.select();
+
+        const copied = document.execCommand("copy");
+
+        textarea.remove();
+
+        if (!copied) {
+          throw new Error("Browser clipboard copy failed.");
+        }
+      }
+
+      setSuccess("Public library link copied.");
+    } catch (requestError) {
+      console.error("Unable to copy public library link:", requestError);
+
+      setError("Unable to copy the public library link.");
+    } finally {
+      setQrCopying(false);
+    }
+  };
+
+  // ==========================================================
+  // OPEN PUBLIC PROFILE
+  // ==========================================================
+
+  const handleOpenPublicProfile = () => {
+    if (!qrInfo?.publicUrl || qrInfo?.publicAvailable === false) {
+      return;
+    }
+
+    window.open(qrInfo.publicUrl, "_blank", "noopener,noreferrer");
+  };
+
+  // ==========================================================
+  // SHARE ON WHATSAPP
+  // ==========================================================
+
+  const handleShareWhatsApp = () => {
+    if (!qrInfo?.publicUrl || qrInfo?.publicAvailable === false) {
+      return;
+    }
+
+    const libraryName =
+      library.libraryName || qrInfo.libraryName || "this library";
+
+    const message = [
+      `Explore ${libraryName} on LibraryHub.`,
+      "",
+      "View library details, membership plans and seat availability:",
+      qrInfo.publicUrl,
+    ].join("\n");
+
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(message)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
+  // ==========================================================
+  // DOWNLOAD QR
+  // ==========================================================
+
+  const handleDownloadQr = async () => {
+    if (!library.id) {
+      return;
+    }
+
+    try {
+      setQrDownloading(true);
+      setError("");
+      setSuccess("");
+
+      await libraryApi.saveLibraryQrPng(
+        library.id,
+        library.libraryName || `library-${library.id}`,
+      );
+
+      setSuccess("QR code downloaded successfully.");
+    } catch (requestError) {
+      console.error("Unable to download library QR:", requestError);
+
+      setError(getErrorMessage(requestError, "Unable to download QR code."));
+    } finally {
+      setQrDownloading(false);
+    }
+  };
+
+  // ==========================================================
+  // DIRECT BOOKING QR OPTIONS
+  // ==========================================================
+
+  const loadQrDirectBookingOptions = useCallback(async () => {
+    if (!library.id) {
+      setQrMembershipPlans([]);
+      setQrFloors([]);
+      setQrSlots([]);
+      setQrSeats([]);
+      return;
+    }
+
+    try {
+      setQrDirectBookingOptionsLoading(true);
+
+      const [planResponse, floorResponse, slotResponse, seatResponse] =
+        await Promise.all([
+          membershipPlanApi.getActivePlans(library.id),
+          seatApi.getFloors(library.id),
+          slotApi.getActiveSlots(library.id),
+          seatApi.getLibrarySeats(library.id),
+        ]);
+
+      setQrMembershipPlans(normalizeArrayResponse(planResponse));
+      setQrFloors(normalizeArrayResponse(floorResponse));
+      setQrSlots(normalizeArrayResponse(slotResponse));
+      setQrSeats(normalizeArrayResponse(seatResponse));
+    } catch (requestError) {
+      console.error("Unable to load direct-booking QR options:", requestError);
+
+      setQrMembershipPlans([]);
+      setQrFloors([]);
+      setQrSlots([]);
+      setQrSeats([]);
+
+      setError(
+        getErrorMessage(
+          requestError,
+          "Unable to load plans, floors, slots and seats for direct booking QR.",
+        ),
+      );
+    } finally {
+      setQrDirectBookingOptionsLoading(false);
+    }
+  }, [library.id]);
+
+  useEffect(() => {
+    loadQrDirectBookingOptions();
+  }, [loadQrDirectBookingOptions]);
+
+  // ==========================================================
+  // ADVANCED QR CAMPAIGNS
+  // ==========================================================
+
+  const loadQrCampaigns = useCallback(async () => {
+    if (!library.id) {
+      setQrCampaigns([]);
+      return;
+    }
+
+    try {
+      setQrCampaignLoading(true);
+
+      const response = await qrCampaignApi.getCampaigns(library.id);
+
+      setQrCampaigns(Array.isArray(response) ? response : []);
+    } catch (requestError) {
+      console.error("Unable to load QR campaigns:", requestError);
+
+      setQrCampaigns([]);
+      setError(
+        getErrorMessage(requestError, "Unable to load advanced QR campaigns."),
+      );
+    } finally {
+      setQrCampaignLoading(false);
+    }
+  }, [library.id]);
+
+  useEffect(() => {
+    loadQrCampaigns();
+  }, [loadQrCampaigns]);
+
+  // ==========================================================
+  // QR CAMPAIGN ANALYTICS
+  // ==========================================================
+
+  const handleOpenQrAnalytics = async (campaign) => {
+    if (!library.id || !campaign?.id) {
+      return;
+    }
+
+    try {
+      setQrAnalyticsCampaign(campaign);
+      setQrAnalyticsData(null);
+      setQrAnalyticsDialogOpen(true);
+      setQrAnalyticsLoading(true);
+      setError("");
+
+      const analytics = await qrCampaignApi.getAnalytics(
+        library.id,
+        campaign.id,
+      );
+
+      setQrAnalyticsData(analytics || null);
+    } catch (requestError) {
+      console.error("Unable to load QR campaign analytics:", requestError);
+
+      setError(
+        getErrorMessage(requestError, "Unable to load QR campaign analytics."),
+      );
+    } finally {
+      setQrAnalyticsLoading(false);
+    }
+  };
+
+  const handleCloseQrAnalytics = () => {
+    if (qrAnalyticsLoading) {
+      return;
+    }
+
+    setQrAnalyticsDialogOpen(false);
+    setQrAnalyticsCampaign(null);
+    setQrAnalyticsData(null);
+  };
+
+  const resetQrCampaignForm = () => {
+    setQrCampaignForm(EMPTY_QR_CAMPAIGN_FORM);
+    setQrCampaignEditingId(null);
+  };
+
+  const handleOpenCreateQrCampaign = () => {
+    resetQrCampaignForm();
+    setError("");
+    setSuccess("");
+    setQrCampaignDialogOpen(true);
+  };
+
+  const handleCloseQrCampaignDialog = () => {
+    if (qrCampaignSaving) {
+      return;
+    }
+
+    setQrCampaignDialogOpen(false);
+    resetQrCampaignForm();
+  };
+
+  const handleQrCampaignFormChange = (event) => {
+    const { name, value } = event.target;
+
+    setQrCampaignForm((previous) => {
+      const next = {
+        ...previous,
+        [name]: value,
+      };
+
+      if (name === "type") {
+        if (value === "DIRECT_BOOKING") {
+          // Keep any plan already selected when switching from an enquiry
+          // campaign to direct booking, but reset booking-specific fields.
+          next.floorId = "";
+          next.slotId = "";
+          next.seatId = "";
+        } else if (value === "MEMBERSHIP_ENQUIRY") {
+          // Membership enquiry campaigns may optionally target one plan.
+          // Floor, slot and seat are booking-only selections.
+          next.floorId = "";
+          next.slotId = "";
+          next.seatId = "";
+        } else {
+          next.membershipPlanId = "";
+          next.floorId = "";
+          next.slotId = "";
+          next.seatId = "";
+        }
+      }
+
+      if (name === "floorId") {
+        next.seatId = "";
+      }
+
+      return next;
+    });
+  };
+
+  const handleEditQrCampaign = async (campaign) => {
+    if (!library.id || !campaign?.id) {
+      return;
+    }
+
+    try {
+      setQrCampaignBusyId(campaign.id);
+      setError("");
+      setSuccess("");
+
+      const details = await qrCampaignApi.getCampaign(library.id, campaign.id);
+
+      setQrCampaignEditingId(campaign.id);
+      setQrCampaignForm({
+        name: details?.name || "",
+        description: details?.description || "",
+        type: details?.type || "POSTER",
+        status: details?.status || "ACTIVE",
+        source: details?.source || "",
+        headline: details?.headline || "",
+        callToAction: details?.callToAction || "",
+        membershipPlanId: details?.membershipPlanId ?? "",
+        floorId: details?.floorId ?? "",
+        slotId: details?.slotId ?? "",
+        seatId: details?.seatId ?? "",
+      });
+
+      setQrCampaignDialogOpen(true);
+    } catch (requestError) {
+      setError(
+        getErrorMessage(requestError, "Unable to load QR campaign details."),
+      );
+    } finally {
+      setQrCampaignBusyId(null);
+    }
+  };
+
+  const handleSaveQrCampaign = async () => {
+    if (!library.id) {
+      return;
+    }
+
+    if (!qrCampaignForm.name.trim()) {
+      setError("Campaign name is required.");
+      return;
+    }
+
+    const directBooking = qrCampaignForm.type === "DIRECT_BOOKING";
+    const membershipEnquiry = qrCampaignForm.type === "MEMBERSHIP_ENQUIRY";
+
+    if (
+      directBooking &&
+      !qrCampaignForm.membershipPlanId &&
+      !qrCampaignForm.floorId &&
+      !qrCampaignForm.slotId &&
+      !qrCampaignForm.seatId
+    ) {
+      setError(
+        "Direct booking QR requires at least one plan, floor, slot or seat selection.",
+      );
+      return;
+    }
+
+    const payload = {
+      name: qrCampaignForm.name.trim(),
+      description: qrCampaignForm.description.trim() || null,
+      type: qrCampaignForm.type,
+      status: qrCampaignForm.status || "ACTIVE",
+      source: qrCampaignForm.source.trim() || null,
+      headline: qrCampaignForm.headline.trim() || null,
+      callToAction: qrCampaignForm.callToAction.trim() || null,
+      membershipPlanId:
+        directBooking || membershipEnquiry
+          ? optionalNumber(qrCampaignForm.membershipPlanId)
+          : null,
+      floorId: directBooking ? optionalNumber(qrCampaignForm.floorId) : null,
+      slotId: directBooking ? optionalNumber(qrCampaignForm.slotId) : null,
+      seatId: directBooking ? optionalNumber(qrCampaignForm.seatId) : null,
+    };
+
+    try {
+      setQrCampaignSaving(true);
+      setError("");
+      setSuccess("");
+
+      if (qrCampaignEditingId) {
+        await qrCampaignApi.updateCampaign(
+          library.id,
+          qrCampaignEditingId,
+          payload,
+        );
+      } else {
+        await qrCampaignApi.createCampaign(library.id, payload);
+      }
+
+      await loadQrCampaigns();
+
+      setQrCampaignDialogOpen(false);
+      resetQrCampaignForm();
+
+      setSuccess(
+        qrCampaignEditingId
+          ? "QR campaign updated successfully."
+          : "QR campaign created successfully.",
+      );
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          qrCampaignEditingId
+            ? "Unable to update QR campaign."
+            : "Unable to create QR campaign.",
+        ),
+      );
+    } finally {
+      setQrCampaignSaving(false);
+    }
+  };
+
+  const handleQrCampaignStatus = async (campaign, action) => {
+    if (!library.id || !campaign?.id) {
+      return;
+    }
+
+    if (
+      action === "archive" &&
+      !window.confirm(
+        `Archive QR campaign "${campaign.name}"? The printed QR will stop resolving while archived.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setQrCampaignBusyId(campaign.id);
+      setError("");
+      setSuccess("");
+
+      if (action === "activate") {
+        await qrCampaignApi.activateCampaign(library.id, campaign.id);
+      } else if (action === "deactivate") {
+        await qrCampaignApi.deactivateCampaign(library.id, campaign.id);
+      } else if (action === "archive") {
+        await qrCampaignApi.archiveCampaign(library.id, campaign.id);
+      } else {
+        return;
+      }
+
+      await loadQrCampaigns();
+
+      setSuccess(
+        action === "activate"
+          ? "QR campaign activated."
+          : action === "deactivate"
+            ? "QR campaign deactivated."
+            : "QR campaign archived.",
+      );
+    } catch (requestError) {
+      setError(
+        getErrorMessage(requestError, "Unable to change QR campaign status."),
+      );
+    } finally {
+      setQrCampaignBusyId(null);
+    }
+  };
+
+  const handleCopyQrCampaignLink = async (campaign) => {
+    if (!campaign?.trackingUrl) {
+      return;
+    }
+
+    try {
+      setQrCampaignBusyId(campaign.id);
+      setError("");
+      setSuccess("");
+
+      await copyTextToClipboard(campaign.trackingUrl);
+
+      setSuccess(`Tracking link copied for ${campaign.name}.`);
+    } catch (requestError) {
+      setError(
+        getErrorMessage(requestError, "Unable to copy campaign tracking link."),
+      );
+    } finally {
+      setQrCampaignBusyId(null);
+    }
+  };
+
+  const handlePreviewQrCampaignDestination = async (campaign) => {
+    if (!library.id || !campaign?.id) {
+      return;
+    }
+
+    try {
+      setQrCampaignBusyId(campaign.id);
+      setError("");
+
+      const details = await qrCampaignApi.getCampaign(library.id, campaign.id);
+
+      if (!details?.destinationUrl) {
+        throw new Error("Campaign destination is unavailable.");
+      }
+
+      // Open the resolved destination directly so the owner's preview does
+      // not artificially increase campaign scan analytics.
+      window.open(details.destinationUrl, "_blank", "noopener,noreferrer");
+    } catch (requestError) {
+      setError(
+        getErrorMessage(
+          requestError,
+          "Unable to preview campaign destination.",
+        ),
+      );
+    } finally {
+      setQrCampaignBusyId(null);
+    }
+  };
+
+  // ==========================================================
+  // PREVIEW CAMPAIGN QR
+  // ==========================================================
+
+  const handlePreviewCampaignQr = async (campaign) => {
+    if (!library.id || !campaign?.id) {
+      return;
+    }
+
+    let previewWindow = null;
+
+    try {
+      setQrCampaignBusyId(campaign.id);
+      setError("");
+      setSuccess("");
+
+      // Open immediately from the user gesture so popup blockers do not
+      // block the preview after the async request completes.
+      previewWindow = window.open("", "_blank");
+
+      const blob = await qrCampaignApi.getCampaignQrPreview(
+        library.id,
+        campaign.id,
+      );
+
+      if (!blob) {
+        throw new Error("Campaign QR image was not returned.");
+      }
+
+      const objectUrl = window.URL.createObjectURL(blob);
+
+      if (previewWindow) {
+        previewWindow.opener = null;
+        previewWindow.location.href = objectUrl;
+      } else {
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+
+      // Keep the URL alive long enough for the new tab to load it.
+      window.setTimeout(() => {
+        window.URL.revokeObjectURL(objectUrl);
+      }, 60000);
+    } catch (requestError) {
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.close();
+      }
+
+      console.error("Unable to preview campaign QR:", requestError);
+
+      setError(getErrorMessage(requestError, "Unable to preview campaign QR."));
+    } finally {
+      setQrCampaignBusyId(null);
+    }
+  };
+
+  // ==========================================================
+  // DOWNLOAD CAMPAIGN QR
+  // ==========================================================
+
+  const handleDownloadCampaignQr = async (campaign) => {
+    if (!library.id || !campaign?.id) {
+      return;
+    }
+
+    try {
+      setQrCampaignBusyId(campaign.id);
+      setError("");
+      setSuccess("");
+
+      await qrCampaignApi.saveCampaignQrPng(
+        library.id,
+        campaign.id,
+        campaign.name || `campaign-${campaign.id}`,
+      );
+
+      setSuccess("Campaign QR downloaded successfully.");
+    } catch (requestError) {
+      console.error("Unable to download campaign QR:", requestError);
+
+      setError(
+        getErrorMessage(requestError, "Unable to download campaign QR."),
+      );
+    } finally {
+      setQrCampaignBusyId(null);
+    }
+  };
+
+  // ==========================================================
+  // PRINTABLE QR POSTER
+  // ==========================================================
+
+  const handleOpenPosterDialog = (campaign) => {
+    if (!campaign?.id) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setPosterCampaign(campaign);
+    setPosterForm({
+      ...EMPTY_QR_POSTER_FORM,
+      title: library.libraryName || "",
+      subtitle:
+        campaign?.headline || "Your perfect study space is one scan away.",
+      callToAction: campaign?.callToAction || "",
+    });
+    setPosterDialogOpen(true);
+  };
+
+  const handleClosePosterDialog = () => {
+    if (posterDownloading) {
+      return;
+    }
+
+    setPosterDialogOpen(false);
+    setPosterCampaign(null);
+    setPosterForm(EMPTY_QR_POSTER_FORM);
+  };
+
+  const handlePosterFieldChange = (event) => {
+    const { name, value, checked, type } = event.target;
+
+    setPosterForm((previous) => ({
+      ...previous,
+      [name]: type === "checkbox" ? checked : value,
+    }));
+  };
+
+  const handleDownloadPoster = async () => {
+    if (!library.id || !posterCampaign?.id) {
+      return;
+    }
+
+    try {
+      setPosterDownloading(true);
+      setQrCampaignBusyId(posterCampaign.id);
+      setError("");
+      setSuccess("");
+
+      await qrCampaignApi.saveCampaignPosterPdf(
+        library.id,
+        posterCampaign.id,
+        posterCampaign.name || `campaign-${posterCampaign.id}`,
+        {
+          title: posterForm.title?.trim() || null,
+          subtitle: posterForm.subtitle?.trim() || null,
+          callToAction: posterForm.callToAction?.trim() || null,
+          showAddress: Boolean(posterForm.showAddress),
+          showPhone: Boolean(posterForm.showPhone),
+          showCampaignName: Boolean(posterForm.showCampaignName),
+          showTrackingUrl: Boolean(posterForm.showTrackingUrl),
+          showMembershipPlans: Boolean(posterForm.showMembershipPlans),
+          showSeatAvailability: Boolean(posterForm.showSeatAvailability),
+          showOnlineBooking: Boolean(posterForm.showOnlineBooking),
+        },
+      );
+
+      setSuccess("Printable QR poster downloaded successfully.");
+      setPosterDialogOpen(false);
+      setPosterCampaign(null);
+      setPosterForm(EMPTY_QR_POSTER_FORM);
+    } catch (requestError) {
+      console.error("Unable to generate QR poster:", requestError);
+
+      setError(
+        getErrorMessage(
+          requestError,
+          "Unable to generate printable QR poster.",
+        ),
+      );
+    } finally {
+      setPosterDownloading(false);
+      setQrCampaignBusyId(null);
+    }
+  };
 
   // ==========================================================
   // FORM CHANGE
@@ -877,6 +2027,8 @@ function LibraryProfile() {
       await libraryApi.updateLibrary(library.id, payload);
 
       await refreshLibrary(library.id, library);
+
+      notifyLibraryProfileUpdated(library.id);
 
       setEditing(false);
 
@@ -1387,6 +2539,8 @@ function LibraryProfile() {
 
       await refreshLibrary(library.id, library);
 
+      notifyLibraryProfileUpdated(library.id);
+
       setSuccess("Image uploaded successfully.");
     } catch (requestError) {
       setError(getErrorMessage(requestError, "Unable to upload image."));
@@ -1422,6 +2576,8 @@ function LibraryProfile() {
       await libraryApi.setLibraryImageRole(library.id, image.id, role);
 
       await refreshLibrary(library.id, library);
+
+      notifyLibraryProfileUpdated(library.id);
 
       setSuccess("Image usage updated successfully.");
     } catch (requestError) {
@@ -1516,6 +2672,8 @@ function LibraryProfile() {
 
       await refreshLibrary(library.id, library);
 
+      notifyLibraryProfileUpdated(library.id);
+
       setSuccess("Image category updated successfully.");
     } catch (requestError) {
       setError(
@@ -1547,6 +2705,8 @@ function LibraryProfile() {
       await libraryApi.deleteLibraryImage(image.id);
 
       await refreshLibrary(library.id, library);
+
+      notifyLibraryProfileUpdated(library.id);
 
       setSuccess("Image deleted.");
     } catch (requestError) {
@@ -1929,6 +3089,1826 @@ function LibraryProfile() {
           </Grid>
         </Box>
       </Card>
+
+      {/* ====================================================== */}
+      {/* SHARE & QR CODE */}
+      {/* ====================================================== */}
+
+      <PremiumSection
+        icon={<QrCode2Outlined />}
+        title="Share & QR Code"
+        description="Use one permanent QR code and public link for this library. Visitors can scan and browse without signing in."
+        action={
+          <Chip
+            size="small"
+            icon={
+              qrInfo?.publicAvailable === false ? (
+                <VisibilityOffOutlined />
+              ) : (
+                <CheckCircle />
+              )
+            }
+            label={
+              qrInfo?.publicAvailable === false
+                ? "Public profile unavailable"
+                : "Permanent QR"
+            }
+            color={qrInfo?.publicAvailable === false ? "warning" : "success"}
+            variant="outlined"
+            sx={{ fontWeight: 750 }}
+          />
+        }
+      >
+        {qrLoading ? (
+          <Stack
+            minHeight={250}
+            alignItems="center"
+            justifyContent="center"
+            spacing={1.5}
+          >
+            <CircularProgress size={30} />
+            <Typography variant="body2" color="text.secondary">
+              Loading permanent QR...
+            </Typography>
+          </Stack>
+        ) : (
+          <Grid container spacing={3} alignItems="stretch">
+            <Grid size={{ xs: 12, md: 4 }}>
+              <Box
+                sx={{
+                  height: "100%",
+                  minHeight: 330,
+                  p: 2.5,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 3.5,
+                  border: "1px solid",
+                  borderColor: alpha(theme.palette.primary.main, 0.14),
+                  bgcolor: alpha(theme.palette.primary.main, 0.035),
+                }}
+              >
+                <Box
+                  sx={{
+                    width: { xs: 220, md: 245 },
+                    maxWidth: "100%",
+                    aspectRatio: "1 / 1",
+                    p: 1.5,
+                    borderRadius: 3,
+                    bgcolor: "#fff",
+                    border: "1px solid",
+                    borderColor: alpha(theme.palette.divider, 0.9),
+                    display: "grid",
+                    placeItems: "center",
+                    boxShadow: "0 16px 40px rgba(15,23,42,0.08)",
+                  }}
+                >
+                  {qrPreviewUrl ? (
+                    <Box
+                      component="img"
+                      src={qrPreviewUrl}
+                      alt={`${library.libraryName || "Library"} QR code`}
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                      }}
+                    />
+                  ) : (
+                    <QrCode2Outlined
+                      sx={{
+                        fontSize: 90,
+                        color: "text.disabled",
+                      }}
+                    />
+                  )}
+                </Box>
+
+                <Typography
+                  variant="subtitle1"
+                  fontWeight={850}
+                  textAlign="center"
+                  mt={2}
+                >
+                  {library.libraryName || "Library"}
+                </Typography>
+
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  textAlign="center"
+                  sx={{ mt: 0.35 }}
+                >
+                  Scan to open the public LibraryHub profile
+                </Typography>
+              </Box>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 8 }}>
+              <Stack spacing={2.25} sx={{ height: "100%" }}>
+                <Box
+                  sx={{
+                    p: 2.2,
+                    borderRadius: 3,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "background.default",
+                  }}
+                >
+                  <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                    <LinkOutlined color="primary" fontSize="small" />
+                    <Typography fontWeight={800}>
+                      Permanent public link
+                    </Typography>
+                  </Stack>
+
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 1.25 }}
+                  >
+                    This URL stays tied to library ID {library.id}. Downloading
+                    the QR again does not create a new destination.
+                  </Typography>
+
+                  <Box
+                    sx={{
+                      px: 1.6,
+                      py: 1.35,
+                      borderRadius: 2.5,
+                      border: "1px solid",
+                      borderColor: alpha(theme.palette.primary.main, 0.16),
+                      bgcolor: alpha(theme.palette.primary.main, 0.045),
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      color="primary.main"
+                      fontWeight={700}
+                    >
+                      {qrInfo?.publicUrl || "Public URL unavailable"}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                {qrInfo?.publicAvailable === false && (
+                  <Alert severity="warning" sx={{ borderRadius: 2.5 }}>
+                    This permanent QR remains assigned to the library, but the
+                    public profile is currently unavailable. Activate/publish
+                    the library and enable public discovery before sharing it.
+                  </Alert>
+                )}
+
+                <Grid container spacing={1.5}>
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      startIcon={
+                        qrDownloading ? (
+                          <CircularProgress size={16} color="inherit" />
+                        ) : (
+                          <DownloadOutlined />
+                        )
+                      }
+                      disabled={qrDownloading || !library.id}
+                      onClick={handleDownloadQr}
+                      sx={{ minHeight: 46, borderRadius: 2.5, fontWeight: 750 }}
+                    >
+                      {qrDownloading ? "Downloading..." : "Download PNG"}
+                    </Button>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={
+                        qrCopying ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <ContentCopyOutlined />
+                        )
+                      }
+                      disabled={qrCopying || !qrInfo?.publicUrl}
+                      onClick={handleCopyPublicLink}
+                      sx={{ minHeight: 46, borderRadius: 2.5, fontWeight: 750 }}
+                    >
+                      {qrCopying ? "Copying..." : "Copy Link"}
+                    </Button>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      color="success"
+                      startIcon={<WhatsApp />}
+                      disabled={
+                        !qrInfo?.publicUrl || qrInfo?.publicAvailable === false
+                      }
+                      onClick={handleShareWhatsApp}
+                      sx={{ minHeight: 46, borderRadius: 2.5, fontWeight: 750 }}
+                    >
+                      Share on WhatsApp
+                    </Button>
+                  </Grid>
+
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<LaunchOutlined />}
+                      disabled={
+                        !qrInfo?.publicUrl || qrInfo?.publicAvailable === false
+                      }
+                      onClick={handleOpenPublicProfile}
+                      sx={{ minHeight: 46, borderRadius: 2.5, fontWeight: 750 }}
+                    >
+                      Open Public Profile
+                    </Button>
+                  </Grid>
+                </Grid>
+
+                <Box
+                  sx={{
+                    mt: "auto",
+                    p: 2,
+                    borderRadius: 3,
+                    bgcolor: alpha(theme.palette.success.main, 0.045),
+                    border: "1px solid",
+                    borderColor: alpha(theme.palette.success.main, 0.14),
+                  }}
+                >
+                  <Grid container spacing={1}>
+                    {[
+                      "Permanent QR for this library",
+                      "Visitors can scan without signing in",
+                      "Booking remains protected by authentication",
+                      "Different libraries receive different QR destinations",
+                    ].map((item) => (
+                      <Grid key={item} size={{ xs: 12, sm: 6 }}>
+                        <Stack
+                          direction="row"
+                          spacing={0.8}
+                          alignItems="center"
+                        >
+                          <CheckCircle
+                            color="success"
+                            sx={{ fontSize: 17, flexShrink: 0 }}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {item}
+                          </Typography>
+                        </Stack>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+              </Stack>
+            </Grid>
+          </Grid>
+        )}
+      </PremiumSection>
+
+      {/* ====================================================== */}
+      {/* ADVANCED QR CAMPAIGNS */}
+      {/* ====================================================== */}
+
+      <PremiumSection
+        icon={<AnalyticsOutlined />}
+        title="Advanced QR Campaigns"
+        description="Create trackable QR links for posters, membership enquiries and direct booking campaigns."
+        action={
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={handleOpenCreateQrCampaign}
+            disabled={!library.id}
+            sx={{
+              borderRadius: 2.5,
+              minHeight: 42,
+              px: 2.25,
+              fontWeight: 750,
+              boxShadow: "none",
+            }}
+          >
+            Create Campaign
+          </Button>
+        }
+      >
+        <Grid container spacing={1.5} sx={{ mb: 2.5 }}>
+          <Grid size={{ xs: 6, md: 3 }}>
+            <MetricTile
+              icon={<QrCode2Outlined fontSize="small" />}
+              label="Campaigns"
+              value={qrCampaignTotals.campaigns}
+              helper="All QR campaigns"
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6, md: 3 }}>
+            <MetricTile
+              icon={<AnalyticsOutlined fontSize="small" />}
+              label="Total Scans"
+              value={qrCampaignTotals.totalScans}
+              helper="Across campaigns"
+              tone="info"
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6, md: 3 }}>
+            <MetricTile
+              icon={<PublicOutlined fontSize="small" />}
+              label="Enquiries"
+              value={qrCampaignTotals.enquiries}
+              helper="QR-attributed leads"
+              tone="warning"
+            />
+          </Grid>
+
+          <Grid size={{ xs: 6, md: 3 }}>
+            <MetricTile
+              icon={<CheckCircle fontSize="small" />}
+              label="Bookings"
+              value={qrCampaignTotals.completedBookings}
+              helper={`${qrCampaignTotals.bookingStarts} booking starts`}
+              tone="success"
+            />
+          </Grid>
+        </Grid>
+
+        <Alert severity="info" sx={{ mb: 2.5, borderRadius: 2.5 }}>
+          Campaign QR links use <strong>/q/&lt;code&gt;</strong>. A visitor scan
+          is recorded by the backend before the visitor is sent to the public
+          profile, enquiry page or booking flow. Your own “Preview Destination”
+          action bypasses tracking so test previews do not inflate analytics.
+        </Alert>
+
+        {qrCampaignLoading ? (
+          <Stack
+            minHeight={180}
+            alignItems="center"
+            justifyContent="center"
+            spacing={1.25}
+          >
+            <CircularProgress size={28} />
+            <Typography variant="body2" color="text.secondary">
+              Loading QR campaigns...
+            </Typography>
+          </Stack>
+        ) : qrCampaigns.length === 0 ? (
+          <Box
+            sx={{
+              p: { xs: 2.5, md: 4 },
+              borderRadius: 3,
+              border: "1px dashed",
+              borderColor: "divider",
+              textAlign: "center",
+              bgcolor: "background.default",
+            }}
+          >
+            <QrCode2Outlined
+              sx={{ fontSize: 48, color: "text.disabled", mb: 1 }}
+            />
+
+            <Typography variant="h6" fontWeight={800}>
+              No advanced QR campaigns yet
+            </Typography>
+
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ mt: 0.5, mb: 2 }}
+            >
+              Create a poster, enquiry or direct-booking campaign to start
+              tracking scans and conversions.
+            </Typography>
+
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={handleOpenCreateQrCampaign}
+              sx={{ borderRadius: 2.5, fontWeight: 750, boxShadow: "none" }}
+            >
+              Create First Campaign
+            </Button>
+          </Box>
+        ) : (
+          <Grid container spacing={2}>
+            {qrCampaigns.map((campaign) => {
+              const busy = qrCampaignBusyId === campaign.id;
+              const active = campaign.status === "ACTIVE";
+              const archived = campaign.status === "ARCHIVED";
+
+              return (
+                <Grid key={campaign.id} size={{ xs: 12 }}>
+                  <Card
+                    elevation={0}
+                    sx={{
+                      height: "100%",
+                      borderRadius: 3,
+                      border: "1px solid",
+                      borderColor: alpha(theme.palette.divider, 0.9),
+                      bgcolor: "background.paper",
+                    }}
+                  >
+                    <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
+                      <Stack spacing={2}>
+                        <Stack
+                          direction={{ xs: "column", sm: "row" }}
+                          justifyContent="space-between"
+                          alignItems={{ xs: "flex-start", sm: "center" }}
+                          gap={1}
+                        >
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography
+                              variant="subtitle1"
+                              fontWeight={850}
+                              noWrap
+                            >
+                              {campaign.name}
+                            </Typography>
+
+                            <Stack
+                              direction="row"
+                              spacing={0.75}
+                              flexWrap="wrap"
+                              useFlexGap
+                              sx={{ mt: 0.75 }}
+                            >
+                              <Chip
+                                size="small"
+                                label={displayEnum(campaign.type)}
+                                variant="outlined"
+                                color="primary"
+                              />
+
+                              <Chip
+                                size="small"
+                                label={displayEnum(campaign.status)}
+                                color={
+                                  active
+                                    ? "success"
+                                    : archived
+                                      ? "default"
+                                      : "warning"
+                                }
+                                variant={active ? "filled" : "outlined"}
+                              />
+
+                              {campaign.source && (
+                                <Chip
+                                  size="small"
+                                  label={`Source: ${displayEnum(campaign.source)}`}
+                                  variant="outlined"
+                                />
+                              )}
+                            </Stack>
+                          </Box>
+
+                          {busy && <CircularProgress size={20} />}
+                        </Stack>
+
+                        <Box
+                          sx={{
+                            px: 1.5,
+                            py: 1.25,
+                            borderRadius: 2.25,
+                            bgcolor: alpha(theme.palette.primary.main, 0.045),
+                            border: "1px solid",
+                            borderColor: alpha(
+                              theme.palette.primary.main,
+                              0.12,
+                            ),
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            fontWeight={700}
+                          >
+                            Tracking code
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            color="primary.main"
+                            fontWeight={800}
+                            sx={{ mt: 0.2, overflowWrap: "anywhere" }}
+                          >
+                            {campaign.code} · {campaign.trackingUrl}
+                          </Typography>
+                        </Box>
+
+                        <Grid container spacing={1}>
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Typography variant="h6" fontWeight={850}>
+                              {Number(campaign.totalScans || 0)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Scans
+                            </Typography>
+                          </Grid>
+
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Typography variant="h6" fontWeight={850}>
+                              {Number(campaign.uniqueVisitors || 0)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Unique
+                            </Typography>
+                          </Grid>
+
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Typography variant="h6" fontWeight={850}>
+                              {Number(campaign.enquiries || 0)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Enquiries
+                            </Typography>
+                          </Grid>
+
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Typography variant="h6" fontWeight={850}>
+                              {Number(campaign.completedBookings || 0)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                            >
+                              Bookings
+                            </Typography>
+                          </Grid>
+                        </Grid>
+
+                        <Divider />
+
+                        {/* ================================================== */}
+                        {/* CAMPAIGN ACTIONS */}
+                        {/* ================================================== */}
+
+                        <Stack spacing={1.25} sx={{ width: "100%" }}>
+                          {/* ================================================ */}
+                          {/* PRIMARY ACTIONS */}
+                          {/* ================================================ */}
+
+                          <Grid container spacing={1}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                              <Button
+                                fullWidth
+                                size="small"
+                                variant="contained"
+                                startIcon={<AnalyticsOutlined />}
+                                disabled={busy}
+                                onClick={() => handleOpenQrAnalytics(campaign)}
+                                sx={{
+                                  minHeight: 42,
+                                  borderRadius: 2.25,
+                                  fontWeight: 750,
+                                  boxShadow: "none",
+                                }}
+                              >
+                                View Analytics
+                              </Button>
+                            </Grid>
+
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                              <Button
+                                fullWidth
+                                size="small"
+                                variant="contained"
+                                startIcon={<QrCode2Outlined />}
+                                disabled={busy || archived}
+                                onClick={() => handleOpenPosterDialog(campaign)}
+                                sx={{
+                                  minHeight: 42,
+                                  borderRadius: 2.25,
+                                  fontWeight: 750,
+                                  boxShadow: "none",
+                                }}
+                              >
+                                Printable Poster
+                              </Button>
+                            </Grid>
+                          </Grid>
+
+                          {/* ================================================ */}
+                          {/* SECONDARY ACTIONS */}
+                          {/* ================================================ */}
+
+                          <Grid container spacing={1}>
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                              <Button
+                                fullWidth
+                                size="small"
+                                variant="outlined"
+                                startIcon={<ContentCopyOutlined />}
+                                disabled={busy || !campaign.trackingUrl}
+                                onClick={() =>
+                                  handleCopyQrCampaignLink(campaign)
+                                }
+                                sx={{
+                                  minHeight: 40,
+                                  borderRadius: 2,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Copy Link
+                              </Button>
+                            </Grid>
+
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                              <Button
+                                fullWidth
+                                size="small"
+                                variant="outlined"
+                                startIcon={<QrCode2Outlined />}
+                                disabled={busy}
+                                onClick={() =>
+                                  handlePreviewCampaignQr(campaign)
+                                }
+                                sx={{
+                                  minHeight: 40,
+                                  borderRadius: 2,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Preview QR
+                              </Button>
+                            </Grid>
+
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                              <Button
+                                fullWidth
+                                size="small"
+                                variant="outlined"
+                                startIcon={<DownloadOutlined />}
+                                disabled={busy}
+                                onClick={() =>
+                                  handleDownloadCampaignQr(campaign)
+                                }
+                                sx={{
+                                  minHeight: 40,
+                                  borderRadius: 2,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Download QR
+                              </Button>
+                            </Grid>
+
+                            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                              <Button
+                                fullWidth
+                                size="small"
+                                variant="outlined"
+                                startIcon={<LaunchOutlined />}
+                                disabled={busy || archived}
+                                onClick={() =>
+                                  handlePreviewQrCampaignDestination(campaign)
+                                }
+                                sx={{
+                                  minHeight: 40,
+                                  borderRadius: 2,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Destination
+                              </Button>
+                            </Grid>
+                          </Grid>
+
+                          {/* ================================================ */}
+                          {/* MANAGEMENT ACTIONS */}
+                          {/* ================================================ */}
+
+                          <Stack
+                            direction="row"
+                            spacing={0.75}
+                            justifyContent="flex-end"
+                            flexWrap="wrap"
+                            useFlexGap
+                            sx={{ pt: 0.25 }}
+                          >
+                            <Button
+                              size="small"
+                              variant="text"
+                              startIcon={<Edit />}
+                              disabled={busy || archived}
+                              onClick={() => handleEditQrCampaign(campaign)}
+                              sx={{ borderRadius: 2, fontWeight: 700 }}
+                            >
+                              Edit
+                            </Button>
+
+                            {!archived && (
+                              <Button
+                                size="small"
+                                variant="text"
+                                color={active ? "warning" : "success"}
+                                startIcon={
+                                  active ? (
+                                    <PauseCircleOutlineOutlined />
+                                  ) : (
+                                    <PlayCircleOutlineOutlined />
+                                  )
+                                }
+                                disabled={busy}
+                                onClick={() =>
+                                  handleQrCampaignStatus(
+                                    campaign,
+                                    active ? "deactivate" : "activate",
+                                  )
+                                }
+                                sx={{ borderRadius: 2, fontWeight: 700 }}
+                              >
+                                {active ? "Deactivate" : "Activate"}
+                              </Button>
+                            )}
+
+                            {!archived && (
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="inherit"
+                                startIcon={<ArchiveOutlined />}
+                                disabled={busy}
+                                onClick={() =>
+                                  handleQrCampaignStatus(campaign, "archive")
+                                }
+                                sx={{ borderRadius: 2, fontWeight: 700 }}
+                              >
+                                Archive
+                              </Button>
+                            )}
+                          </Stack>
+                        </Stack>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        )}
+      </PremiumSection>
+
+      {/* ====================================================== */}
+      {/* QR CAMPAIGN ANALYTICS DIALOG */}
+      {/* ====================================================== */}
+
+      <Dialog
+        open={qrAnalyticsDialogOpen}
+        onClose={handleCloseQrAnalytics}
+        fullWidth
+        maxWidth="lg"
+        PaperProps={{
+          sx: {
+            borderRadius: 3.5,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1.5 }}>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            justifyContent="space-between"
+            alignItems={{ xs: "flex-start", sm: "center" }}
+            spacing={1.5}
+          >
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 2.25,
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+                  color: "primary.main",
+                }}
+              >
+                <AnalyticsOutlined />
+              </Box>
+
+              <Box>
+                <Typography variant="h6" fontWeight={850}>
+                  QR Campaign Analytics
+                </Typography>
+
+                <Typography variant="body2" color="text.secondary">
+                  {qrAnalyticsCampaign?.name || "Campaign performance"}
+                </Typography>
+              </Box>
+            </Stack>
+
+            {qrAnalyticsData && (
+              <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                <Chip
+                  size="small"
+                  label={displayEnum(qrAnalyticsData.campaignType)}
+                  color="primary"
+                  variant="outlined"
+                />
+
+                <Chip
+                  size="small"
+                  label={displayEnum(qrAnalyticsData.campaignStatus)}
+                  color={
+                    qrAnalyticsData.campaignStatus === "ACTIVE"
+                      ? "success"
+                      : qrAnalyticsData.campaignStatus === "INACTIVE"
+                        ? "warning"
+                        : "default"
+                  }
+                />
+
+                {qrAnalyticsData.source && (
+                  <Chip
+                    size="small"
+                    label={`Source: ${displayEnum(qrAnalyticsData.source)}`}
+                    variant="outlined"
+                  />
+                )}
+              </Stack>
+            )}
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {qrAnalyticsLoading ? (
+            <Stack
+              minHeight={360}
+              alignItems="center"
+              justifyContent="center"
+              spacing={1.5}
+            >
+              <CircularProgress />
+
+              <Typography color="text.secondary">
+                Loading campaign analytics...
+              </Typography>
+            </Stack>
+          ) : !qrAnalyticsData ? (
+            <Alert severity="info" sx={{ borderRadius: 2.5 }}>
+              Analytics data is not available for this campaign yet.
+            </Alert>
+          ) : (
+            <Stack spacing={3}>
+              {/* CORE KPI METRICS */}
+
+              <Grid container spacing={1.5}>
+                <Grid size={{ xs: 6, md: 2.4 }}>
+                  <MetricTile
+                    icon={<QrCode2Outlined fontSize="small" />}
+                    label="Scans"
+                    value={Number(qrAnalyticsData.totalScans || 0)}
+                    helper="All QR opens"
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 6, md: 2.4 }}>
+                  <MetricTile
+                    icon={<PublicOutlined fontSize="small" />}
+                    label="Unique Visitors"
+                    value={Number(qrAnalyticsData.uniqueVisitors || 0)}
+                    helper="Distinct visitor hashes"
+                    tone="info"
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 6, md: 2.4 }}>
+                  <MetricTile
+                    icon={<PublicOutlined fontSize="small" />}
+                    label="Enquiries"
+                    value={Number(qrAnalyticsData.enquiries || 0)}
+                    helper={formatPercent(
+                      qrAnalyticsData.enquiryConversionRate,
+                    )}
+                    tone="warning"
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 6, md: 2.4 }}>
+                  <MetricTile
+                    icon={<EventSeat fontSize="small" />}
+                    label="Booking Starts"
+                    value={Number(qrAnalyticsData.bookingStarts || 0)}
+                    helper={formatPercent(qrAnalyticsData.bookingStartRate)}
+                    tone="secondary"
+                  />
+                </Grid>
+
+                <Grid size={{ xs: 6, md: 2.4 }}>
+                  <MetricTile
+                    icon={<CheckCircle fontSize="small" />}
+                    label="Bookings"
+                    value={Number(qrAnalyticsData.completedBookings || 0)}
+                    helper={formatPercent(
+                      qrAnalyticsData.bookingCompletionRate,
+                    )}
+                    tone="success"
+                  />
+                </Grid>
+              </Grid>
+
+              {/* CONVERSION FUNNEL */}
+
+              <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
+                  <Typography variant="subtitle1" fontWeight={850}>
+                    Conversion Funnel
+                  </Typography>
+
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 0.35, mb: 2 }}
+                  >
+                    See how scans progress into enquiries and completed
+                    bookings.
+                  </Typography>
+
+                  <Grid container spacing={1.5}>
+                    {[
+                      {
+                        label: "Enquiry Conversion",
+                        value: qrAnalyticsData.enquiryConversionRate,
+                        helper: `${Number(qrAnalyticsData.enquiries || 0)} enquiries`,
+                      },
+                      {
+                        label: "Booking Start Rate",
+                        value: qrAnalyticsData.bookingStartRate,
+                        helper: `${Number(qrAnalyticsData.bookingStarts || 0)} booking starts`,
+                      },
+                      {
+                        label: "Scan → Booking",
+                        value: qrAnalyticsData.bookingCompletionRate,
+                        helper: `${Number(qrAnalyticsData.completedBookings || 0)} bookings`,
+                      },
+                      {
+                        label: "Start → Completion",
+                        value: qrAnalyticsData.bookingCompletionFromStartRate,
+                        helper: "Booking funnel efficiency",
+                      },
+                    ].map((item) => {
+                      const width = Math.max(
+                        0,
+                        Math.min(100, Number(item.value || 0)),
+                      );
+
+                      return (
+                        <Grid key={item.label} size={{ xs: 12, sm: 6, lg: 3 }}>
+                          <Box
+                            sx={{
+                              p: 2,
+                              height: "100%",
+                              borderRadius: 2.5,
+                              border: "1px solid",
+                              borderColor: "divider",
+                              bgcolor: "background.default",
+                            }}
+                          >
+                            <Stack
+                              direction="row"
+                              justifyContent="space-between"
+                              alignItems="baseline"
+                              spacing={1}
+                            >
+                              <Typography variant="body2" fontWeight={750}>
+                                {item.label}
+                              </Typography>
+
+                              <Typography variant="h6" fontWeight={900}>
+                                {formatPercent(item.value)}
+                              </Typography>
+                            </Stack>
+
+                            <Box
+                              sx={{
+                                mt: 1.5,
+                                height: 7,
+                                overflow: "hidden",
+                                borderRadius: 999,
+                                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  width: `${width}%`,
+                                  height: "100%",
+                                  borderRadius: 999,
+                                  bgcolor: "primary.main",
+                                }}
+                              />
+                            </Box>
+
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: "block", mt: 1 }}
+                            >
+                              {item.helper}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
+                </CardContent>
+              </Card>
+
+              {/* DEVICE / BROWSER / OS BREAKDOWNS */}
+
+              <Grid container spacing={2}>
+                {[
+                  {
+                    title: "Devices",
+                    rows: qrAnalyticsData.devices,
+                  },
+                  {
+                    title: "Browsers",
+                    rows: qrAnalyticsData.browsers,
+                  },
+                  {
+                    title: "Operating Systems",
+                    rows: qrAnalyticsData.operatingSystems,
+                  },
+                ].map((group) => (
+                  <Grid key={group.title} size={{ xs: 12, md: 4 }}>
+                    <Card
+                      variant="outlined"
+                      sx={{ height: "100%", borderRadius: 3 }}
+                    >
+                      <CardContent>
+                        <Typography variant="subtitle1" fontWeight={850}>
+                          {group.title}
+                        </Typography>
+
+                        <Stack spacing={1.5} sx={{ mt: 2 }}>
+                          {Array.isArray(group.rows) &&
+                          group.rows.length > 0 ? (
+                            group.rows.map((row) => {
+                              const width = Math.max(
+                                0,
+                                Math.min(100, Number(row?.percentage || 0)),
+                              );
+
+                              return (
+                                <Box key={`${group.title}-${row?.name}`}>
+                                  <Stack
+                                    direction="row"
+                                    justifyContent="space-between"
+                                    spacing={1}
+                                  >
+                                    <Typography
+                                      variant="body2"
+                                      fontWeight={700}
+                                    >
+                                      {row?.name || "Unknown"}
+                                    </Typography>
+
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                    >
+                                      {Number(row?.count || 0)} ·{" "}
+                                      {formatPercent(row?.percentage)}
+                                    </Typography>
+                                  </Stack>
+
+                                  <Box
+                                    sx={{
+                                      mt: 0.65,
+                                      height: 6,
+                                      overflow: "hidden",
+                                      borderRadius: 999,
+                                      bgcolor: alpha(
+                                        theme.palette.primary.main,
+                                        0.09,
+                                      ),
+                                    }}
+                                  >
+                                    <Box
+                                      sx={{
+                                        width: `${width}%`,
+                                        height: "100%",
+                                        borderRadius: 999,
+                                        bgcolor: "primary.main",
+                                      }}
+                                    />
+                                  </Box>
+                                </Box>
+                              );
+                            })
+                          ) : (
+                            <Typography variant="body2" color="text.secondary">
+                              No data yet.
+                            </Typography>
+                          )}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+
+              {/* RECENT SCANS */}
+
+              <Card variant="outlined" sx={{ borderRadius: 3 }}>
+                <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>
+                  <Typography variant="subtitle1" fontWeight={850}>
+                    Recent Scans
+                  </Typography>
+
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 0.35, mb: 2 }}
+                  >
+                    Latest scan activity for this campaign.
+                  </Typography>
+
+                  {Array.isArray(qrAnalyticsData.recentScans) &&
+                  qrAnalyticsData.recentScans.length > 0 ? (
+                    <Stack spacing={1}>
+                      {qrAnalyticsData.recentScans.slice(0, 20).map((scan) => (
+                        <Box
+                          key={scan.scanId}
+                          sx={{
+                            px: 1.75,
+                            py: 1.4,
+                            borderRadius: 2.25,
+                            border: "1px solid",
+                            borderColor: "divider",
+                            bgcolor: "background.default",
+                          }}
+                        >
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            justifyContent="space-between"
+                            alignItems={{ xs: "flex-start", sm: "center" }}
+                            spacing={1}
+                          >
+                            <Box>
+                              <Typography variant="body2" fontWeight={750}>
+                                {displayEnum(scan.deviceType)} ·{" "}
+                                {scan.browser || "Unknown browser"}
+                              </Typography>
+
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {scan.operatingSystem || "Unknown OS"} ·{" "}
+                                {formatQrScanDateTime(scan.scannedAt)}
+                              </Typography>
+                            </Box>
+
+                            <Stack
+                              direction="row"
+                              spacing={0.75}
+                              flexWrap="wrap"
+                              useFlexGap
+                            >
+                              {scan.enquiryCreated && (
+                                <Chip
+                                  size="small"
+                                  label="Enquiry"
+                                  color="warning"
+                                  variant="outlined"
+                                />
+                              )}
+
+                              {scan.bookingStarted && (
+                                <Chip
+                                  size="small"
+                                  label="Booking Started"
+                                  color="info"
+                                  variant="outlined"
+                                />
+                              )}
+
+                              {scan.bookingCompleted && (
+                                <Chip
+                                  size="small"
+                                  label="Booking Completed"
+                                  color="success"
+                                />
+                              )}
+                            </Stack>
+                          </Stack>
+                        </Box>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Alert severity="info" sx={{ borderRadius: 2.25 }}>
+                      This campaign has not received any scans yet.
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            </Stack>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          {qrAnalyticsData && (
+            <Button
+              startIcon={<AnalyticsOutlined />}
+              onClick={() => handleOpenQrAnalytics(qrAnalyticsCampaign)}
+              disabled={qrAnalyticsLoading}
+            >
+              Refresh
+            </Button>
+          )}
+
+          <Box sx={{ flex: 1 }} />
+
+          <Button
+            variant="contained"
+            onClick={handleCloseQrAnalytics}
+            disabled={qrAnalyticsLoading}
+            sx={{ borderRadius: 2.25, boxShadow: "none", fontWeight: 750 }}
+          >
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ====================================================== */}
+      {/* CREATE / EDIT QR CAMPAIGN DIALOG */}
+      {/* ====================================================== */}
+
+      <Dialog
+        open={qrCampaignDialogOpen}
+        onClose={handleCloseQrCampaignDialog}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            borderRadius: 3.5,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 2.25,
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                color: "primary.main",
+              }}
+            >
+              <QrCode2Outlined />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                {qrCampaignEditingId
+                  ? "Edit QR Campaign"
+                  : "Create QR Campaign"}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                The campaign code remains permanent after creation.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Grid container spacing={2} sx={{ pt: 0.5 }}>
+            <Grid size={{ xs: 12, md: 7 }}>
+              <TextField
+                fullWidth
+                required
+                label="Campaign Name"
+                name="name"
+                value={qrCampaignForm.name}
+                onChange={handleQrCampaignFormChange}
+                inputProps={{ maxLength: 150 }}
+                placeholder="Front Gate Poster"
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 5 }}>
+              <TextField
+                select
+                fullWidth
+                required
+                label="Campaign Type"
+                name="type"
+                value={qrCampaignForm.type}
+                onChange={handleQrCampaignFormChange}
+              >
+                {QR_CAMPAIGN_TYPES.map((type) => (
+                  <MenuItem key={type.value} value={type.value}>
+                    {type.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid size={{ xs: 12 }}>
+              <Alert severity="info" sx={{ borderRadius: 2.25 }}>
+                {QR_CAMPAIGN_TYPES.find(
+                  (type) => type.value === qrCampaignForm.type,
+                )?.description || "Configure this QR campaign."}
+              </Alert>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                label="Source"
+                name="source"
+                value={qrCampaignForm.source}
+                onChange={handleQrCampaignFormChange}
+                inputProps={{ maxLength: 100 }}
+                placeholder="FRONT_GATE, RECEPTION, WHATSAPP..."
+                helperText="Used to compare where scans originated."
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                select
+                fullWidth
+                label="Status"
+                name="status"
+                value={qrCampaignForm.status}
+                onChange={handleQrCampaignFormChange}
+              >
+                <MenuItem value="ACTIVE">Active</MenuItem>
+                <MenuItem value="INACTIVE">Inactive</MenuItem>
+                {qrCampaignEditingId && (
+                  <MenuItem value="ARCHIVED">Archived</MenuItem>
+                )}
+              </TextField>
+            </Grid>
+
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                label="Description"
+                name="description"
+                value={qrCampaignForm.description}
+                onChange={handleQrCampaignFormChange}
+                inputProps={{ maxLength: 1000 }}
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                label="Poster Headline"
+                name="headline"
+                value={qrCampaignForm.headline}
+                onChange={handleQrCampaignFormChange}
+                inputProps={{ maxLength: 250 }}
+                placeholder="Find Your Perfect Study Seat"
+              />
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                label="Call To Action"
+                name="callToAction"
+                value={qrCampaignForm.callToAction}
+                onChange={handleQrCampaignFormChange}
+                inputProps={{ maxLength: 250 }}
+                placeholder="Scan to view seats and memberships"
+              />
+            </Grid>
+
+            {qrCampaignForm.type === "MEMBERSHIP_ENQUIRY" && (
+              <>
+                <Grid size={{ xs: 12 }}>
+                  <Alert severity="info" sx={{ borderRadius: 2.25 }}>
+                    You can optionally link this enquiry campaign to a specific
+                    membership plan. When the QR is scanned, that plan will be
+                    preselected on the public membership enquiry page.
+                  </Alert>
+                </Grid>
+
+                {qrDirectBookingOptionsLoading && (
+                  <Grid size={{ xs: 12 }}>
+                    <Stack direction="row" spacing={1.25} alignItems="center">
+                      <CircularProgress size={18} />
+                      <Typography variant="body2" color="text.secondary">
+                        Loading membership plans...
+                      </Typography>
+                    </Stack>
+                  </Grid>
+                )}
+
+                <Grid size={{ xs: 12, md: 6 }}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Membership Plan"
+                    name="membershipPlanId"
+                    value={qrCampaignForm.membershipPlanId}
+                    onChange={handleQrCampaignFormChange}
+                    disabled={qrDirectBookingOptionsLoading}
+                    helperText="Optional. Leave blank for a general membership enquiry."
+                  >
+                    <MenuItem value="">General membership enquiry</MenuItem>
+
+                    {qrMembershipPlans.map((plan) => (
+                      <MenuItem key={plan.id} value={String(plan.id)}>
+                        {plan.name || `Plan ${plan.id}`}
+                        {plan.durationDays
+                          ? ` · ${plan.durationDays} days`
+                          : ""}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              </>
+            )}
+
+            {qrCampaignForm.type === "DIRECT_BOOKING" && (
+              <>
+                <Grid size={{ xs: 12 }}>
+                  <Alert severity="info" sx={{ borderRadius: 2.25 }}>
+                    Choose one or more booking pre-selections. The visitor will
+                    land on the public seat-booking page with these selections
+                    already applied. At least one selection is required.
+                  </Alert>
+                </Grid>
+
+                {qrDirectBookingOptionsLoading && (
+                  <Grid size={{ xs: 12 }}>
+                    <Stack direction="row" spacing={1.25} alignItems="center">
+                      <CircularProgress size={18} />
+                      <Typography variant="body2" color="text.secondary">
+                        Loading plans, floors, slots and seats...
+                      </Typography>
+                    </Stack>
+                  </Grid>
+                )}
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Membership Plan"
+                    name="membershipPlanId"
+                    value={qrCampaignForm.membershipPlanId}
+                    onChange={handleQrCampaignFormChange}
+                    disabled={qrDirectBookingOptionsLoading}
+                  >
+                    <MenuItem value="">No plan preselection</MenuItem>
+
+                    {qrMembershipPlans.map((plan) => (
+                      <MenuItem key={plan.id} value={String(plan.id)}>
+                        {plan.name || `Plan ${plan.id}`}
+                        {plan.durationDays
+                          ? ` · ${plan.durationDays} days`
+                          : ""}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Floor"
+                    name="floorId"
+                    value={qrCampaignForm.floorId}
+                    onChange={handleQrCampaignFormChange}
+                    disabled={qrDirectBookingOptionsLoading}
+                  >
+                    <MenuItem value="">No floor preselection</MenuItem>
+
+                    {qrFloors.map((floor) => (
+                      <MenuItem key={floor.id} value={String(floor.id)}>
+                        {floor.name || floor.floorName || `Floor ${floor.id}`}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Slot"
+                    name="slotId"
+                    value={qrCampaignForm.slotId}
+                    onChange={handleQrCampaignFormChange}
+                    disabled={qrDirectBookingOptionsLoading}
+                  >
+                    <MenuItem value="">No slot preselection</MenuItem>
+
+                    {qrSlots.map((slot) => (
+                      <MenuItem key={slot.id} value={String(slot.id)}>
+                        {formatSlotLabel(slot)}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Seat"
+                    name="seatId"
+                    value={qrCampaignForm.seatId}
+                    onChange={handleQrCampaignFormChange}
+                    disabled={qrDirectBookingOptionsLoading}
+                    helperText={
+                      qrCampaignForm.floorId
+                        ? "Only seats from the selected floor are shown."
+                        : "Select a floor first to narrow the seat list."
+                    }
+                  >
+                    <MenuItem value="">No seat preselection</MenuItem>
+
+                    {qrFilteredSeats.map((seat) => (
+                      <MenuItem key={seat.id} value={String(seat.id)}>
+                        {seat.seatNumber || seat.name || `Seat ${seat.id}`}
+                        {seat.seatType
+                          ? ` · ${displayEnum(seat.seatType)}`
+                          : ""}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+              </>
+            )}
+          </Grid>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            onClick={handleCloseQrCampaignDialog}
+            disabled={qrCampaignSaving}
+            sx={{ borderRadius: 2.25, fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            startIcon={
+              qrCampaignSaving ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <Save />
+              )
+            }
+            onClick={handleSaveQrCampaign}
+            disabled={qrCampaignSaving}
+            sx={{
+              borderRadius: 2.25,
+              px: 2.5,
+              fontWeight: 750,
+              boxShadow: "none",
+            }}
+          >
+            {qrCampaignSaving
+              ? "Saving..."
+              : qrCampaignEditingId
+                ? "Update Campaign"
+                : "Create Campaign"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ====================================================== */}
+      {/* PRINTABLE QR POSTER DIALOG */}
+      {/* ====================================================== */}
+
+      <Dialog
+        open={posterDialogOpen}
+        onClose={handleClosePosterDialog}
+        fullWidth
+        maxWidth="sm"
+        PaperProps={{
+          sx: {
+            borderRadius: 3.5,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" spacing={1.25} alignItems="center">
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 2.25,
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                color: "primary.main",
+              }}
+            >
+              <QrCode2Outlined />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Create Printable QR Poster
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Customize a branded A4 poster for{" "}
+                {posterCampaign?.name || "this campaign"}.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent dividers>
+          <Stack spacing={2.25}>
+            <Alert severity="info" sx={{ borderRadius: 2.25 }}>
+              The printed QR uses the campaign tracking link, so scans remain
+              measurable and the destination can change later without reprinting
+              the poster.
+            </Alert>
+
+            <TextField
+              fullWidth
+              label="Poster Title"
+              name="title"
+              value={posterForm.title}
+              onChange={handlePosterFieldChange}
+              inputProps={{ maxLength: 150 }}
+              placeholder={library.libraryName || "Library Name"}
+            />
+
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              label="Subtitle"
+              name="subtitle"
+              value={posterForm.subtitle}
+              onChange={handlePosterFieldChange}
+              inputProps={{ maxLength: 250 }}
+              placeholder="Your perfect study space is one scan away."
+            />
+
+            <TextField
+              fullWidth
+              label="Call to Action"
+              name="callToAction"
+              value={posterForm.callToAction}
+              onChange={handlePosterFieldChange}
+              inputProps={{ maxLength: 150 }}
+              placeholder={
+                posterCampaign?.type === "DIRECT_BOOKING"
+                  ? "SCAN TO VIEW AVAILABLE SEATS"
+                  : posterCampaign?.type === "MEMBERSHIP_ENQUIRY"
+                    ? "SCAN TO ENQUIRE ABOUT MEMBERSHIP"
+                    : "SCAN TO EXPLORE"
+              }
+            />
+
+            <Divider />
+
+            <Typography variant="subtitle2" fontWeight={800}>
+              Poster Content
+            </Typography>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={posterForm.showAddress}
+                  onChange={handlePosterFieldChange}
+                  name="showAddress"
+                />
+              }
+              label="Show library address"
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={posterForm.showPhone}
+                  onChange={handlePosterFieldChange}
+                  name="showPhone"
+                />
+              }
+              label="Show contact number"
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={posterForm.showCampaignName}
+                  onChange={handlePosterFieldChange}
+                  name="showCampaignName"
+                />
+              }
+              label="Show campaign name"
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={posterForm.showTrackingUrl}
+                  onChange={handlePosterFieldChange}
+                  name="showTrackingUrl"
+                />
+              }
+              label="Print tracking URL below QR"
+            />
+
+            <Divider />
+
+            <Typography variant="subtitle2" fontWeight={800}>
+              Feature Highlights
+            </Typography>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={posterForm.showMembershipPlans}
+                  onChange={handlePosterFieldChange}
+                  name="showMembershipPlans"
+                />
+              }
+              label="Membership Plans"
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={posterForm.showSeatAvailability}
+                  onChange={handlePosterFieldChange}
+                  name="showSeatAvailability"
+                />
+              }
+              label="Live Seat Availability"
+            />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={posterForm.showOnlineBooking}
+                  onChange={handlePosterFieldChange}
+                  name="showOnlineBooking"
+                />
+              }
+              label="Online Booking"
+            />
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button
+            onClick={handleClosePosterDialog}
+            disabled={posterDownloading}
+            sx={{ borderRadius: 2.25, fontWeight: 700 }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            startIcon={
+              posterDownloading ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <DownloadOutlined />
+              )
+            }
+            onClick={handleDownloadPoster}
+            disabled={posterDownloading || !posterCampaign?.id}
+            sx={{
+              borderRadius: 2.25,
+              px: 2.5,
+              fontWeight: 750,
+              boxShadow: "none",
+            }}
+          >
+            {posterDownloading ? "Generating..." : "Download PDF"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ====================================================== */}
       {/* BASIC INFORMATION */}
@@ -2568,19 +5548,13 @@ function LibraryProfile() {
                 <Select
                   label="Image Use"
                   value={
-                    uploadType === "LOGO"
-                      ? IMAGE_ROLES.GALLERY
-                      : uploadRole
+                    uploadType === "LOGO" ? IMAGE_ROLES.GALLERY : uploadRole
                   }
                   onChange={handleUploadRoleChange}
                 >
-                  <MenuItem value={IMAGE_ROLES.GALLERY}>
-                    Gallery Image
-                  </MenuItem>
+                  <MenuItem value={IMAGE_ROLES.GALLERY}>Gallery Image</MenuItem>
 
-                  <MenuItem value={IMAGE_ROLES.PROFILE}>
-                    Profile Image
-                  </MenuItem>
+                  <MenuItem value={IMAGE_ROLES.PROFILE}>Profile Image</MenuItem>
 
                   <MenuItem value={IMAGE_ROLES.COVER}>Cover Image</MenuItem>
                 </Select>
@@ -2628,8 +5602,7 @@ function LibraryProfile() {
                 type="file"
                 accept="image/*"
                 multiple={
-                  uploadType !== "LOGO" &&
-                  uploadRole === IMAGE_ROLES.GALLERY
+                  uploadType !== "LOGO" && uploadRole === IMAGE_ROLES.GALLERY
                 }
                 onChange={handleFileSelection}
               />
@@ -2646,8 +5619,7 @@ function LibraryProfile() {
                 }}
               >
                 Choose Image
-                {uploadType !== "LOGO" &&
-                uploadRole === IMAGE_ROLES.GALLERY
+                {uploadType !== "LOGO" && uploadRole === IMAGE_ROLES.GALLERY
                   ? "s"
                   : ""}
               </Button>
@@ -2751,8 +5723,7 @@ function LibraryProfile() {
               const role = resolveImageRole(image);
               const publicImage = isImagePublic(image);
               const logo = image.imageType === "LOGO";
-              const visibilityEditable =
-                role === IMAGE_ROLES.GALLERY && !logo;
+              const visibilityEditable = role === IMAGE_ROLES.GALLERY && !logo;
 
               return (
                 <Grid
@@ -2780,10 +5751,7 @@ function LibraryProfile() {
                           theme.palette.mode === "dark"
                             ? "0 18px 38px rgba(0,0,0,.22)"
                             : "0 18px 38px rgba(15,23,42,.09)",
-                        borderColor: alpha(
-                          theme.palette.primary.main,
-                          0.25,
-                        ),
+                        borderColor: alpha(theme.palette.primary.main, 0.25),
                       },
                     }}
                   >

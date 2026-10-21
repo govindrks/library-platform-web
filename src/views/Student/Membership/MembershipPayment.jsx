@@ -1,5 +1,6 @@
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Card,
@@ -7,57 +8,182 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  Grid,
+  Paper,
   Stack,
   Typography,
+  alpha,
+  useTheme,
 } from "@mui/material";
 
 import {
-  ArrowBack,
-  CreditCard,
-  EventSeat,
-  LocalOfferOutlined,
-  Lock,
-  Schedule,
+  ArrowBackRounded,
+  CheckCircleRounded,
+  CreditCardRounded,
+  EventSeatRounded,
+  LockRounded,
+  ScheduleRounded,
+  VerifiedRounded,
+  WorkspacePremiumRounded,
 } from "@mui/icons-material";
 
 import { useLocation, useNavigate } from "react-router-dom";
-import { useState } from "react";
+
+import { useMemo, useState } from "react";
 
 import paymentApi from "../../../api/paymentApi";
+import qrCampaignApi from "../../../api/qrCampaignApi";
 
 // ============================================================
+
 // HELPERS
+
 // ============================================================
 
-const formatMoney = (value) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value ?? 0));
+const roundMoney = (value) => {
+  const amount = Number(value ?? 0);
 
-const formatEnum = (value, fallback = "-") => {
+  if (!Number.isFinite(amount)) {
+    return 0;
+  }
+
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+};
+
+const formatMoney = (value) => {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+
+    currency: "INR",
+
+    minimumFractionDigits: 0,
+
+    maximumFractionDigits: 2,
+  }).format(roundMoney(value));
+};
+
+const formatEnum = (value) => {
   if (!value) {
-    return fallback;
+    return "-";
   }
 
   return String(value)
     .replaceAll("_", " ")
+
     .toLowerCase()
+
     .replace(/\b\w/g, (character) => character.toUpperCase());
 };
 
+const formatDisplayDate = (value) => {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+
+    month: "short",
+
+    year: "numeric",
+  });
+};
+
+const formatTime = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const raw = String(value).slice(0, 5);
+
+  const [hourText, minute] = raw.split(":");
+
+  const hour = Number(hourText);
+
+  if (Number.isNaN(hour) || !minute) {
+    return raw;
+  }
+
+  const suffix = hour >= 12 ? "PM" : "AM";
+
+  const displayHour = hour % 12 || 12;
+
+  return `${displayHour}:${minute} ${suffix}`;
+};
+
+const getSeatId = (seat) => {
+  return seat?.seatId ?? seat?.id ?? null;
+};
+
+const getErrorMessage = (error, fallback) => {
+  const data = error?.response?.data;
+
+  if (typeof data === "string" && data.trim()) {
+    return data;
+  }
+
+  return (
+    data?.message || data?.error || data?.detail || error?.message || fallback
+  );
+};
+
 // ============================================================
+
+// SUMMARY ROW
+
+// ============================================================
+
+function SummaryRow({ label, value, strong = false, valueColor }) {
+  return (
+    <Stack
+      direction="row"
+      justifyContent="space-between"
+      alignItems="flex-start"
+      spacing={2}
+    >
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        fontWeight={strong ? 700 : 400}
+      >
+        {label}
+      </Typography>
+
+      <Typography
+        variant="body2"
+        fontWeight={strong ? 850 : 700}
+        color={valueColor || "text.primary"}
+        textAlign="right"
+      >
+        {value || "-"}
+      </Typography>
+    </Stack>
+  );
+}
+
+// ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function MembershipPayment() {
+  const theme = useTheme();
+
   const location = useLocation();
+
   const navigate = useNavigate();
 
   // ==========================================================
+
   // NAVIGATION STATE
+
   // ==========================================================
 
   const booking = location.state?.booking ?? null;
@@ -66,60 +192,68 @@ function MembershipPayment() {
 
   const selectedPlan = location.state?.selectedPlan ?? null;
 
+  const selectedFloor = location.state?.selectedFloor ?? null;
+
   const selectedSeat = location.state?.selectedSeat ?? null;
 
   const selectedSlot = location.state?.selectedSlot ?? null;
 
+  const seatPriceQuote = location.state?.seatPriceQuote ?? null;
+
   const paymentType = location.state?.paymentType ?? null;
 
-  const pricingPreview = location.state?.pricingPreview ?? null;
+  // ==========================================================
+  // QR ATTRIBUTION
+  // ==========================================================
+  //
+  // SeatAvailability passes these values in navigation state.
+  // URL fallback keeps attribution available if this route is
+  // opened with qr/qrs query parameters.
+  //
+  // ==========================================================
+
+  const qrAttribution = useMemo(
+    () => qrCampaignApi.getQrAttributionFromUrl(location.search),
+    [location.search],
+  );
+
+  const qrCampaignCode =
+    location.state?.qrCampaignCode ??
+    location.state?.qr ??
+    qrAttribution.campaignCode ??
+    null;
+
+  const qrScanToken =
+    location.state?.qrScanToken ??
+    location.state?.qrs ??
+    qrAttribution.scanToken ??
+    null;
+
+  const startDate = location.state?.startDate ?? booking?.startDate ?? null;
+
+  const endDate = location.state?.endDate ?? booking?.endDate ?? null;
 
   // ==========================================================
-  // BOOKING
+
+  // BOOKING ID
+
   // ==========================================================
 
   const bookingId =
     booking?.bookingId ?? booking?.id ?? location.state?.bookingId ?? null;
 
+  // ==========================================================
+
+  // PAYMENT FLOW
+
+  // ==========================================================
+
   const isBooking = Boolean(bookingId) || paymentType === "BOOKING";
 
   // ==========================================================
-  // SERVER-VERIFIED BOOKING PRICE
-  // ==========================================================
-  //
-  // Priority:
-  //
-  // 1. Amount returned by BookingService
-  // 2. Server quote forwarded by BookingReview
-  //
-  // selectedPlan.price is intentionally NOT used anymore.
-  // ==========================================================
 
-  const originalAmount = Number(
-    booking?.amount ??
-      booking?.bookingAmount ??
-      booking?.totalAmount ??
-      booking?.payableAmount ??
-      pricingPreview?.originalAmount ??
-      0,
-  );
+  // LOCAL STATE
 
-  const seatType = pricingPreview?.seatType ?? selectedSeat?.seatType ?? null;
-
-  const standardBasePrice = pricingPreview?.standardBasePrice ?? null;
-
-  const memberBasePrice = pricingPreview?.memberBasePrice ?? null;
-
-  const memberPricingApplied = Boolean(pricingPreview?.memberPricingApplied);
-
-  const featurePrices = Array.isArray(pricingPreview?.featurePrices)
-    ? pricingPreview.featurePrices
-    : [];
-
-  const featureTotal = Number(pricingPreview?.featureTotal ?? 0);
-
-  // ==========================================================
-  // PAYMENT STATE
   // ==========================================================
 
   const [paying, setPaying] = useState(false);
@@ -127,49 +261,150 @@ function MembershipPayment() {
   const [error, setError] = useState("");
 
   // ==========================================================
-  // COUPON STATE
-  // ==========================================================
 
-  const appliedCoupon =
-    location.state?.coupon && location.state?.pricingPreview
-      ? {
-          couponId: location.state.coupon.couponId,
-
-          code: location.state.coupon.code,
-
-          originalAmount: location.state.pricingPreview.originalAmount,
-
-          discountAmount: location.state.pricingPreview.discountAmount,
-
-          finalAmount: location.state.pricingPreview.finalAmount,
-
-          valid: true,
-        }
-      : null;
+  // TRUSTED DISPLAY AMOUNT
 
   // ==========================================================
-  // CALCULATED DISPLAY AMOUNTS
+
+  //
+
+  // IMPORTANT:
+
+  //
+
+  // Do NOT use:
+
+  //
+
+  // selectedPlan.price
+
+  //
+
+  // because that is the legacy/default NORMAL seat price.
+
+  //
+
+  // Example:
+
+  //
+
+  // NORMAL  = ₹699
+
+  // PREMIUM = ₹799
+
+  //
+
+  // A Premium booking must never display ₹699 merely because
+
+  // selectedPlan.price is ₹699.
+
+  //
+
+  // Display priority:
+
+  //
+
+  // 1. persisted Booking amount
+
+  // 2. authenticated SeatPriceQuote.effectivePrice
+
+  //
+
+  // The payment backend independently calculates the trusted
+
+  // payable amount again when creating the payment order.
+
+  //
+
   // ==========================================================
 
-  const discountAmount = Number(appliedCoupon?.discountAmount ?? 0);
+  const bookingAmount = useMemo(() => {
+    const candidates = [
+      booking?.amount,
 
-  const finalAmount = appliedCoupon
-    ? Number(appliedCoupon?.finalAmount ?? originalAmount)
-    : originalAmount;
+      booking?.finalAmount,
+
+      booking?.payableAmount,
+    ];
+
+    for (const candidate of candidates) {
+      if (candidate == null) {
+        continue;
+      }
+
+      const amount = Number(candidate);
+
+      if (Number.isFinite(amount) && amount > 0) {
+        return roundMoney(amount);
+      }
+    }
+
+    return null;
+  }, [booking]);
+
+  const verifiedQuoteAmount = useMemo(() => {
+    const amount = Number(seatPriceQuote?.effectivePrice);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return null;
+    }
+
+    return roundMoney(amount);
+  }, [seatPriceQuote]);
+
+  const displayAmount = bookingAmount ?? verifiedQuoteAmount ?? null;
 
   // ==========================================================
+
+  // PRICE BREAKDOWN
+
+  // ==========================================================
+
+  const standardBasePrice = useMemo(() => {
+    const amount = Number(seatPriceQuote?.standardBasePrice);
+
+    return Number.isFinite(amount) ? roundMoney(amount) : null;
+  }, [seatPriceQuote]);
+
+  const memberBasePrice = useMemo(() => {
+    const amount = Number(seatPriceQuote?.memberBasePrice);
+
+    return Number.isFinite(amount) ? roundMoney(amount) : null;
+  }, [seatPriceQuote]);
+
+  const memberPricingApplied = Boolean(seatPriceQuote?.memberPricingApplied);
+
+  const effectiveBasePrice =
+    memberPricingApplied && memberBasePrice != null
+      ? memberBasePrice
+      : standardBasePrice;
+
+  const featureSurcharge = useMemo(() => {
+    const amount = Number(seatPriceQuote?.featureSurcharge);
+
+    return Number.isFinite(amount) ? roundMoney(amount) : 0;
+  }, [seatPriceQuote]);
+
+  const featurePrices = Array.isArray(seatPriceQuote?.featurePrices)
+    ? seatPriceQuote.featurePrices
+    : [];
+
+  // ==========================================================
+
   // LOAD RAZORPAY SCRIPT
+
   // ==========================================================
 
-  const loadRazorpayScript = () =>
-    new Promise((resolve) => {
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
       if (window.Razorpay) {
         resolve(true);
+
         return;
       }
 
       const existingScript = document.querySelector(
-        'script[src="https://checkout.razorpay.com/v1/checkout.js"]',
+        'script[src="https\://checkout.razorpay.com/v1/checkout.js"]',
       );
 
       if (existingScript) {
@@ -186,7 +421,7 @@ function MembershipPayment() {
 
       const script = document.createElement("script");
 
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.src = "https\://checkout.razorpay.com/v1/checkout.js";
 
       script.async = true;
 
@@ -196,9 +431,12 @@ function MembershipPayment() {
 
       document.body.appendChild(script);
     });
+  };
 
   // ==========================================================
+
   // OPEN RAZORPAY CHECKOUT
+
   // ==========================================================
 
   const openRazorpayCheckout = async (orderResponse) => {
@@ -214,14 +452,6 @@ function MembershipPayment() {
 
     const keyId = orderResponse?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
 
-    /*
-     * IMPORTANT:
-     *
-     * This is the amount returned by the payment backend.
-     * It is the amount that Razorpay receives.
-     *
-     * The frontend preview never controls this value.
-     */
     const amount = Number(orderResponse?.amount ?? 0);
 
     const currency = orderResponse?.currency || "INR";
@@ -270,6 +500,14 @@ function MembershipPayment() {
               gatewayPaymentId: razorpayResponse.razorpay_payment_id,
 
               gatewaySignature: razorpayResponse.razorpay_signature,
+
+              // ==============================================
+              // QR ATTRIBUTION METADATA
+              // ==============================================
+              // The backend records bookingCompleted only after
+              // Razorpay verification and booking completion.
+
+              scanToken: qrScanToken || null,
             });
 
             if (verification?.status !== "SUCCESS") {
@@ -330,17 +568,32 @@ function MembershipPayment() {
   };
 
   // ==========================================================
+
   // HANDLE PAYMENT
+
   // ==========================================================
 
   const handlePayment = async () => {
     try {
       setPaying(true);
+
       setError("");
+
+      // ======================================================
+
+      // LIBRARY
+
+      // ======================================================
 
       if (!library?.id) {
         throw new Error("Library ID is missing.");
       }
+
+      // ======================================================
+
+      // BOOKING
+
+      // ======================================================
 
       if (!bookingId) {
         throw new Error(
@@ -348,26 +601,36 @@ function MembershipPayment() {
         );
       }
 
-      if (!Number.isFinite(originalAmount) || originalAmount <= 0) {
+      // ======================================================
+
+      // DISPLAY AMOUNT
+
+      // ======================================================
+
+      //
+
+      // This check is only for frontend UX.
+
+      //
+
+      // Backend remains authoritative.
+
+      //
+
+      // ======================================================
+
+      if (displayAmount == null) {
         throw new Error(
-          "Booking amount is missing. Please restart the booking flow.",
+          "Booking amount is unavailable. Please restart the booking flow.",
         );
       }
 
-      /*
-       * IMPORTANT:
-       *
-       * Do NOT send any trusted price from the browser.
-       *
-       * No:
-       * amount
-       * finalAmount
-       * discountAmount
-       * originalAmount
-       *
-       * The backend receives only the booking reference,
-       * optional coupon and contextual IDs.
-       */
+      // ======================================================
+
+      // CREATE PAYMENT REQUEST
+
+      // ======================================================
+
       const payload = {
         referenceId: Number(bookingId),
 
@@ -375,10 +638,8 @@ function MembershipPayment() {
 
         libraryId: Number(library.id),
 
-        seatId: selectedSeat?.id ? Number(selectedSeat.id) : null,
-
-        couponId: appliedCoupon?.couponId
-          ? Number(appliedCoupon.couponId)
+        seatId: getSeatId(selectedSeat)
+          ? Number(getSeatId(selectedSeat))
           : null,
 
         currency: "INR",
@@ -390,36 +651,76 @@ function MembershipPayment() {
 
       console.log("Creating student booking payment:", payload);
 
+      // ======================================================
+
+      // CREATE RAZORPAY ORDER
+
+      // ======================================================
+
       const orderResponse = await paymentApi.createOrder(payload);
 
-      const backendAmount = Number(orderResponse?.amount ?? 0);
+      // ======================================================
 
-      /*
-       * Development consistency check only.
-       *
-       * Never block payment because of a preview mismatch.
-       * Payment backend remains authoritative.
-       */
+      // OPTIONAL SAFETY CHECK
+
+      // ======================================================
+
+      //
+
+      // The amount returned by createOrder is the backend
+
+      // payment authority.
+
+      //
+
+      // We do NOT block payment merely because frontend state
+
+      // differs, but we can warn in development.
+
+      //
+
+      // ======================================================
+
+      const orderAmount = Number(orderResponse?.amount);
+
       if (
-        Number.isFinite(backendAmount) &&
-        backendAmount > 0 &&
-        Math.abs(backendAmount - finalAmount) > 0.01
+        Number.isFinite(orderAmount) &&
+        displayAmount != null &&
+        Math.abs(orderAmount - displayAmount) > 0.01
       ) {
         console.warn(
-          "Frontend payment preview differs from backend payment amount.",
+          "Frontend payment display differs from backend payment order amount.",
+
           {
-            frontendFinalAmount: finalAmount,
+            displayedAmount: displayAmount,
 
-            backendAmount,
+            backendAmount: orderAmount,
 
-            couponId: appliedCoupon?.couponId ?? null,
-
-            couponCode: appliedCoupon?.code ?? null,
+            bookingId,
           },
         );
       }
 
+      // ======================================================
+
+      // OPEN CHECKOUT + VERIFY PAYMENT
+
+      // ======================================================
+
       const verification = await openRazorpayCheckout(orderResponse);
+
+      //
+      // At this point Razorpay verification has returned SUCCESS.
+      // The backend payment processor is authoritative for payment
+      // completion; attribution is recorded only after verification.
+      //
+      // ======================================================
+
+      // ======================================================
+
+      // SUCCESS NAVIGATION
+
+      // ======================================================
 
       navigate(`/student/bookings/${bookingId}`, {
         replace: true,
@@ -429,353 +730,716 @@ function MembershipPayment() {
 
           verification,
 
-          couponApplied: Boolean(appliedCoupon),
+          // ================================================
+          // QR ATTRIBUTION
+          // ================================================
 
-          couponCode: appliedCoupon?.code ?? null,
-
-          discountAmount: appliedCoupon?.discountAmount ?? null,
-
-          paidAmount: backendAmount,
+          qrCampaignCode,
+          qrScanToken,
+          qr: qrCampaignCode,
+          qrs: qrScanToken,
         },
       });
     } catch (requestError) {
       console.error("Student payment failed:", requestError);
 
-      setError(
-        requestError?.response?.data?.message ||
-          requestError?.response?.data?.error ||
-          requestError?.response?.data?.detail ||
-          requestError?.message ||
-          "Unable to complete payment.",
-      );
+      if (requestError?.code === "PAYMENT_CANCELLED") {
+        setError(
+          "Payment was cancelled. Your booking is still pending payment.",
+        );
+
+        return;
+      }
+
+      setError(getErrorMessage(requestError, "Unable to complete payment."));
     } finally {
       setPaying(false);
     }
   };
 
   // ==========================================================
+
   // INVALID NAVIGATION STATE
+
   // ==========================================================
 
   if (!bookingId) {
     return (
-      <Alert severity="warning">
-        Booking information is missing. Please start the booking flow again.
-      </Alert>
+      <Box
+        sx={{
+          maxWidth: 760,
+
+          mx: "auto",
+
+          p: {
+            xs: 2,
+
+            md: 3,
+          },
+        }}
+      >
+        <Alert
+          severity="warning"
+          sx={{
+            borderRadius: 3,
+          }}
+        >
+          Booking information is missing. Please restart the seat booking flow.
+        </Alert>
+
+        <Button
+          sx={{
+            mt: 2,
+          }}
+          variant="contained"
+          onClick={() => navigate("/libraries")}
+        >
+          Browse Libraries
+        </Button>
+      </Box>
     );
   }
 
   // ==========================================================
+
   // UI
+
   // ==========================================================
 
   return (
     <Box
       sx={{
-        maxWidth: 820,
+        maxWidth: 1100,
+
+        mx: "auto",
+
+        p: {
+          xs: 2,
+
+          md: 3,
+        },
       }}
     >
+      {/* ====================================================== */}
+
+      {/* BACK */}
+
+      {/* ====================================================== */}
+
       <Button
-        startIcon={<ArrowBack />}
+        startIcon={<ArrowBackRounded />}
         onClick={() => navigate(-1)}
-        sx={{ mb: 2 }}
+        sx={{
+          mb: 2.5,
+
+          borderRadius: 2.5,
+        }}
       >
         Back
       </Button>
 
-      <Typography variant="h4" fontWeight={800}>
-        {isBooking ? "Booking Payment" : "Membership Payment"}
-      </Typography>
+      {/* ====================================================== */}
 
-      <Typography
-        color="text.secondary"
+      {/* HEADER */}
+
+      {/* ====================================================== */}
+
+      <Stack
+        direction={{
+          xs: "column",
+
+          sm: "row",
+        }}
+        justifyContent="space-between"
+        alignItems={{
+          xs: "flex-start",
+
+          sm: "center",
+        }}
+        spacing={2}
         sx={{
-          mt: 0.5,
           mb: 3,
         }}
       >
-        Review your booking amount and continue securely through Razorpay.
-      </Typography>
+        <Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography
+              variant="h4"
+              fontWeight={900}
+              sx={{
+                letterSpacing: "-0.04em",
+              }}
+            >
+              {isBooking ? "Complete Payment" : "Membership Payment"}
+            </Typography>
 
-      {(!Number.isFinite(originalAmount) || originalAmount <= 0) && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          The server-verified booking amount is unavailable. Please return to
-          the booking review page and create the booking again.
-        </Alert>
-      )}
+            <VerifiedRounded color="primary" />
+          </Stack>
+
+          <Typography
+            color="text.secondary"
+            sx={{
+              mt: 0.6,
+            }}
+          >
+            Review your booking and continue securely through Razorpay.
+          </Typography>
+        </Box>
+
+        <Chip
+          icon={<LockRounded />}
+          label="Secure Payment"
+          color="success"
+          variant="outlined"
+          sx={{
+            fontWeight: 750,
+          }}
+        />
+      </Stack>
+
+      {/* ====================================================== */}
+
+      {/* ERROR */}
+
+      {/* ====================================================== */}
 
       {error && (
-        <Alert severity="error" onClose={() => setError("")} sx={{ mb: 2 }}>
+        <Alert
+          severity="error"
+          onClose={() => setError("")}
+          sx={{
+            mb: 3,
+
+            borderRadius: 3,
+          }}
+        >
           {error}
         </Alert>
       )}
 
-      {/* =====================================================
-          PAYMENT SUMMARY
-          ===================================================== */}
+      {/* ====================================================== */}
 
-      <Card
-        elevation={0}
-        sx={{
-          mb: 2,
-          border: "1px solid",
-          borderColor: "divider",
-          borderRadius: 3,
-        }}
-      >
-        <CardContent>
-          <Typography variant="h6" fontWeight={700}>
-            Payment Summary
-          </Typography>
+      {/* GRID */}
 
-          <Divider sx={{ my: 2 }} />
+      {/* ====================================================== */}
 
-          <Stack spacing={1.5}>
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography color="text.secondary">Library</Typography>
+      <Grid container spacing={3} alignItems="flex-start">
+        {/* ==================================================== */}
 
-              <Typography fontWeight={600} textAlign="right">
-                {library?.name || "-"}
-              </Typography>
-            </Stack>
+        {/* LEFT - BOOKING SUMMARY */}
 
-            {selectedPlan && (
-              <Stack direction="row" justifyContent="space-between" spacing={2}>
-                <Typography color="text.secondary">Plan</Typography>
+        {/* ==================================================== */}
 
-                <Typography fontWeight={600}>
-                  {selectedPlan.name || "-"}
-                </Typography>
-              </Stack>
-            )}
+        <Grid
+          size={{
+            xs: 12,
 
-            {selectedSeat && (
-              <>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  spacing={2}
-                >
-                  <Typography color="text.secondary">Seat</Typography>
-
-                  <Stack direction="row" spacing={0.75} alignItems="center">
-                    <EventSeat fontSize="small" />
-
-                    <Typography fontWeight={600}>
-                      {selectedSeat.seatNumber || "-"}
-                    </Typography>
-                  </Stack>
-                </Stack>
-
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  spacing={2}
-                >
-                  <Typography color="text.secondary">Seat Category</Typography>
-
-                  <Typography fontWeight={600}>
-                    {formatEnum(seatType, "Normal")}
-                  </Typography>
-                </Stack>
-              </>
-            )}
-
-            {selectedSlot && (
-              <Stack direction="row" justifyContent="space-between" spacing={2}>
-                <Typography color="text.secondary">Slot</Typography>
-
-                <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Schedule fontSize="small" />
-
-                  <Typography fontWeight={600}>
-                    {selectedSlot.name || "-"}
-                  </Typography>
-                </Stack>
-              </Stack>
-            )}
-
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography color="text.secondary">Booking ID</Typography>
-
-              <Typography fontWeight={600}>#{bookingId}</Typography>
-            </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {/* =====================================================
-          PRICE DETAILS
-          ===================================================== */}
-
-      <Card
-        elevation={0}
-        sx={{
-          border: "1px solid",
-          borderColor: appliedCoupon ? "primary.light" : "divider",
-          borderRadius: 3,
-        }}
-      >
-        <CardContent>
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-            spacing={2}
-          >
-            <Typography variant="h6" fontWeight={700}>
-              Price Details
-            </Typography>
-
-            {appliedCoupon && (
-              <Chip
-                icon={<LocalOfferOutlined />}
-                label={appliedCoupon.code}
-                color="success"
-                variant="outlined"
-                sx={{
-                  fontWeight: 700,
-                }}
-              />
-            )}
-          </Stack>
-
-          <Divider sx={{ my: 2 }} />
-
-          <Stack spacing={1.5}>
-            {standardBasePrice != null && (
-              <Stack direction="row" justifyContent="space-between" spacing={2}>
-                <Typography color="text.secondary">
-                  {formatEnum(seatType, "Normal")} Seat Base Price
-                </Typography>
-
-                <Typography fontWeight={700}>
-                  {formatMoney(standardBasePrice)}
-                </Typography>
-              </Stack>
-            )}
-
-            {memberPricingApplied && memberBasePrice != null && (
-              <Stack direction="row" justifyContent="space-between" spacing={2}>
-                <Typography color="success.main">
-                  Your Member Base Price
-                </Typography>
-
-                <Typography fontWeight={800} color="success.main">
-                  {formatMoney(memberBasePrice)}
-                </Typography>
-              </Stack>
-            )}
-
-            {featurePrices.map((item) => (
-              <Stack
-                key={item.feature}
-                direction="row"
-                justifyContent="space-between"
-                spacing={2}
-              >
-                <Typography color="text.secondary">
-                  {formatEnum(item.feature)} Surcharge
-                </Typography>
-
-                <Typography fontWeight={700}>
-                  + {formatMoney(item.additionalPrice)}
-                </Typography>
-              </Stack>
-            ))}
-
-            {featurePrices.length > 0 && (
-              <Stack direction="row" justifyContent="space-between" spacing={2}>
-                <Typography color="text.secondary">
-                  Feature Surcharges
-                </Typography>
-
-                <Typography fontWeight={700}>
-                  + {formatMoney(featureTotal)}
-                </Typography>
-              </Stack>
-            )}
-
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography color="text.secondary">
-                Server-Verified Booking Amount
-              </Typography>
-
-              <Typography fontWeight={800}>
-                {formatMoney(originalAmount)}
-              </Typography>
-            </Stack>
-
-            <Stack direction="row" justifyContent="space-between" spacing={2}>
-              <Typography
-                color={appliedCoupon ? "success.main" : "text.secondary"}
-              >
-                {appliedCoupon
-                  ? `Discount (${appliedCoupon.code})`
-                  : "Discount"}
-              </Typography>
-
-              <Typography
-                fontWeight={700}
-                color={appliedCoupon ? "success.main" : "text.secondary"}
-              >
-                - {formatMoney(discountAmount)}
-              </Typography>
-            </Stack>
-
-            <Divider />
-
-            <Stack
-              direction="row"
-              justifyContent="space-between"
-              alignItems="center"
-              spacing={2}
-            >
-              <Typography variant="h6" fontWeight={800}>
-                Final Amount
-              </Typography>
-
-              <Typography variant="h4" fontWeight={900} color="primary.main">
-                {formatMoney(finalAmount)}
-              </Typography>
-            </Stack>
-          </Stack>
-
-          <Alert severity="info" icon={<Lock />} sx={{ mt: 3 }}>
-            The booking amount shown here comes from the server-verified booking
-            price. Any coupon selected on the booking review page is revalidated
-            on the backend before the Razorpay order is created.
-          </Alert>
-
-          <Button
-            fullWidth
-            size="large"
-            variant="contained"
-            startIcon={
-              paying ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : (
-                <CreditCard />
-              )
-            }
-            disabled={
-              paying ||
-              !Number.isFinite(finalAmount) ||
-              Number(finalAmount) <= 0
-            }
-            onClick={handlePayment}
+            md: 7,
+          }}
+        >
+          <Card
+            elevation={0}
             sx={{
-              mt: 3,
-              minHeight: 50,
-              textTransform: "none",
-              fontWeight: 800,
-              fontSize: "1rem",
+              border: "1px solid",
+
+              borderColor: "divider",
+
+              borderRadius: 4,
+
+              overflow: "hidden",
             }}
           >
-            {paying ? "Opening Payment..." : `Pay ${formatMoney(finalAmount)}`}
-          </Button>
-        </CardContent>
-      </Card>
+            <Box
+              sx={{
+                p: 2.5,
+
+                background:
+                  "linear-gradient(135deg,#071A37 0%,#0B4A9F 65%,#146EF5 140%)",
+
+                color: "#fff",
+              }}
+            >
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="center"
+              >
+                <Box>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "rgba(255,255,255,.72)",
+
+                      fontWeight: 800,
+                    }}
+                  >
+                    BOOKING SUMMARY
+                  </Typography>
+
+                  <Typography variant="h5" fontWeight={900} mt={0.4}>
+                    {library?.name || "Library Booking"}
+                  </Typography>
+                </Box>
+
+                <Avatar
+                  sx={{
+                    bgcolor: "rgba(255,255,255,.12)",
+
+                    color: "#fff",
+                  }}
+                >
+                  <EventSeatRounded />
+                </Avatar>
+              </Stack>
+            </Box>
+
+            <CardContent
+              sx={{
+                p: {
+                  xs: 2,
+
+                  sm: 3,
+                },
+
+                "&:last-child": {
+                  pb: {
+                    xs: 2,
+
+                    sm: 3,
+                  },
+                },
+              }}
+            >
+              <Stack spacing={1.5}>
+                <SummaryRow label="Booking ID" value={`#${bookingId}`} />
+
+                <Divider />
+
+                <SummaryRow label="Library" value={library?.name} />
+
+                <SummaryRow
+                  label="Membership Plan"
+                  value={selectedPlan?.name}
+                />
+
+                {selectedFloor && (
+                  <SummaryRow
+                    label="Floor"
+                    value={
+                      selectedFloor?.name ||
+                      `Floor ${selectedFloor?.floorNumber ?? ""}`
+                    }
+                  />
+                )}
+
+                {selectedSeat && (
+                  <SummaryRow
+                    label="Seat"
+                    value={`${selectedSeat?.seatNumber || "-"} · ${formatEnum(
+                      selectedSeat?.seatType,
+                    )}`}
+                  />
+                )}
+
+                {selectedSlot && (
+                  <SummaryRow
+                    label="Slot"
+                    value={`${selectedSlot?.name || "Slot"}${
+                      selectedSlot?.startTime && selectedSlot?.endTime
+                        ? ` · ${formatTime(
+                            selectedSlot.startTime,
+                          )} – ${formatTime(selectedSlot.endTime)}`
+                        : ""
+                    }`}
+                  />
+                )}
+
+                <SummaryRow
+                  label="Start Date"
+                  value={formatDisplayDate(startDate)}
+                />
+
+                <SummaryRow
+                  label="End Date"
+                  value={formatDisplayDate(endDate)}
+                />
+              </Stack>
+
+              {/* ================================================= */}
+
+              {/* VERIFIED PRICING BREAKDOWN */}
+
+              {/* ================================================= */}
+
+              {seatPriceQuote && (
+                <>
+                  <Divider
+                    sx={{
+                      my: 2.5,
+                    }}
+                  />
+
+                  <Stack
+                    direction="row"
+                    spacing={1}
+                    alignItems="center"
+                    mb={1.5}
+                  >
+                    <VerifiedRounded
+                      color="success"
+                      sx={{
+                        fontSize: 20,
+                      }}
+                    />
+
+                    <Typography fontWeight={850}>
+                      Verified Seat Pricing
+                    </Typography>
+                  </Stack>
+
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 2,
+
+                      borderRadius: 3,
+
+                      bgcolor: alpha(theme.palette.success.main, 0.035),
+
+                      border: "1px solid",
+
+                      borderColor: alpha(theme.palette.success.main, 0.14),
+                    }}
+                  >
+                    <Stack spacing={1.1}>
+                      <SummaryRow
+                        label="Standard Base Price"
+                        value={
+                          standardBasePrice != null
+                            ? formatMoney(standardBasePrice)
+                            : "-"
+                        }
+                      />
+
+                      {memberPricingApplied && memberBasePrice != null && (
+                        <SummaryRow
+                          label="Your Member Base Price"
+                          value={formatMoney(memberBasePrice)}
+                          valueColor="success.main"
+                        />
+                      )}
+
+                      <SummaryRow
+                        label="Effective Base"
+                        value={
+                          effectiveBasePrice != null
+                            ? formatMoney(effectiveBasePrice)
+                            : "-"
+                        }
+                      />
+
+                      {featurePrices.map((featurePrice, index) => {
+                        const amount = Number(featurePrice?.additionalPrice);
+
+                        return (
+                          <SummaryRow
+                            key={`${featurePrice?.feature}-${index}`}
+                            label={formatEnum(featurePrice?.feature)}
+                            value={
+                              Number.isFinite(amount)
+                                ? `+${formatMoney(amount)}`
+                                : "-"
+                            }
+                          />
+                        );
+                      })}
+
+                      <SummaryRow
+                        label="Feature Surcharge"
+                        value={
+                          featureSurcharge > 0
+                            ? `+${formatMoney(featureSurcharge)}`
+                            : formatMoney(0)
+                        }
+                      />
+
+                      <Divider />
+
+                      <SummaryRow
+                        label="Verified Total"
+                        value={
+                          verifiedQuoteAmount != null
+                            ? formatMoney(verifiedQuoteAmount)
+                            : "-"
+                        }
+                        valueColor="primary.main"
+                        strong
+                      />
+                    </Stack>
+                  </Paper>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* ==================================================== */}
+
+        {/* RIGHT - PAYMENT */}
+
+        {/* ==================================================== */}
+
+        <Grid
+          size={{
+            xs: 12,
+
+            md: 5,
+          }}
+        >
+          <Box
+            sx={{
+              position: {
+                md: "sticky",
+              },
+
+              top: {
+                md: 96,
+              },
+            }}
+          >
+            <Card
+              elevation={0}
+              sx={{
+                border: "1px solid",
+
+                borderColor: alpha(theme.palette.primary.main, 0.22),
+
+                borderRadius: 4,
+
+                boxShadow: "0 18px 50px rgba(15,23,42,.08)",
+              }}
+            >
+              <CardContent
+                sx={{
+                  p: {
+                    xs: 2.3,
+
+                    sm: 3,
+                  },
+
+                  "&:last-child": {
+                    pb: {
+                      xs: 2.3,
+
+                      sm: 3,
+                    },
+                  },
+                }}
+              >
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="center"
+                >
+                  <Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      fontWeight={800}
+                    >
+                      AMOUNT PAYABLE
+                    </Typography>
+
+                    <Typography
+                      variant="h3"
+                      fontWeight={900}
+                      color="primary.main"
+                      sx={{
+                        mt: 0.4,
+
+                        letterSpacing: "-0.04em",
+                      }}
+                    >
+                      {displayAmount != null ? formatMoney(displayAmount) : "—"}
+                    </Typography>
+                  </Box>
+
+                  <Avatar
+                    sx={{
+                      bgcolor: alpha(theme.palette.primary.main, 0.09),
+
+                      color: "primary.main",
+
+                      width: 50,
+
+                      height: 50,
+                    }}
+                  >
+                    <CreditCardRounded />
+                  </Avatar>
+                </Stack>
+
+                {bookingAmount != null && (
+                  <Chip
+                    icon={<CheckCircleRounded />}
+                    label="Amount saved with booking"
+                    color="success"
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      mt: 1.4,
+
+                      fontWeight: 700,
+                    }}
+                  />
+                )}
+
+                {bookingAmount == null && verifiedQuoteAmount != null && (
+                  <Chip
+                    icon={<VerifiedRounded />}
+                    label="Verified seat quote"
+                    color="success"
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      mt: 1.4,
+
+                      fontWeight: 700,
+                    }}
+                  />
+                )}
+
+                <Divider
+                  sx={{
+                    my: 2.5,
+                  }}
+                />
+
+                <Stack spacing={1.5}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <EventSeatRounded color="action" fontSize="small" />
+
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedSeat
+                        ? `Seat ${selectedSeat?.seatNumber || "-"}`
+                        : "Seat booking"}
+                    </Typography>
+                  </Stack>
+
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <WorkspacePremiumRounded color="action" fontSize="small" />
+
+                    <Typography variant="body2" color="text.secondary">
+                      {selectedPlan?.name || "Membership plan"}
+                    </Typography>
+                  </Stack>
+
+                  {selectedSlot && (
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <ScheduleRounded color="action" fontSize="small" />
+
+                      <Typography variant="body2" color="text.secondary">
+                        {selectedSlot?.name || "Booking slot"}
+                      </Typography>
+                    </Stack>
+                  )}
+                </Stack>
+
+                <Alert
+                  severity="info"
+                  icon={<LockRounded />}
+                  sx={{
+                    mt: 2.5,
+
+                    borderRadius: 2.5,
+                  }}
+                >
+                  The backend recalculates the trusted payable amount from the
+                  saved booking before creating the payment order. The browser
+                  cannot change the amount charged.
+                </Alert>
+
+                {displayAmount == null && (
+                  <Alert
+                    severity="warning"
+                    sx={{
+                      mt: 2,
+
+                      borderRadius: 2.5,
+                    }}
+                  >
+                    The booking amount is unavailable. Restart the booking flow
+                    before payment.
+                  </Alert>
+                )}
+
+                <Button
+                  fullWidth
+                  size="large"
+                  variant="contained"
+                  startIcon={
+                    paying ? (
+                      <CircularProgress size={18} color="inherit" />
+                    ) : (
+                      <CreditCardRounded />
+                    )
+                  }
+                  disabled={
+                    paying || displayAmount == null || displayAmount <= 0
+                  }
+                  onClick={handlePayment}
+                  sx={{
+                    mt: 3,
+
+                    minHeight: 54,
+
+                    borderRadius: 2.7,
+
+                    fontWeight: 850,
+
+                    boxShadow:
+                      displayAmount != null && !paying
+                        ? `0 12px 28px ${alpha(
+                            theme.palette.primary.main,
+
+                            0.22,
+                          )}`
+                        : "none",
+                  }}
+                >
+                  {paying
+                    ? "Opening Secure Payment..."
+                    : displayAmount != null
+                      ? `Pay ${formatMoney(displayAmount)}`
+                      : "Payment Unavailable"}
+                </Button>
+
+                <Stack
+                  direction="row"
+                  justifyContent="center"
+                  alignItems="center"
+                  spacing={0.6}
+                  sx={{
+                    mt: 1.5,
+                  }}
+                >
+                  <LockRounded
+                    sx={{
+                      fontSize: 14,
+
+                      color: "success.main",
+                    }}
+                  />
+
+                  <Typography variant="caption" color="text.secondary">
+                    Secured by Razorpay
+                  </Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Box>
+        </Grid>
+      </Grid>
     </Box>
   );
 }

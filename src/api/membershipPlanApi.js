@@ -1,56 +1,100 @@
 import api from "./axios";
 
 const membershipPlanApi = {
+  // =========================================================
+  // OWNER - ALL PLANS
+  // =========================================================
 
-    getPlans: async (libraryId) => {
-        const response = await api.get(
-            `/api/libraries/${libraryId}/plans`
-        );
+  getPlans: async (libraryId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
 
-        return response.data;
-    },
+    const response = await api.get(`/api/libraries/${libraryId}/plans`);
 
-    getActivePlans: async (libraryId) => {
-        const response = await api.get(
-            `/api/libraries/${libraryId}/plans/active`
-        );
+    return response.data;
+  },
 
-        return response.data;
-    },
+  // =========================================================
+  // PUBLIC / STUDENT - ACTIVE PLANS ONLY
+  // =========================================================
 
-    createPlan: async (libraryId, payload) => {
-        const response = await api.post(
-            `/api/libraries/${libraryId}/plans`,
-            payload
-        );
+  getActivePlans: async (libraryId) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
 
-        return response.data;
-    },
+    const response = await api.get(`/api/libraries/${libraryId}/plans/active`);
 
-    updatePlan: async (planId, payload) => {
-        const response = await api.put(
-            `/api/libraries/plans/${planId}`,
-            payload
-        );
+    return response.data;
+  },
 
-        return response.data;
-    },
+  // =========================================================
+  // OWNER - CREATE
+  // =========================================================
 
-    deactivatePlan: async (planId) => {
-        const response = await api.delete(
-            `/api/libraries/plans/${planId}`
-        );
+  createPlan: async (libraryId, payload) => {
+    if (!libraryId) {
+      throw new Error("Library ID is required.");
+    }
 
-        return response.data;
-    },
+    if (!payload) {
+      throw new Error("Membership plan payload is required.");
+    }
 
-    activatePlan: async (planId) => {
-        const response = await api.put(
-            `/api/libraries/plans/${planId}/activate`
-        );
+    const response = await api.post(
+      `/api/libraries/${libraryId}/plans`,
+      payload,
+    );
 
-        return response.data;
-    },
+    return response.data;
+  },
+
+  // =========================================================
+  // OWNER - UPDATE
+  // =========================================================
+
+  updatePlan: async (planId, payload) => {
+    if (!planId) {
+      throw new Error("Membership plan ID is required.");
+    }
+
+    if (!payload) {
+      throw new Error("Membership plan payload is required.");
+    }
+
+    const response = await api.put(`/api/libraries/plans/${planId}`, payload);
+
+    return response.data;
+  },
+
+  // =========================================================
+  // OWNER - DEACTIVATE
+  // =========================================================
+
+  deactivatePlan: async (planId) => {
+    if (!planId) {
+      throw new Error("Membership plan ID is required.");
+    }
+
+    const response = await api.delete(`/api/libraries/plans/${planId}`);
+
+    return response.data;
+  },
+
+  // =========================================================
+  // OWNER - ACTIVATE
+  // =========================================================
+
+  activatePlan: async (planId) => {
+    if (!planId) {
+      throw new Error("Membership plan ID is required.");
+    }
+
+    const response = await api.put(`/api/libraries/plans/${planId}/activate`);
+
+    return response.data;
+  },
 };
 
 export default membershipPlanApi;

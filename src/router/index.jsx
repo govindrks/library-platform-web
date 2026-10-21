@@ -5,9 +5,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 // ============================================================
 
 import PublicLayout from "../layouts/PublicLayout";
-
 import VerticalLayout from "../layouts/VerticalLayout";
-
 import StudentLayout from "../layouts/StudentLayout/StudentLayout";
 
 // ============================================================
@@ -15,9 +13,7 @@ import StudentLayout from "../layouts/StudentLayout/StudentLayout";
 // ============================================================
 
 import ProtectedRoute from "./ProtectedRoute";
-
 import PublicRoute from "./PublicRoute";
-
 import RoleRoute from "./RoleRoute";
 
 // ============================================================
@@ -25,21 +21,18 @@ import RoleRoute from "./RoleRoute";
 // ============================================================
 
 import Home from "../views/Public/Home";
-
 import LibraryList from "../views/Public/LibraryList";
-
 import LibraryDetails from "../views/Public/LibraryDetails";
-
 import SeatAvailability from "../views/Public/SeatAvailability";
-
+import LibraryEnquiry from "../views/Public/LibraryEnquiry";
 import PlatformPlans from "../views/Public/PlatformPlans";
+import QrRedirect from "../views/Public/QrRedirect";
 
 // ============================================================
 // AUTH
 // ============================================================
 
 import Login from "../views/Auth/Login";
-
 import Register from "../views/Auth/Register";
 
 // ============================================================
@@ -53,17 +46,11 @@ import Maintenance from "../views/Common/Maintenance";
 // ============================================================
 
 import RegisterLibrary from "../views/LibraryOwner/RegisterLibrary";
-
 import SeatChangeRequests from "../views/LibraryOwner/SeatChangeRequests";
-
 import SubscriptionBilling from "../views/LibraryOwner/SubscriptionBilling";
-
 import AutomationCenter from "../views/LibraryOwner/AutomationCenter";
-
 import Notifications from "../views/LibraryOwner/Notifications";
-
 import Settings from "../views/LibraryOwner/Settings";
-
 import Coupons from "../views/LibraryOwner/Coupons";
 
 // ============================================================
@@ -77,13 +64,9 @@ import MembershipPaymentSuccess from "../views/Student/Membership/MembershipPaym
 // ============================================================
 
 import adminRoutes from "./routes/Admin";
-
 import ownerRoutes from "./routes/Owner";
-
 import studentRoutes from "./routes/StudentRoutes";
-
 import bookingRoutes from "./routes/Booking";
-
 import reportRoutes from "./routes/Reports";
 
 // ============================================================
@@ -91,6 +74,7 @@ import reportRoutes from "./routes/Reports";
 // ============================================================
 
 import DashboardRedirect from "./routes/Dashboard";
+import LibraryEnquiries from "../views/LibraryOwner/components/LibraryEnquiries";
 
 // ============================================================
 // APP ROUTER
@@ -110,30 +94,57 @@ function AppRouter() {
       {/* ===================================================== */}
 
       <Route element={<PublicLayout />}>
+        {/* =================================================== */}
+        {/* PUBLIC QR CAMPAIGN RESOLVER */}
+        {/* =================================================== */}
+
+        <Route path="/q/:code" element={<QrRedirect />} />
+
+        {/* =================================================== */}
+        {/* HOME */}
+        {/* =================================================== */}
+
         <Route path="/" element={<Home />} />
+
+        {/* =================================================== */}
+        {/* PUBLIC LIBRARY LIST */}
+        {/* =================================================== */}
 
         <Route path="/libraries" element={<LibraryList />} />
 
+        {/* =================================================== */}
+        {/* PUBLIC LIBRARY DETAILS */}
+        {/* =================================================== */}
+
         <Route path="/libraries/:libraryId" element={<LibraryDetails />} />
+
+        {/* =================================================== */}
+        {/* PUBLIC SEAT AVAILABILITY */}
+        {/* =================================================== */}
 
         <Route
           path="/libraries/:libraryId/seats"
           element={<SeatAvailability />}
         />
 
+        {/* =================================================== */}
+        {/* PUBLIC MEMBERSHIP ENQUIRY */}
+        {/* =================================================== */}
+
+        <Route
+          path="/libraries/:libraryId/enquiry"
+          element={<LibraryEnquiry />}
+        />
+
+        {/* =================================================== */}
+        {/* PLATFORM PLANS */}
+        {/* =================================================== */}
+
         <Route path="/platform-plans" element={<PlatformPlans />} />
 
         {/* =================================================== */}
         {/* PUBLIC LIBRARY REGISTRATION */}
         {/* =================================================== */}
-
-        {/*
-         * Registration starts publicly because Step 1 creates
-         * the LIBRARY_OWNER account.
-         *
-         * After Step 1, the JWT created by owner registration is
-         * used by the remaining onboarding API calls.
-         */}
 
         <Route path="/register-library" element={<RegisterLibrary />} />
       </Route>
@@ -157,32 +168,15 @@ function AppRouter() {
         {/* DASHBOARD ROLE DISPATCHER */}
         {/* =================================================== */}
 
-        {/*
-         * /dashboard
-         *
-         * ADMIN
-         *   -> /admin/dashboard
-         *
-         * LIBRARY_OWNER
-         *   -> /owner/dashboard
-         *
-         * USER
-         *   -> /student/dashboard
-         */}
-
         <Route path="/dashboard" element={<DashboardRedirect />} />
 
         {/* =================================================== */}
-        {/* ADMIN + LIBRARY OWNER APPLICATION */}
+        {/* ADMIN + LIBRARY OWNER */}
         {/* =================================================== */}
-
-        {/*
-         * ADMIN and LIBRARY_OWNER use VerticalLayout.
-         */}
 
         <Route element={<VerticalLayout />}>
           {/* ================================================= */}
-          {/* ADMIN ROUTES */}
+          {/* ADMIN */}
           {/* ================================================= */}
 
           <Route element={<RoleRoute allowedRoles={["ADMIN"]} />}>
@@ -196,7 +190,7 @@ function AppRouter() {
           </Route>
 
           {/* ================================================= */}
-          {/* LIBRARY OWNER ROUTES */}
+          {/* LIBRARY OWNER */}
           {/* ================================================= */}
 
           <Route element={<RoleRoute allowedRoles={["LIBRARY_OWNER"]} />}>
@@ -223,6 +217,12 @@ function AppRouter() {
                 element={route.element}
               />
             ))}
+
+            {/* =============================================== */}
+            {/* MEMBERSHIP ENQUIRIES */}
+            {/* =============================================== */}
+
+            <Route path="/owner/enquiries" element={<LibraryEnquiries />} />
 
             {/* =============================================== */}
             {/* AUTOMATION CENTER */}
@@ -272,16 +272,6 @@ function AppRouter() {
         {/* STUDENT / MEMBER APPLICATION */}
         {/* =================================================== */}
 
-        {/*
-         * USER does not use VerticalLayout.
-         *
-         * USER
-         *   -> StudentLayout
-         *   -> StudentSidebar
-         *   -> StudentTopbar
-         *   -> Student pages
-         */}
-
         <Route element={<RoleRoute allowedRoles={["USER"]} />}>
           <Route element={<StudentLayout />}>
             {/* =============================================== */}
@@ -300,11 +290,6 @@ function AppRouter() {
             {/* LEGACY BOOKING ROUTES */}
             {/* =============================================== */}
 
-            {/*
-             * Keep temporarily so existing student booking
-             * pages are not broken during migration.
-             */}
-
             {bookingRoutes.map((route) => (
               <Route
                 key={`booking-${route.path}`}
@@ -316,12 +301,6 @@ function AppRouter() {
             {/* =============================================== */}
             {/* LEGACY MEMBERSHIP PAYMENT SUCCESS */}
             {/* =============================================== */}
-
-            {/*
-             * Keep while older payment flow still references:
-             *
-             * /member/membership/payment-success
-             */}
 
             <Route
               path="/member/membership/payment-success"
