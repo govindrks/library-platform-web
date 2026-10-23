@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useParams } from "react-router-dom";
+
 import {
   Alert,
   Box,
@@ -48,20 +50,27 @@ import {
 } from "recharts";
 
 import ReportHeader from "../../components/reports/ReportHeader";
+
 import ReportFilter from "../../components/reports/ReportFilter";
+
 import ReportStatCard from "../../components/reports/ReportStatCard";
 
 import libraryApi from "../../api/libraryApi";
+
 import reportApi from "../../api/reportApi";
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const STATUS_COLORS = ["#16A34A", "#F59E0B", "#0284C7", "#DC2626"];
 
 // ============================================================
+
 // DATE HELPERS
+
 // ============================================================
 
 const formatBackendDate = (date) => {
@@ -109,6 +118,7 @@ const getPeriodRange = (period) => {
       break;
 
     case "month":
+
     default:
       from.setDate(1);
 
@@ -123,7 +133,9 @@ const getPeriodRange = (period) => {
 };
 
 // ============================================================
+
 // FORMATTERS
+
 // ============================================================
 
 const formatCurrency = (value) => {
@@ -131,7 +143,9 @@ const formatCurrency = (value) => {
 
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
+
     currency: "INR",
+
     maximumFractionDigits: 0,
   }).format(amount);
 };
@@ -149,7 +163,9 @@ const formatDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
   }).format(date);
 };
@@ -167,6 +183,7 @@ const formatShortDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
   }).format(date);
 };
@@ -219,17 +236,30 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function BookingReport() {
+  const { libraryId: routeLibraryId } = useParams();
+
+  const isAdminReport =
+    routeLibraryId !== undefined &&
+    routeLibraryId !== null &&
+    routeLibraryId !== "";
+
   // ========================================================
+
   // STATE
+
   // ========================================================
 
   const [libraries, setLibraries] = useState([]);
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState("");
+  const [selectedLibraryId, setSelectedLibraryId] = useState(() =>
+    isAdminReport ? String(routeLibraryId) : "",
+  );
 
   const [period, setPeriod] = useState("month");
 
@@ -246,13 +276,17 @@ function BookingReport() {
   const [error, setError] = useState("");
 
   // ========================================================
+
   // SELECTED PERIOD
+
   // ========================================================
 
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
 
   // ========================================================
+
   // REQUEST PAYLOAD
+
   // ========================================================
 
   const reportPayload = useMemo(() => {
@@ -278,10 +312,15 @@ function BookingReport() {
       page: 0,
 
       /*
-       * Load enough records for the charts and
-       * recent-booking table while summary values
-       * remain calculated across the whole result.
-       */
+
+ *       * Load enough records for the charts and*
+
+ *       * recent-booking table while summary values*
+
+ *       * remain calculated across the whole result.*
+
+ *       */
+
       size: 200,
 
       sortBy: "bookingDate",
@@ -291,10 +330,20 @@ function BookingReport() {
   }, [selectedLibraryId, dateRange]);
 
   // ========================================================
+
   // LOAD OWNER LIBRARIES
+
   // ========================================================
 
   useEffect(() => {
+    if (isAdminReport) {
+      setLibraries([]);
+      setSelectedLibraryId(String(routeLibraryId));
+      setLoadingLibraries(false);
+      setError("");
+      return undefined;
+    }
+
     let active = true;
 
     const loadLibraries = async () => {
@@ -346,10 +395,12 @@ function BookingReport() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdminReport, routeLibraryId]);
 
   // ========================================================
+
   // LOAD BOOKING REPORT
+
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -387,7 +438,9 @@ function BookingReport() {
   }, [loadingLibraries, reportPayload, loadReport]);
 
   // ========================================================
+
   // RAW BACKEND DATA
+
   // ========================================================
 
   const summary = report?.summary || {};
@@ -395,7 +448,9 @@ function BookingReport() {
   const records = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
+
   // SUMMARY VALUES
+
   // ========================================================
 
   const totalBookings = Number(summary.totalBookings || 0);
@@ -413,7 +468,9 @@ function BookingReport() {
   const averageBookingAmount = Number(summary.averageBookingAmount || 0);
 
   // ========================================================
+
   // BOOKING STATUS CHART
+
   // ========================================================
 
   const bookingStatusData = useMemo(
@@ -423,28 +480,35 @@ function BookingReport() {
 
         value: activeBookings,
       },
+
       {
         name: "Pending Payment",
 
         value: pendingBookings,
       },
+
       {
         name: "Expired",
 
         value: expiredBookings,
       },
+
       {
         name: "Cancelled",
 
         value: cancelledBookings,
       },
     ],
+
     [activeBookings, pendingBookings, expiredBookings, cancelledBookings],
   );
 
   // ========================================================
+
   // BOOKING TREND
+
   // Derived from returned booking records.
+
   // ========================================================
 
   const bookingTrendData = useMemo(() => {
@@ -461,7 +525,9 @@ function BookingReport() {
     });
 
     return Array.from(grouped.entries())
+
       .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+
       .map(([date, bookings]) => ({
         date: formatShortDate(date),
 
@@ -470,7 +536,9 @@ function BookingReport() {
   }, [records]);
 
   // ========================================================
+
   // SLOT BREAKDOWN
+
   // ========================================================
 
   const slotBookingData = useMemo(() => {
@@ -483,15 +551,20 @@ function BookingReport() {
     });
 
     return Array.from(grouped.entries())
+
       .map(([slot, bookings]) => ({
         slot,
+
         bookings,
       }))
+
       .sort((a, b) => b.bookings - a.bookings);
   }, [records]);
 
   // ========================================================
+
   // PERFORMANCE
+
   // ========================================================
 
   const fulfilledBookings = activeBookings + expiredBookings;
@@ -517,13 +590,17 @@ function BookingReport() {
     totalBookings > 0 ? (totalBookings / dayCount).toFixed(1) : "0.0";
 
   // ========================================================
+
   // RECENT BOOKINGS
+
   // ========================================================
 
   const recentBookings = useMemo(() => records.slice(0, 10), [records]);
 
   // ========================================================
+
   // SELECTED LIBRARY
+
   // ========================================================
 
   const selectedLibrary = useMemo(
@@ -531,20 +608,26 @@ function BookingReport() {
       libraries.find(
         (library) => String(library.id) === String(selectedLibraryId),
       ) || null,
+
     [libraries, selectedLibraryId],
   );
 
   // ========================================================
+
   // PERIOD LABEL
+
   // ========================================================
 
   const periodLabel = useMemo(
     () => `${formatDate(dateRange.fromDate)} - ${formatDate(dateRange.toDate)}`,
+
     [dateRange],
   );
 
   // ========================================================
+
   // EXPORT PDF
+
   // ========================================================
 
   const handlePdfExport = async () => {
@@ -568,7 +651,9 @@ function BookingReport() {
   };
 
   // ========================================================
+
   // EXPORT EXCEL
+
   // ========================================================
 
   const handleExcelExport = async () => {
@@ -594,7 +679,9 @@ function BookingReport() {
   };
 
   // ========================================================
+
   // LOADING LIBRARIES
+
   // ========================================================
 
   if (loadingLibraries) {
@@ -615,15 +702,13 @@ function BookingReport() {
   }
 
   // ========================================================
+
   // UI
+
   // ========================================================
 
   return (
     <Box>
-      {/* ==================================================
-                HEADER
-            ================================================== */}
-
       <ReportHeader
         title="Booking Reports"
         description="Track bookings, booking trends and seat reservations."
@@ -631,30 +716,43 @@ function BookingReport() {
           <Stack
             direction={{
               xs: "column",
+
               md: "row",
             }}
             spacing={1.5}
           >
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 200,
-              }}
-            >
-              <InputLabel>Library</InputLabel>
-
-              <Select
-                value={selectedLibraryId}
-                label="Library"
-                onChange={(event) => setSelectedLibraryId(event.target.value)}
+            {isAdminReport ? (
+              <Chip
+                label={`Library #${selectedLibraryId} · Admin scope`}
+                color="primary"
+                variant="outlined"
+                sx={{
+                  minHeight: 40,
+                  fontWeight: 700,
+                }}
+              />
+            ) : (
+              <FormControl
+                size="small"
+                sx={{
+                  minWidth: 200,
+                }}
               >
-                {libraries.map((library) => (
-                  <MenuItem key={library.id} value={String(library.id)}>
-                    {library.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                <InputLabel>Library</InputLabel>
+
+                <Select
+                  value={selectedLibraryId}
+                  label="Library"
+                  onChange={(event) => setSelectedLibraryId(event.target.value)}
+                >
+                  {libraries.map((library) => (
+                    <MenuItem key={library.id} value={String(library.id)}>
+                      {library.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             <ReportFilter value={period} onChange={setPeriod} />
 
@@ -696,10 +794,6 @@ function BookingReport() {
         }
       />
 
-      {/* ==================================================
-                ERROR
-            ================================================== */}
-
       {error && (
         <Alert
           severity="error"
@@ -711,13 +805,10 @@ function BookingReport() {
         </Alert>
       )}
 
-      {/* ==================================================
-                REPORT CONTEXT
-            ================================================== */}
-
       <Stack
         direction={{
           xs: "column",
+
           sm: "row",
         }}
         spacing={1}
@@ -730,15 +821,13 @@ function BookingReport() {
         <Chip icon={<CalendarMonth />} label={periodLabel} variant="outlined" />
       </Stack>
 
-      {/* ==================================================
-                REPORT LOADING
-            ================================================== */}
-
       {loadingReport && (
         <Box
           sx={{
             display: "flex",
+
             justifyContent: "center",
+
             py: 8,
           }}
         >
@@ -748,10 +837,6 @@ function BookingReport() {
 
       {!loadingReport && report && (
         <>
-          {/* ==========================================
-                        SUMMARY CARDS
-                    ========================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
@@ -787,10 +872,6 @@ function BookingReport() {
             </Grid>
           </Grid>
 
-          {/* ==========================================
-                        BOOKING TREND
-                    ========================================== */}
-
           <Card
             sx={{
               mb: 3,
@@ -800,11 +881,13 @@ function BookingReport() {
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 spacing={1}
@@ -830,8 +913,11 @@ function BookingReport() {
                 <Box
                   sx={{
                     minHeight: 250,
+
                     display: "flex",
+
                     alignItems: "center",
+
                     justifyContent: "center",
                   }}
                 >
@@ -843,6 +929,7 @@ function BookingReport() {
                 <Box
                   sx={{
                     width: "100%",
+
                     height: 340,
                   }}
                 >
@@ -872,10 +959,6 @@ function BookingReport() {
             </CardContent>
           </Card>
 
-          {/* ==========================================
-                        BOOKING BREAKDOWN
-                    ========================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             {/* Booking Status */}
 
@@ -895,7 +978,9 @@ function BookingReport() {
                   <Box
                     sx={{
                       width: "100%",
+
                       height: 280,
+
                       position: "relative",
                     }}
                   >
@@ -926,9 +1011,13 @@ function BookingReport() {
                     <Box
                       sx={{
                         position: "absolute",
+
                         top: "50%",
+
                         left: "50%",
+
                         transform: "translate(-50%, -50%)",
+
                         textAlign: "center",
                       }}
                     >
@@ -954,8 +1043,11 @@ function BookingReport() {
                           <Box
                             sx={{
                               width: 10,
+
                               height: 10,
+
                               borderRadius: "50%",
+
                               backgroundColor:
                                 STATUS_COLORS[index % STATUS_COLORS.length],
                             }}
@@ -993,8 +1085,11 @@ function BookingReport() {
                     <Box
                       sx={{
                         height: 360,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -1006,6 +1101,7 @@ function BookingReport() {
                     <Box
                       sx={{
                         width: "100%",
+
                         height: 360,
                       }}
                     >
@@ -1015,6 +1111,7 @@ function BookingReport() {
                           layout="vertical"
                           margin={{
                             left: 20,
+
                             right: 20,
                           }}
                         >
@@ -1054,10 +1151,6 @@ function BookingReport() {
             </Grid>
           </Grid>
 
-          {/* ==========================================
-                        BOOKING PERFORMANCE
-                    ========================================== */}
-
           <Card
             sx={{
               mb: 3,
@@ -1077,8 +1170,11 @@ function BookingReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1096,8 +1192,11 @@ function BookingReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1115,8 +1214,11 @@ function BookingReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1133,20 +1235,18 @@ function BookingReport() {
             </CardContent>
           </Card>
 
-          {/* ==========================================
-                        RECENT BOOKINGS
-                    ========================================== */}
-
           <Card>
             <CardContent>
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 mb={2}

@@ -1,34 +1,53 @@
 import StudentDashboard from "../../views/Student/dashboard/StudentDashboard";
 
 import BrowseLibraries from "../../views/Student/libraries/BrowseLibraries";
+
 import LibraryDetails from "../../views/Student/libraries/LibraryDetails";
+
 import LibraryMembershipPlans from "../../views/Student/libraries/LibraryMembershipPlans";
 
 import BookSeat from "../../views/Student/booking/BookSeat";
+
 import BookingReview from "../../views/Student/booking/BookingReview";
+
 import MyBookings from "../../views/Student/booking/MyBookings";
+
 import BookingDetails from "../../views/Student/booking/BookingDetails";
 
 import MembershipDetails from "../../views/Student/Membership/MembershipDetails";
+
 import MembershipPayment from "../../views/Student/Membership/MembershipPayment";
 
 import StudentInvoices from "../../views/Student/payments/StudentInvoices";
+
 import StudentPayments from "../../views/Student/payments/StudentPayments";
 
 import StudentProfile from "../../views/Student/profile/StudentProfile";
+
 import StudentNotifications from "../../views/Student/notifications/StudentNotifications";
 
 import MySeatChangeRequests from "../../views/Student/seats/MySeatChangeRequests";
+
 import SeatChangeRequest from "../../views/Student/seats/SeatChangeRequest";
 
 import HelpSupport from "../../views/Student/support/HelpSupport";
+
 import StudentSupportTicketDetails from "../../views/Student/support/StudentSupportTicketDetails";
+
+
+
+// ============================================================
+// WHATSAPP / NOTIFICATION PREFERENCES
+// ============================================================
+
+import NotificationPreferences from "../../views/Student/notifications/NotificationPreferences";
 
 // ============================================================
 // STUDENT ROUTES
 // ============================================================
 
 const studentRoutes = [
+
   // ==========================================================
   // DASHBOARD
   // ==========================================================
@@ -37,6 +56,7 @@ const studentRoutes = [
     path: "/student/dashboard",
     element: <StudentDashboard />,
   },
+
 
   // ==========================================================
   // LIBRARY DISCOVERY
@@ -57,6 +77,7 @@ const studentRoutes = [
     element: <LibraryMembershipPlans />,
   },
 
+
   // ==========================================================
   // BOOKING FLOW
   // ==========================================================
@@ -70,6 +91,7 @@ const studentRoutes = [
     path: "/student/libraries/:libraryId/booking-review",
     element: <BookingReview />,
   },
+
 
   // ==========================================================
   // MY BOOKINGS
@@ -85,6 +107,7 @@ const studentRoutes = [
     element: <BookingDetails />,
   },
 
+
   // ==========================================================
   // MEMBERSHIP
   // ==========================================================
@@ -98,6 +121,7 @@ const studentRoutes = [
     path: "/student/membership/payment",
     element: <MembershipPayment />,
   },
+
 
   // ==========================================================
   // SEAT CHANGE
@@ -113,6 +137,7 @@ const studentRoutes = [
     element: <SeatChangeRequest />,
   },
 
+
   // ==========================================================
   // PAYMENTS
   // ==========================================================
@@ -127,6 +152,7 @@ const studentRoutes = [
     element: <StudentInvoices />,
   },
 
+
   // ==========================================================
   // NOTIFICATIONS
   // ==========================================================
@@ -136,6 +162,17 @@ const studentRoutes = [
     element: <StudentNotifications />,
   },
 
+
+  // ==========================================================
+  // NOTIFICATION PREFERENCES
+  // ==========================================================
+
+  {
+    path: "/student/notification-preferences",
+    element: <NotificationPreferences />,
+  },
+
+
   // ==========================================================
   // PROFILE
   // ==========================================================
@@ -144,6 +181,7 @@ const studentRoutes = [
     path: "/student/profile",
     element: <StudentProfile />,
   },
+
 
   // ==========================================================
   // HELP & SUPPORT
@@ -159,5 +197,6 @@ const studentRoutes = [
     element: <StudentSupportTicketDetails />,
   },
 ];
+
 
 export default studentRoutes;

@@ -26,6 +26,7 @@ import libraryApi from "../../api/libraryApi";
 import dashboardApi from "../../api/dashboardApi";
 
 import { useAuth } from "../../context/AuthContext";
+import usePlatformConfig from "../../api/usePlatformConfig";
 
 // ============================================================
 // HELPERS
@@ -78,6 +79,8 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
+
+  const { platformName } = usePlatformConfig();
 
   // ==========================================================
   // DERIVED DATA
@@ -486,7 +489,7 @@ function Dashboard() {
         }}
       >
         <Typography variant="caption" color="text.disabled">
-          LibraryHub Management Platform
+          {platformName} Management Platform
         </Typography>
       </Box>
     </Stack>

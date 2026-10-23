@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useParams } from "react-router-dom";
+
 import {
   Alert,
   Box,
@@ -48,25 +50,38 @@ import {
 } from "recharts";
 
 import ReportHeader from "../../components/reports/ReportHeader";
+
 import ReportFilter from "../../components/reports/ReportFilter";
+
 import ReportStatCard from "../../components/reports/ReportStatCard";
 
 import libraryApi from "../../api/libraryApi";
+
 import reportApi from "../../api/reportApi";
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const PAYMENT_STATUSES = [
   "ALL",
+
   "PENDING",
+
   "CREATED",
+
   "SUCCESS",
+
   "FAILED",
+
   "CANCELLED",
+
   "REFUND_PENDING",
+
   "PARTIALLY_REFUNDED",
+
   "REFUNDED",
 ];
 
@@ -76,17 +91,26 @@ const REFERENCE_TYPES = ["ALL", "BOOKING", "MEMBERSHIP"];
 
 const STATUS_CHART_COLORS = [
   "#16A34A",
+
   "#F59E0B",
+
   "#0284C7",
+
   "#DC2626",
+
   "#64748B",
+
   "#7C3AED",
+
   "#C026D3",
+
   "#0F766E",
 ];
 
 // ============================================================
+
 // DATE HELPERS
+
 // ============================================================
 
 const formatBackendDate = (date) => {
@@ -134,6 +158,7 @@ const getPeriodRange = (period) => {
       break;
 
     case "month":
+
     default:
       from.setDate(1);
 
@@ -148,7 +173,9 @@ const getPeriodRange = (period) => {
 };
 
 // ============================================================
+
 // FORMATTERS
+
 // ============================================================
 
 const formatCurrency = (value, currency = "INR") => {
@@ -157,7 +184,9 @@ const formatCurrency = (value, currency = "INR") => {
   try {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
+
       currency: currency || "INR",
+
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
@@ -178,7 +207,9 @@ const formatDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
   }).format(date);
 };
@@ -196,9 +227,13 @@ const formatDateTime = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
+
     hour: "2-digit",
+
     minute: "2-digit",
   }).format(date);
 };
@@ -210,8 +245,11 @@ const formatEnum = (value) => {
 
   return String(value)
     .toLowerCase()
+
     .split("_")
+
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+
     .join(" ");
 };
 
@@ -221,7 +259,9 @@ const getStatusColor = (status) => {
       return "success";
 
     case "PENDING":
+
     case "CREATED":
+
     case "REFUND_PENDING":
       return "warning";
 
@@ -232,6 +272,7 @@ const getStatusColor = (status) => {
       return "info";
 
     case "FAILED":
+
     case "CANCELLED":
       return "error";
 
@@ -250,17 +291,30 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function PaymentReport() {
+  const { libraryId: routeLibraryId } = useParams();
+
+  const isAdminReport =
+    routeLibraryId !== undefined &&
+    routeLibraryId !== null &&
+    routeLibraryId !== "";
+
   // ========================================================
+
   // STATE
+
   // ========================================================
 
   const [libraries, setLibraries] = useState([]);
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState("");
+  const [selectedLibraryId, setSelectedLibraryId] = useState(() =>
+    isAdminReport ? String(routeLibraryId) : "",
+  );
 
   const [period, setPeriod] = useState("month");
 
@@ -283,13 +337,17 @@ function PaymentReport() {
   const [error, setError] = useState("");
 
   // ========================================================
+
   // PERIOD
+
   // ========================================================
 
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
 
   // ========================================================
+
   // REQUEST PAYLOAD
+
   // ========================================================
 
   const reportPayload = useMemo(() => {
@@ -324,17 +382,31 @@ function PaymentReport() {
     };
   }, [
     selectedLibraryId,
+
     dateRange,
+
     paymentStatus,
+
     paymentMethod,
+
     referenceType,
   ]);
 
   // ========================================================
+
   // LOAD OWNER LIBRARIES
+
   // ========================================================
 
   useEffect(() => {
+    if (isAdminReport) {
+      setLibraries([]);
+      setSelectedLibraryId(String(routeLibraryId));
+      setLoadingLibraries(false);
+      setError("");
+      return undefined;
+    }
+
     let active = true;
 
     const loadLibraries = async () => {
@@ -386,10 +458,12 @@ function PaymentReport() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdminReport, routeLibraryId]);
 
   // ========================================================
+
   // LOAD REPORT
+
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -427,7 +501,9 @@ function PaymentReport() {
   }, [loadingLibraries, reportPayload, loadReport]);
 
   // ========================================================
+
   // BACKEND DATA
+
   // ========================================================
 
   const summary = report?.summary || {};
@@ -435,7 +511,9 @@ function PaymentReport() {
   const records = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
+
   // SUMMARY VALUES
+
   // ========================================================
 
   const totalTransactions = Number(summary.totalTransactions || 0);
@@ -457,7 +535,9 @@ function PaymentReport() {
   );
 
   // ========================================================
+
   // STATUS DATA
+
   // ========================================================
 
   const statusData = useMemo(
@@ -468,47 +548,57 @@ function PaymentReport() {
 
           value: Number(summary.pendingPayments || 0),
         },
+
         {
           name: "Created",
 
           value: Number(summary.createdPayments || 0),
         },
+
         {
           name: "Success",
 
           value: successfulPayments,
         },
+
         {
           name: "Failed",
 
           value: failedPayments,
         },
+
         {
           name: "Cancelled",
 
           value: Number(summary.cancelledPayments || 0),
         },
+
         {
           name: "Refund Pending",
 
           value: Number(summary.refundPendingPayments || 0),
         },
+
         {
           name: "Partially Refunded",
 
           value: Number(summary.partiallyRefundedPayments || 0),
         },
+
         {
           name: "Refunded",
 
           value: Number(summary.refundedPayments || 0),
         },
       ].filter((item) => item.value > 0),
+
     [summary, successfulPayments, failedPayments],
   );
 
   // ========================================================
+
   // PAYMENT METHOD DATA
+
   // ========================================================
 
   const paymentMethodData = useMemo(() => {
@@ -519,7 +609,9 @@ function PaymentReport() {
 
       const current = grouped.get(method) || {
         method,
+
         transactions: 0,
+
         amount: 0,
       };
 
@@ -531,16 +623,20 @@ function PaymentReport() {
     });
 
     return Array.from(grouped.values())
+
       .map((item) => ({
         ...item,
 
         label: formatEnum(item.method),
       }))
+
       .sort((a, b) => b.amount - a.amount);
   }, [records]);
 
   // ========================================================
+
   // REFERENCE SOURCE DATA
+
   // ========================================================
 
   const referenceData = useMemo(() => {
@@ -551,6 +647,7 @@ function PaymentReport() {
 
       const existing = grouped.get(type) || {
         type,
+
         count: 0,
       };
 
@@ -567,13 +664,17 @@ function PaymentReport() {
   }, [records]);
 
   // ========================================================
+
   // RECENT TRANSACTIONS
+
   // ========================================================
 
   const recentTransactions = useMemo(() => records.slice(0, 15), [records]);
 
   // ========================================================
+
   // SELECTED LIBRARY
+
   // ========================================================
 
   const selectedLibrary = useMemo(
@@ -581,16 +682,20 @@ function PaymentReport() {
       libraries.find(
         (library) => String(library.id) === String(selectedLibraryId),
       ) || null,
+
     [libraries, selectedLibraryId],
   );
 
   const periodLabel = useMemo(
     () => `${formatDate(dateRange.fromDate)} - ${formatDate(dateRange.toDate)}`,
+
     [dateRange],
   );
 
   // ========================================================
+
   // EXPORT PDF
+
   // ========================================================
 
   const handlePdfExport = async () => {
@@ -614,7 +719,9 @@ function PaymentReport() {
   };
 
   // ========================================================
+
   // EXPORT EXCEL
+
   // ========================================================
 
   const handleExcelExport = async () => {
@@ -640,7 +747,9 @@ function PaymentReport() {
   };
 
   // ========================================================
+
   // INITIAL LOADING
+
   // ========================================================
 
   if (loadingLibraries) {
@@ -661,15 +770,13 @@ function PaymentReport() {
   }
 
   // ========================================================
+
   // UI
+
   // ========================================================
 
   return (
     <Box>
-      {/* ==================================================
-                HEADER
-            ================================================== */}
-
       <ReportHeader
         title="Payment Report"
         description="Analyze the complete payment transaction ledger for your library."
@@ -677,30 +784,43 @@ function PaymentReport() {
           <Stack
             direction={{
               xs: "column",
+
               xl: "row",
             }}
             spacing={1}
           >
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 180,
-              }}
-            >
-              <InputLabel>Library</InputLabel>
-
-              <Select
-                value={selectedLibraryId}
-                label="Library"
-                onChange={(event) => setSelectedLibraryId(event.target.value)}
+            {isAdminReport ? (
+              <Chip
+                label={`Library #${selectedLibraryId} · Admin scope`}
+                color="primary"
+                variant="outlined"
+                sx={{
+                  minHeight: 40,
+                  fontWeight: 700,
+                }}
+              />
+            ) : (
+              <FormControl
+                size="small"
+                sx={{
+                  minWidth: 180,
+                }}
               >
-                {libraries.map((library) => (
-                  <MenuItem key={library.id} value={String(library.id)}>
-                    {library.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                <InputLabel>Library</InputLabel>
+
+                <Select
+                  value={selectedLibraryId}
+                  label="Library"
+                  onChange={(event) => setSelectedLibraryId(event.target.value)}
+                >
+                  {libraries.map((library) => (
+                    <MenuItem key={library.id} value={String(library.id)}>
+                      {library.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             <ReportFilter value={period} onChange={setPeriod} />
 
@@ -742,10 +862,6 @@ function PaymentReport() {
         }
       />
 
-      {/* ==================================================
-                ERROR
-            ================================================== */}
-
       {error && (
         <Alert
           severity="error"
@@ -757,10 +873,6 @@ function PaymentReport() {
         </Alert>
       )}
 
-      {/* ==================================================
-                ADVANCED FILTERS
-            ================================================== */}
-
       <Card
         sx={{
           mb: 3,
@@ -770,11 +882,13 @@ function PaymentReport() {
           <Stack
             direction={{
               xs: "column",
+
               md: "row",
             }}
             spacing={2}
             alignItems={{
               xs: "stretch",
+
               md: "center",
             }}
           >
@@ -862,15 +976,13 @@ function PaymentReport() {
         </CardContent>
       </Card>
 
-      {/* ==================================================
-                LOADING
-            ================================================== */}
-
       {loadingReport && (
         <Box
           sx={{
             py: 8,
+
             display: "flex",
+
             justifyContent: "center",
           }}
         >
@@ -880,10 +992,6 @@ function PaymentReport() {
 
       {!loadingReport && report && (
         <>
-          {/* ======================================
-                            SUMMARY CARDS
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
@@ -919,10 +1027,6 @@ function PaymentReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            PAYMENT STATUS + METHOD
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             {/* STATUS */}
 
@@ -943,8 +1047,11 @@ function PaymentReport() {
                     <Box
                       sx={{
                         height: 300,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -957,6 +1064,7 @@ function PaymentReport() {
                       <Box
                         sx={{
                           height: 250,
+
                           position: "relative",
                         }}
                       >
@@ -991,9 +1099,13 @@ function PaymentReport() {
                         <Box
                           sx={{
                             position: "absolute",
+
                             top: "50%",
+
                             left: "50%",
+
                             transform: "translate(-50%, -50%)",
+
                             textAlign: "center",
                           }}
                         >
@@ -1022,8 +1134,11 @@ function PaymentReport() {
                               <Box
                                 sx={{
                                   width: 10,
+
                                   height: 10,
+
                                   borderRadius: "50%",
+
                                   backgroundColor:
                                     STATUS_CHART_COLORS[
                                       index % STATUS_CHART_COLORS.length
@@ -1069,8 +1184,11 @@ function PaymentReport() {
                     <Box
                       sx={{
                         height: 320,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -1082,6 +1200,7 @@ function PaymentReport() {
                     <Box
                       sx={{
                         width: "100%",
+
                         height: 320,
                       }}
                     >
@@ -1124,10 +1243,6 @@ function PaymentReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            PAYMENT PERFORMANCE
-                        ====================================== */}
-
           <Card
             sx={{
               mb: 3,
@@ -1147,8 +1262,11 @@ function PaymentReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1166,8 +1284,11 @@ function PaymentReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1185,8 +1306,11 @@ function PaymentReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1204,8 +1328,11 @@ function PaymentReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1221,10 +1348,6 @@ function PaymentReport() {
               </Grid>
             </CardContent>
           </Card>
-
-          {/* ======================================
-                            PAYMENT SOURCES
-                        ====================================== */}
 
           {referenceData.length > 0 && (
             <Card
@@ -1242,6 +1365,7 @@ function PaymentReport() {
                 <Box
                   sx={{
                     width: "100%",
+
                     height: 280,
                   }}
                 >
@@ -1271,20 +1395,18 @@ function PaymentReport() {
             </Card>
           )}
 
-          {/* ======================================
-                            TRANSACTION TABLE
-                        ====================================== */}
-
           <Card>
             <CardContent>
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 spacing={1}
@@ -1406,6 +1528,7 @@ function PaymentReport() {
                             <Typography fontWeight={600}>
                               {formatCurrency(
                                 transaction.amount,
+
                                 transaction.currency,
                               )}
                             </Typography>
@@ -1414,6 +1537,7 @@ function PaymentReport() {
                           <TableCell>
                             {formatCurrency(
                               transaction.refundedAmount,
+
                               transaction.currency,
                             )}
                           </TableCell>
@@ -1422,6 +1546,7 @@ function PaymentReport() {
                             <Typography fontWeight={600}>
                               {formatCurrency(
                                 transaction.netAmount,
+
                                 transaction.currency,
                               )}
                             </Typography>

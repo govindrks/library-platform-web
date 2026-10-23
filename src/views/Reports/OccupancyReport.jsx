@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useParams } from "react-router-dom";
+
 import {
   Alert,
   Box,
@@ -48,20 +50,27 @@ import {
 } from "recharts";
 
 import ReportHeader from "../../components/reports/ReportHeader";
+
 import ReportFilter from "../../components/reports/ReportFilter";
+
 import ReportStatCard from "../../components/reports/ReportStatCard";
 
 import libraryApi from "../../api/libraryApi";
+
 import reportApi from "../../api/reportApi";
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const STATUS_COLORS = ["#16A34A", "#0284C7", "#DC2626"];
 
 // ============================================================
+
 // DATE HELPERS
+
 // ============================================================
 
 const formatBackendDate = (date) => {
@@ -109,6 +118,7 @@ const getPeriodRange = (period) => {
       break;
 
     case "month":
+
     default:
       from.setDate(1);
 
@@ -123,7 +133,9 @@ const getPeriodRange = (period) => {
 };
 
 // ============================================================
+
 // FORMATTERS
+
 // ============================================================
 
 const formatDate = (value) => {
@@ -139,7 +151,9 @@ const formatDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
   }).format(date);
 };
@@ -151,8 +165,11 @@ const formatEnum = (value) => {
 
   return String(value)
     .toLowerCase()
+
     .split("_")
+
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+
     .join(" ");
 };
 
@@ -166,10 +183,15 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
+
 // ITEM HELPERS
+
 //
+
 // These support both the old seat-utilization DTO names and the
+
 // newer occupancy-aware fields we added to the backend.
+
 // ============================================================
 
 const getSeatId = (item) => item?.seatId ?? item?.id ?? null;
@@ -245,17 +267,30 @@ const getStatusColor = (status) => {
 };
 
 // ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function OccupancyReport() {
+  const { libraryId: routeLibraryId } = useParams();
+
+  const isAdminReport =
+    routeLibraryId !== undefined &&
+    routeLibraryId !== null &&
+    routeLibraryId !== "";
+
   // ========================================================
+
   // STATE
+
   // ========================================================
 
   const [libraries, setLibraries] = useState([]);
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState("");
+  const [selectedLibraryId, setSelectedLibraryId] = useState(() =>
+    isAdminReport ? String(routeLibraryId) : "",
+  );
 
   const [period, setPeriod] = useState("month");
 
@@ -272,13 +307,17 @@ function OccupancyReport() {
   const [error, setError] = useState("");
 
   // ========================================================
+
   // DATE RANGE
+
   // ========================================================
 
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
 
   // ========================================================
+
   // REQUEST PAYLOAD
+
   // ========================================================
 
   const reportPayload = useMemo(() => {
@@ -302,10 +341,20 @@ function OccupancyReport() {
   }, [selectedLibraryId, dateRange]);
 
   // ========================================================
+
   // LOAD LIBRARIES
+
   // ========================================================
 
   useEffect(() => {
+    if (isAdminReport) {
+      setLibraries([]);
+      setSelectedLibraryId(String(routeLibraryId));
+      setLoadingLibraries(false);
+      setError("");
+      return undefined;
+    }
+
     let active = true;
 
     const loadLibraries = async () => {
@@ -357,10 +406,12 @@ function OccupancyReport() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdminReport, routeLibraryId]);
 
   // ========================================================
+
   // LOAD OCCUPANCY REPORT
+
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -398,7 +449,9 @@ function OccupancyReport() {
   }, [loadingLibraries, reportPayload, loadReport]);
 
   // ========================================================
+
   // BACKEND DATA
+
   // ========================================================
 
   const summary = report?.summary || {};
@@ -406,7 +459,9 @@ function OccupancyReport() {
   const records = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
+
   // SUMMARY VALUES
+
   // ========================================================
 
   const totalSeats = Number(summary.totalSeats || 0);
@@ -426,7 +481,9 @@ function OccupancyReport() {
   const totalCapacityUnits = Number(summary.totalCapacityUnits || 0);
 
   // ========================================================
+
   // UTILIZATION
+
   // ========================================================
 
   const occupancyPercentage = useMemo(() => {
@@ -445,14 +502,20 @@ function OccupancyReport() {
     return 0;
   }, [
     totalCapacityUnits,
+
     totalOccupiedUnits,
+
     summary.utilizationRate,
+
     totalSeats,
+
     occupiedSeats,
   ]);
 
   // ========================================================
+
   // STATUS BREAKDOWN
+
   // ========================================================
 
   const seatStatusData = useMemo(
@@ -462,22 +525,27 @@ function OccupancyReport() {
 
         value: occupiedSeats,
       },
+
       {
         name: "Available",
 
         value: availableSeats,
       },
+
       {
         name: "Blocked",
 
         value: blockedSeats,
       },
     ],
+
     [occupiedSeats, availableSeats, blockedSeats],
   );
 
   // ========================================================
+
   // FLOOR UTILIZATION
+
   // ========================================================
 
   const floorUtilizationData = useMemo(() => {
@@ -488,9 +556,13 @@ function OccupancyReport() {
 
       const existing = floors.get(floor) || {
         floor,
+
         seats: 0,
+
         occupiedUnits: 0,
+
         capacityUnits: 0,
+
         utilizationTotal: 0,
       };
 
@@ -506,6 +578,7 @@ function OccupancyReport() {
     });
 
     return Array.from(floors.values())
+
       .map((floor) => {
         let utilization = 0;
 
@@ -523,23 +596,31 @@ function OccupancyReport() {
           seats: floor.seats,
         };
       })
+
       .sort((a, b) => b.utilization - a.utilization);
   }, [records]);
 
   // ========================================================
+
   // TOP UTILIZED SEATS
+
   // ========================================================
 
   const topUtilizedSeats = useMemo(
     () =>
       [...records]
+
         .sort((a, b) => getUtilizationRate(b) - getUtilizationRate(a))
+
         .slice(0, 10),
+
     [records],
   );
 
   // ========================================================
+
   // SELECTED LIBRARY
+
   // ========================================================
 
   const selectedLibrary = useMemo(
@@ -547,16 +628,20 @@ function OccupancyReport() {
       libraries.find(
         (library) => String(library.id) === String(selectedLibraryId),
       ) || null,
+
     [libraries, selectedLibraryId],
   );
 
   const periodLabel = useMemo(
     () => `${formatDate(dateRange.fromDate)} - ${formatDate(dateRange.toDate)}`,
+
     [dateRange],
   );
 
   // ========================================================
+
   // PDF EXPORT
+
   // ========================================================
 
   const handlePdfExport = async () => {
@@ -582,7 +667,9 @@ function OccupancyReport() {
   };
 
   // ========================================================
+
   // EXCEL EXPORT
+
   // ========================================================
 
   const handleExcelExport = async () => {
@@ -608,7 +695,9 @@ function OccupancyReport() {
   };
 
   // ========================================================
+
   // INITIAL LOADING
+
   // ========================================================
 
   if (loadingLibraries) {
@@ -629,15 +718,13 @@ function OccupancyReport() {
   }
 
   // ========================================================
+
   // UI
+
   // ========================================================
 
   return (
     <Box>
-      {/* ==================================================
-                HEADER
-            ================================================== */}
-
       <ReportHeader
         title="Occupancy Report"
         description="Analyze historical seat utilization and occupancy performance."
@@ -645,30 +732,43 @@ function OccupancyReport() {
           <Stack
             direction={{
               xs: "column",
+
               md: "row",
             }}
             spacing={1.5}
           >
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 200,
-              }}
-            >
-              <InputLabel>Library</InputLabel>
-
-              <Select
-                value={selectedLibraryId}
-                label="Library"
-                onChange={(event) => setSelectedLibraryId(event.target.value)}
+            {isAdminReport ? (
+              <Chip
+                label={`Library #${selectedLibraryId} · Admin scope`}
+                color="primary"
+                variant="outlined"
+                sx={{
+                  minHeight: 40,
+                  fontWeight: 700,
+                }}
+              />
+            ) : (
+              <FormControl
+                size="small"
+                sx={{
+                  minWidth: 200,
+                }}
               >
-                {libraries.map((library) => (
-                  <MenuItem key={library.id} value={String(library.id)}>
-                    {library.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                <InputLabel>Library</InputLabel>
+
+                <Select
+                  value={selectedLibraryId}
+                  label="Library"
+                  onChange={(event) => setSelectedLibraryId(event.target.value)}
+                >
+                  {libraries.map((library) => (
+                    <MenuItem key={library.id} value={String(library.id)}>
+                      {library.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             <ReportFilter value={period} onChange={setPeriod} />
 
@@ -710,10 +810,6 @@ function OccupancyReport() {
         }
       />
 
-      {/* ==================================================
-                ERROR
-            ================================================== */}
-
       {error && (
         <Alert
           severity="error"
@@ -725,13 +821,10 @@ function OccupancyReport() {
         </Alert>
       )}
 
-      {/* ==================================================
-                CONTEXT
-            ================================================== */}
-
       <Stack
         direction={{
           xs: "column",
+
           sm: "row",
         }}
         spacing={1}
@@ -748,15 +841,13 @@ function OccupancyReport() {
         <Chip icon={<CalendarMonth />} label={periodLabel} variant="outlined" />
       </Stack>
 
-      {/* ==================================================
-                LOADING
-            ================================================== */}
-
       {loadingReport && (
         <Box
           sx={{
             py: 8,
+
             display: "flex",
+
             justifyContent: "center",
           }}
         >
@@ -766,10 +857,6 @@ function OccupancyReport() {
 
       {!loadingReport && report && (
         <>
-          {/* ======================================
-                            SUMMARY
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
@@ -805,10 +892,6 @@ function OccupancyReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            FLOOR UTILIZATION + STATUS
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             {/* Floor Utilization */}
 
@@ -829,8 +912,11 @@ function OccupancyReport() {
                     <Box
                       sx={{
                         height: 300,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -842,6 +928,7 @@ function OccupancyReport() {
                     <Box
                       sx={{
                         width: "100%",
+
                         height: 320,
                       }}
                     >
@@ -902,7 +989,9 @@ function OccupancyReport() {
                   <Box
                     sx={{
                       width: "100%",
+
                       height: 250,
+
                       position: "relative",
                     }}
                   >
@@ -933,9 +1022,13 @@ function OccupancyReport() {
                     <Box
                       sx={{
                         position: "absolute",
+
                         top: "50%",
+
                         left: "50%",
+
                         transform: "translate(-50%, -50%)",
+
                         textAlign: "center",
                       }}
                     >
@@ -960,8 +1053,11 @@ function OccupancyReport() {
                           <Box
                             sx={{
                               width: 10,
+
                               height: 10,
+
                               borderRadius: "50%",
+
                               backgroundColor:
                                 STATUS_COLORS[index % STATUS_COLORS.length],
                             }}
@@ -980,10 +1076,6 @@ function OccupancyReport() {
               </Card>
             </Grid>
           </Grid>
-
-          {/* ======================================
-                            UTILIZATION PERFORMANCE
-                        ====================================== */}
 
           <Card
             sx={{
@@ -1004,8 +1096,11 @@ function OccupancyReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1023,8 +1118,11 @@ function OccupancyReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1042,8 +1140,11 @@ function OccupancyReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1060,20 +1161,18 @@ function OccupancyReport() {
             </CardContent>
           </Card>
 
-          {/* ======================================
-                            SEAT UTILIZATION TABLE
-                        ====================================== */}
-
           <Card>
             <CardContent>
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 spacing={1}

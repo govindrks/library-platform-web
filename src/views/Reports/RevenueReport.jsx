@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useParams } from "react-router-dom";
+
 import {
   Alert,
   Box,
@@ -47,14 +49,19 @@ import {
 } from "recharts";
 
 import ReportHeader from "../../components/reports/ReportHeader";
+
 import ReportFilter from "../../components/reports/ReportFilter";
+
 import ReportStatCard from "../../components/reports/ReportStatCard";
 
 import libraryApi from "../../api/libraryApi";
+
 import reportApi from "../../api/reportApi";
 
 // ============================================================
+
 // DATE HELPERS
+
 // ============================================================
 
 const formatBackendDate = (date) => {
@@ -102,6 +109,7 @@ const getPeriodRange = (period) => {
       break;
 
     case "month":
+
     default:
       from.setDate(1);
 
@@ -116,7 +124,9 @@ const getPeriodRange = (period) => {
 };
 
 // ============================================================
+
 // FORMATTERS
+
 // ============================================================
 
 const formatCurrency = (value, currency = "INR") => {
@@ -125,7 +135,9 @@ const formatCurrency = (value, currency = "INR") => {
   try {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
+
       currency: currency || "INR",
+
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
@@ -146,9 +158,13 @@ const formatDateTime = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
+
     hour: "2-digit",
+
     minute: "2-digit",
   }).format(date);
 };
@@ -166,6 +182,7 @@ const formatShortDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
   }).format(date);
 };
@@ -183,7 +200,9 @@ const formatDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
   }).format(date);
 };
@@ -195,8 +214,11 @@ const formatEnum = (value) => {
 
   return String(value)
     .toLowerCase()
+
     .split("_")
+
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+
     .join(" ");
 };
 
@@ -215,10 +237,12 @@ const getStatusColor = (status) => {
       return "info";
 
     case "PENDING":
+
     case "CREATED":
       return "warning";
 
     case "FAILED":
+
     case "CANCELLED":
       return "error";
 
@@ -237,7 +261,9 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
+
 // REVENUE HELPERS
+
 // ============================================================
 
 const getReferenceType = (transaction) => {
@@ -261,17 +287,30 @@ const getTransactionNetAmount = (transaction) => {
 };
 
 // ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function RevenueReport() {
+  const { libraryId: routeLibraryId } = useParams();
+
+  const isAdminReport =
+    routeLibraryId !== undefined &&
+    routeLibraryId !== null &&
+    routeLibraryId !== "";
+
   // ========================================================
+
   // STATE
+
   // ========================================================
 
   const [libraries, setLibraries] = useState([]);
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState("");
+  const [selectedLibraryId, setSelectedLibraryId] = useState(() =>
+    isAdminReport ? String(routeLibraryId) : "",
+  );
 
   const [period, setPeriod] = useState("month");
 
@@ -288,13 +327,17 @@ function RevenueReport() {
   const [error, setError] = useState("");
 
   // ========================================================
+
   // DATE RANGE
+
   // ========================================================
 
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
 
   // ========================================================
+
   // REQUEST
+
   // ========================================================
 
   const reportPayload = useMemo(() => {
@@ -328,10 +371,20 @@ function RevenueReport() {
   }, [selectedLibraryId, dateRange]);
 
   // ========================================================
+
   // LOAD OWNER LIBRARIES
+
   // ========================================================
 
   useEffect(() => {
+    if (isAdminReport) {
+      setLibraries([]);
+      setSelectedLibraryId(String(routeLibraryId));
+      setLoadingLibraries(false);
+      setError("");
+      return undefined;
+    }
+
     let active = true;
 
     const loadLibraries = async () => {
@@ -383,10 +436,12 @@ function RevenueReport() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdminReport, routeLibraryId]);
 
   // ========================================================
+
   // LOAD REVENUE REPORT
+
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -424,7 +479,9 @@ function RevenueReport() {
   }, [loadingLibraries, reportPayload, loadReport]);
 
   // ========================================================
+
   // BACKEND DATA
+
   // ========================================================
 
   const summary = report?.summary || {};
@@ -432,21 +489,34 @@ function RevenueReport() {
   const transactions = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
+
   // SUMMARY
+
   // ========================================================
 
   /*
-   * New RevenueReportSummary:
-   *
-   * grossRevenue
-   * refundedAmount
-   * netRevenue
-   * totalRevenue (compatibility alias)
-   * successfulPayments
-   * refundPendingPayments
-   * partiallyRefundedPayments
-   * refundedPayments
-   */
+
+ *   * New RevenueReportSummary:*
+
+ *   **
+
+ *   * grossRevenue*
+
+ *   * refundedAmount*
+
+ *   * netRevenue*
+
+ *   * totalRevenue (compatibility alias)*
+
+ *   * successfulPayments*
+
+ *   * refundPendingPayments*
+
+ *   * partiallyRefundedPayments*
+
+ *   * refundedPayments*
+
+ *   */
 
   const grossRevenue = Number(
     summary.grossRevenue ?? summary.totalRevenue ?? 0,
@@ -469,7 +539,9 @@ function RevenueReport() {
   const averageTransactionValue = Number(summary.averageTransactionValue || 0);
 
   // ========================================================
+
   // REVENUE TREND
+
   // ========================================================
 
   const revenueData = useMemo(() => {
@@ -488,7 +560,9 @@ function RevenueReport() {
     });
 
     return Array.from(grouped.entries())
+
       .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+
       .map(([date, revenue]) => ({
         date: formatShortDate(`${date}T00:00:00`),
 
@@ -497,7 +571,9 @@ function RevenueReport() {
   }, [transactions]);
 
   // ========================================================
+
   // REVENUE BY BUSINESS SOURCE
+
   // ========================================================
 
   const sourceRevenue = useMemo(() => {
@@ -508,21 +584,26 @@ function RevenueReport() {
 
       grouped.set(
         source,
+
         (grouped.get(source) || 0) + getTransactionNetAmount(transaction),
       );
     });
 
     return Array.from(grouped.entries())
+
       .map(([source, revenue]) => ({
         source: formatEnum(source),
 
         revenue: Number(revenue.toFixed(2)),
       }))
+
       .sort((a, b) => b.revenue - a.revenue);
   }, [transactions]);
 
   // ========================================================
+
   // PAYMENT METHOD BREAKDOWN
+
   // ========================================================
 
   const paymentMethodData = useMemo(() => {
@@ -533,16 +614,19 @@ function RevenueReport() {
 
       grouped.set(
         method,
+
         (grouped.get(method) || 0) + getTransactionNetAmount(transaction),
       );
     });
 
     return Array.from(grouped.entries())
+
       .map(([method, amount]) => ({
         method: formatEnum(method),
 
         amount: Number(amount.toFixed(2)),
       }))
+
       .sort((a, b) => b.amount - a.amount);
   }, [transactions]);
 
@@ -550,22 +634,29 @@ function RevenueReport() {
     () =>
       paymentMethodData.reduce(
         (total, item) => total + Number(item.amount || 0),
+
         0,
       ),
+
     [paymentMethodData],
   );
 
   // ========================================================
+
   // RECENT TRANSACTIONS
+
   // ========================================================
 
   const recentTransactions = useMemo(
     () => transactions.slice(0, 10),
+
     [transactions],
   );
 
   // ========================================================
+
   // SELECTED LIBRARY
+
   // ========================================================
 
   const selectedLibrary = useMemo(
@@ -573,20 +664,26 @@ function RevenueReport() {
       libraries.find(
         (library) => String(library.id) === String(selectedLibraryId),
       ) || null,
+
     [libraries, selectedLibraryId],
   );
 
   // ========================================================
+
   // PERIOD LABEL
+
   // ========================================================
 
   const periodLabel = useMemo(
     () => `${formatDate(dateRange.fromDate)} - ${formatDate(dateRange.toDate)}`,
+
     [dateRange],
   );
 
   // ========================================================
+
   // EXPORT PDF
+
   // ========================================================
 
   const handlePdfExport = async () => {
@@ -610,7 +707,9 @@ function RevenueReport() {
   };
 
   // ========================================================
+
   // EXPORT EXCEL
+
   // ========================================================
 
   const handleExcelExport = async () => {
@@ -636,7 +735,9 @@ function RevenueReport() {
   };
 
   // ========================================================
+
   // INITIAL LOADING
+
   // ========================================================
 
   if (loadingLibraries) {
@@ -657,15 +758,13 @@ function RevenueReport() {
   }
 
   // ========================================================
+
   // UI
+
   // ========================================================
 
   return (
     <Box>
-      {/* ==================================================
-                HEADER
-            ================================================== */}
-
       <ReportHeader
         title="Revenue"
         description="Track your library revenue and payment performance."
@@ -673,30 +772,43 @@ function RevenueReport() {
           <Stack
             direction={{
               xs: "column",
+
               md: "row",
             }}
             spacing={1.5}
           >
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 200,
-              }}
-            >
-              <InputLabel>Library</InputLabel>
-
-              <Select
-                value={selectedLibraryId}
-                label="Library"
-                onChange={(event) => setSelectedLibraryId(event.target.value)}
+            {isAdminReport ? (
+              <Chip
+                label={`Library #${selectedLibraryId} · Admin scope`}
+                color="primary"
+                variant="outlined"
+                sx={{
+                  minHeight: 40,
+                  fontWeight: 700,
+                }}
+              />
+            ) : (
+              <FormControl
+                size="small"
+                sx={{
+                  minWidth: 200,
+                }}
               >
-                {libraries.map((library) => (
-                  <MenuItem key={library.id} value={String(library.id)}>
-                    {library.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                <InputLabel>Library</InputLabel>
+
+                <Select
+                  value={selectedLibraryId}
+                  label="Library"
+                  onChange={(event) => setSelectedLibraryId(event.target.value)}
+                >
+                  {libraries.map((library) => (
+                    <MenuItem key={library.id} value={String(library.id)}>
+                      {library.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             <ReportFilter value={period} onChange={setPeriod} />
 
@@ -738,10 +850,6 @@ function RevenueReport() {
         }
       />
 
-      {/* ==================================================
-                ERROR
-            ================================================== */}
-
       {error && (
         <Alert
           severity="error"
@@ -753,13 +861,10 @@ function RevenueReport() {
         </Alert>
       )}
 
-      {/* ==================================================
-                CONTEXT
-            ================================================== */}
-
       <Stack
         direction={{
           xs: "column",
+
           sm: "row",
         }}
         spacing={1}
@@ -772,15 +877,13 @@ function RevenueReport() {
         <Chip icon={<CalendarMonth />} label={periodLabel} variant="outlined" />
       </Stack>
 
-      {/* ==================================================
-                LOADING REPORT
-            ================================================== */}
-
       {loadingReport && (
         <Box
           sx={{
             display: "flex",
+
             justifyContent: "center",
+
             py: 8,
           }}
         >
@@ -790,10 +893,6 @@ function RevenueReport() {
 
       {!loadingReport && report && (
         <>
-          {/* ======================================
-                            SUMMARY CARDS
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
@@ -829,10 +928,6 @@ function RevenueReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            REVENUE TREND
-                        ====================================== */}
-
           <Card
             sx={{
               mb: 3,
@@ -842,11 +937,13 @@ function RevenueReport() {
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 spacing={1}
@@ -872,8 +969,11 @@ function RevenueReport() {
                 <Box
                   sx={{
                     minHeight: 300,
+
                     display: "flex",
+
                     alignItems: "center",
+
                     justifyContent: "center",
                   }}
                 >
@@ -885,6 +985,7 @@ function RevenueReport() {
                 <Box
                   sx={{
                     width: "100%",
+
                     height: 340,
                   }}
                 >
@@ -918,10 +1019,6 @@ function RevenueReport() {
             </CardContent>
           </Card>
 
-          {/* ======================================
-                            REVENUE BREAKDOWN
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             {/* Revenue Source */}
 
@@ -942,8 +1039,11 @@ function RevenueReport() {
                     <Box
                       sx={{
                         height: 280,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -955,6 +1055,7 @@ function RevenueReport() {
                     <Box
                       sx={{
                         width: "100%",
+
                         height: 280,
                       }}
                     >
@@ -1017,8 +1118,11 @@ function RevenueReport() {
                     <Box
                       sx={{
                         height: 240,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -1054,16 +1158,22 @@ function RevenueReport() {
                             <Box
                               sx={{
                                 height: 7,
+
                                 borderRadius: 5,
+
                                 backgroundColor: "grey.200",
+
                                 overflow: "hidden",
                               }}
                             >
                               <Box
                                 sx={{
                                   width: `${Math.min(percentage, 100)}%`,
+
                                   height: "100%",
+
                                   backgroundColor: "primary.main",
+
                                   borderRadius: 5,
                                 }}
                               />
@@ -1085,10 +1195,6 @@ function RevenueReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            ADDITIONAL SUMMARY
-                        ====================================== */}
-
           <Card
             sx={{
               mb: 3,
@@ -1108,8 +1214,11 @@ function RevenueReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1127,8 +1236,11 @@ function RevenueReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1146,8 +1258,11 @@ function RevenueReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1167,20 +1282,18 @@ function RevenueReport() {
             </CardContent>
           </Card>
 
-          {/* ======================================
-                            RECENT TRANSACTIONS
-                        ====================================== */}
-
           <Card>
             <CardContent>
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 spacing={1}
@@ -1297,6 +1410,7 @@ function RevenueReport() {
                             <TableCell>
                               {formatCurrency(
                                 transaction.refundedAmount,
+
                                 currency,
                               )}
                             </TableCell>
@@ -1305,6 +1419,7 @@ function RevenueReport() {
                               <Typography fontWeight={600}>
                                 {formatCurrency(
                                   getTransactionNetAmount(transaction),
+
                                   currency,
                                 )}
                               </Typography>

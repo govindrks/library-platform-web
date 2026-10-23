@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useParams } from "react-router-dom";
+
 import {
   Alert,
   Box,
@@ -47,20 +49,27 @@ import {
 } from "recharts";
 
 import ReportHeader from "../../components/reports/ReportHeader";
+
 import ReportFilter from "../../components/reports/ReportFilter";
+
 import ReportStatCard from "../../components/reports/ReportStatCard";
 
 import libraryApi from "../../api/libraryApi";
+
 import reportApi from "../../api/reportApi";
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const STATUS_COLORS = ["#16A34A", "#F59E0B", "#DC2626", "#0284C7", "#64748B"];
 
 // ============================================================
+
 // DATE HELPERS
+
 // ============================================================
 
 const formatBackendDate = (date) => {
@@ -108,6 +117,7 @@ const getPeriodRange = (period) => {
       break;
 
     case "month":
+
     default:
       from.setDate(1);
 
@@ -122,7 +132,9 @@ const getPeriodRange = (period) => {
 };
 
 // ============================================================
+
 // FORMATTERS
+
 // ============================================================
 
 const formatDate = (value) => {
@@ -138,7 +150,9 @@ const formatDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
   }).format(date);
 };
@@ -156,9 +170,13 @@ const formatDateTime = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
+
     hour: "2-digit",
+
     minute: "2-digit",
   }).format(date);
 };
@@ -169,7 +187,9 @@ const formatCurrency = (value, currency = "INR") => {
   try {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
+
       currency: currency || "INR",
+
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
@@ -184,8 +204,11 @@ const formatEnum = (value) => {
 
   return String(value)
     .toLowerCase()
+
     .split("_")
+
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+
     .join(" ");
 };
 
@@ -195,6 +218,7 @@ const getStatusColor = (status) => {
       return "success";
 
     case "PENDING":
+
     case "PENDING_PAYMENT":
       return "warning";
 
@@ -219,10 +243,15 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
+
 // RESPONSE HELPERS
+
 //
+
 // These tolerate the current Subscription Report naming while
+
 // keeping the user-facing page called Membership Report.
+
 // ============================================================
 
 const getSubscriptionId = (item) => item?.subscriptionId ?? item?.id ?? null;
@@ -251,17 +280,30 @@ const getAmount = (item) =>
 const getCreatedAt = (item) => item?.createdAt ?? null;
 
 // ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function MembershipReport() {
+  const { libraryId: routeLibraryId } = useParams();
+
+  const isAdminReport =
+    routeLibraryId !== undefined &&
+    routeLibraryId !== null &&
+    routeLibraryId !== "";
+
   // ========================================================
+
   // STATE
+
   // ========================================================
 
   const [libraries, setLibraries] = useState([]);
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState("");
+  const [selectedLibraryId, setSelectedLibraryId] = useState(() =>
+    isAdminReport ? String(routeLibraryId) : "",
+  );
 
   const [period, setPeriod] = useState("month");
 
@@ -278,13 +320,17 @@ function MembershipReport() {
   const [error, setError] = useState("");
 
   // ========================================================
+
   // PERIOD
+
   // ========================================================
 
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
 
   // ========================================================
+
   // REQUEST PAYLOAD
+
   // ========================================================
 
   const reportPayload = useMemo(() => {
@@ -312,10 +358,20 @@ function MembershipReport() {
   }, [selectedLibraryId, dateRange]);
 
   // ========================================================
+
   // LOAD OWNER LIBRARIES
+
   // ========================================================
 
   useEffect(() => {
+    if (isAdminReport) {
+      setLibraries([]);
+      setSelectedLibraryId(String(routeLibraryId));
+      setLoadingLibraries(false);
+      setError("");
+      return undefined;
+    }
+
     let active = true;
 
     const loadLibraries = async () => {
@@ -367,10 +423,12 @@ function MembershipReport() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdminReport, routeLibraryId]);
 
   // ========================================================
+
   // LOAD REPORT
+
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -408,7 +466,9 @@ function MembershipReport() {
   }, [loadingLibraries, reportPayload, loadReport]);
 
   // ========================================================
+
   // BACKEND DATA
+
   // ========================================================
 
   const summary = report?.summary || {};
@@ -416,7 +476,9 @@ function MembershipReport() {
   const records = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
+
   // SUMMARY FALLBACKS
+
   // ========================================================
 
   const totalSubscriptions = Number(
@@ -449,6 +511,7 @@ function MembershipReport() {
       summary.uniqueMembers ??
       new Set(
         records
+
           .map(
             (item) =>
               item.studentId ??
@@ -456,6 +519,7 @@ function MembershipReport() {
               item.userId ??
               getStudentEmail(item),
           )
+
           .filter(Boolean),
       ).size,
   );
@@ -467,7 +531,9 @@ function MembershipReport() {
   );
 
   // ========================================================
+
   // STATUS DATA
+
   // ========================================================
 
   const statusData = useMemo(() => {
@@ -483,14 +549,19 @@ function MembershipReport() {
       return [
         {
           name: "Active",
+
           value: activeSubscriptions,
         },
+
         {
           name: "Expired",
+
           value: expiredSubscriptions,
         },
+
         {
           name: "Cancelled",
+
           value: cancelledSubscriptions,
         },
       ].filter((item) => item.value > 0);
@@ -503,14 +574,20 @@ function MembershipReport() {
     }));
   }, [
     records,
+
     totalSubscriptions,
+
     activeSubscriptions,
+
     expiredSubscriptions,
+
     cancelledSubscriptions,
   ]);
 
   // ========================================================
+
   // PLAN DISTRIBUTION
+
   // ========================================================
 
   const planData = useMemo(() => {
@@ -521,7 +598,9 @@ function MembershipReport() {
 
       const existing = grouped.get(plan) || {
         plan,
+
         subscriptions: 0,
+
         amount: 0,
       };
 
@@ -538,13 +617,17 @@ function MembershipReport() {
   }, [records]);
 
   // ========================================================
+
   // RECENT SUBSCRIPTIONS
+
   // ========================================================
 
   const recentSubscriptions = useMemo(() => records.slice(0, 15), [records]);
 
   // ========================================================
+
   // LIBRARY / PERIOD LABEL
+
   // ========================================================
 
   const selectedLibrary = useMemo(
@@ -552,16 +635,20 @@ function MembershipReport() {
       libraries.find(
         (library) => String(library.id) === String(selectedLibraryId),
       ) || null,
+
     [libraries, selectedLibraryId],
   );
 
   const periodLabel = useMemo(
     () => `${formatDate(dateRange.fromDate)} - ${formatDate(dateRange.toDate)}`,
+
     [dateRange],
   );
 
   // ========================================================
+
   // EXPORT PDF
+
   // ========================================================
 
   const handlePdfExport = async () => {
@@ -587,7 +674,9 @@ function MembershipReport() {
   };
 
   // ========================================================
+
   // EXPORT EXCEL
+
   // ========================================================
 
   const handleExcelExport = async () => {
@@ -613,7 +702,9 @@ function MembershipReport() {
   };
 
   // ========================================================
+
   // INITIAL LOADING
+
   // ========================================================
 
   if (loadingLibraries) {
@@ -634,15 +725,13 @@ function MembershipReport() {
   }
 
   // ========================================================
+
   // UI
+
   // ========================================================
 
   return (
     <Box>
-      {/* ==================================================
-                HEADER
-            ================================================== */}
-
       <ReportHeader
         title="Membership Report"
         description="Analyze library memberships, member subscriptions and plan performance."
@@ -650,30 +739,43 @@ function MembershipReport() {
           <Stack
             direction={{
               xs: "column",
+
               md: "row",
             }}
             spacing={1}
           >
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 190,
-              }}
-            >
-              <InputLabel>Library</InputLabel>
-
-              <Select
-                value={selectedLibraryId}
-                label="Library"
-                onChange={(event) => setSelectedLibraryId(event.target.value)}
+            {isAdminReport ? (
+              <Chip
+                label={`Library #${selectedLibraryId} · Admin scope`}
+                color="primary"
+                variant="outlined"
+                sx={{
+                  minHeight: 40,
+                  fontWeight: 700,
+                }}
+              />
+            ) : (
+              <FormControl
+                size="small"
+                sx={{
+                  minWidth: 190,
+                }}
               >
-                {libraries.map((library) => (
-                  <MenuItem key={library.id} value={String(library.id)}>
-                    {library.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                <InputLabel>Library</InputLabel>
+
+                <Select
+                  value={selectedLibraryId}
+                  label="Library"
+                  onChange={(event) => setSelectedLibraryId(event.target.value)}
+                >
+                  {libraries.map((library) => (
+                    <MenuItem key={library.id} value={String(library.id)}>
+                      {library.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             <ReportFilter value={period} onChange={setPeriod} />
 
@@ -715,10 +817,6 @@ function MembershipReport() {
         }
       />
 
-      {/* ==================================================
-                ERROR
-            ================================================== */}
-
       {error && (
         <Alert
           severity="error"
@@ -730,13 +828,10 @@ function MembershipReport() {
         </Alert>
       )}
 
-      {/* ==================================================
-                CONTEXT
-            ================================================== */}
-
       <Stack
         direction={{
           xs: "column",
+
           sm: "row",
         }}
         spacing={1}
@@ -749,15 +844,13 @@ function MembershipReport() {
         <Chip icon={<CalendarMonth />} label={periodLabel} variant="outlined" />
       </Stack>
 
-      {/* ==================================================
-                LOADING
-            ================================================== */}
-
       {loadingReport && (
         <Box
           sx={{
             py: 8,
+
             display: "flex",
+
             justifyContent: "center",
           }}
         >
@@ -767,10 +860,6 @@ function MembershipReport() {
 
       {!loadingReport && report && (
         <>
-          {/* ======================================
-                            SUMMARY CARDS
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
@@ -805,10 +894,6 @@ function MembershipReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            STATUS + PLAN
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             {/* STATUS */}
 
@@ -829,8 +914,11 @@ function MembershipReport() {
                     <Box
                       sx={{
                         minHeight: 300,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -843,6 +931,7 @@ function MembershipReport() {
                       <Box
                         sx={{
                           height: 250,
+
                           position: "relative",
                         }}
                       >
@@ -875,9 +964,13 @@ function MembershipReport() {
                         <Box
                           sx={{
                             position: "absolute",
+
                             top: "50%",
+
                             left: "50%",
+
                             transform: "translate(-50%, -50%)",
+
                             textAlign: "center",
                           }}
                         >
@@ -906,8 +999,11 @@ function MembershipReport() {
                               <Box
                                 sx={{
                                   width: 10,
+
                                   height: 10,
+
                                   borderRadius: "50%",
+
                                   backgroundColor:
                                     STATUS_COLORS[index % STATUS_COLORS.length],
                                 }}
@@ -949,8 +1045,11 @@ function MembershipReport() {
                     <Box
                       sx={{
                         minHeight: 320,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -962,6 +1061,7 @@ function MembershipReport() {
                     <Box
                       sx={{
                         width: "100%",
+
                         height: 320,
                       }}
                     >
@@ -1000,20 +1100,18 @@ function MembershipReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            MEMBERSHIP TABLE
-                        ====================================== */}
-
           <Card>
             <CardContent>
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 spacing={1}
@@ -1129,6 +1227,7 @@ function MembershipReport() {
                               <Typography fontWeight={600}>
                                 {formatCurrency(
                                   getAmount(item),
+
                                   item.currency || "INR",
                                 )}
                               </Typography>

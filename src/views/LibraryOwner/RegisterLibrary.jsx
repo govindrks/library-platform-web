@@ -11,6 +11,8 @@ import {
   CircularProgress,
   Container,
   Divider,
+  Dialog,
+  DialogContent,
   FormControl,
   FormControlLabel,
   Grid,
@@ -48,13 +50,16 @@ import {
   Settings,
   Visibility,
   VisibilityOff,
+  WhatsApp,
   Wifi,
   WorkspacePremium,
+  Close,
 } from "@mui/icons-material";
 
 import { useLocation, useNavigate } from "react-router-dom";
 
 import amenityApi from "../../api/amenityApi";
+import authApi from "../../api/authApi";
 import libraryRegistrationApi from "../../api/libraryRegistrationApi";
 import libraryApi from "../../api/libraryApi";
 import platformPlanApi from "../../api/platformPlanApi";
@@ -63,6 +68,8 @@ import platformPaymentApi from "../../api/platformPaymentApi";
 import ownerDashboardApi from "../../api/ownerDashboardApi";
 import seatApi from "../../api/seatApi";
 import slotApi from "../../api/slotApi";
+import whatsappOtpApi from "../../api/whatsappOtpApi";
+import OtpVerificationForm from "../../components/whatsapp/OtpVerificationForm";
 import { useAuth } from "../../context/AuthContext";
 
 // ============================================================
@@ -96,6 +103,87 @@ const steps = [
   },
 ];
 
+const ONBOARDING_HELP = [
+  {
+    title: "Owner account",
+    subtitle: "Create the secure account that will manage this library.",
+    checklist: [
+      "Enter the library owner's name and email address.",
+      "Use an active mobile number for owner verification and future account communication.",
+      "Create a strong password and keep it private.",
+    ],
+    tips: [
+      "If you already started setup earlier, use Sign In & Continue Setup instead of creating another owner account.",
+      "If WhatsApp verification is disabled in this environment, continue only with the verification flow enabled for your deployment.",
+    ],
+  },
+  {
+    title: "Library details",
+    subtitle: "Tell students where your library is and when it operates.",
+    checklist: [
+      "Enter the public library name, address, city, state and PIN code.",
+      "Add a clear description so students understand the study environment.",
+      "Configure opening and closing times, or select 24-hour operation.",
+    ],
+    tips: [
+      "Use the same public-facing name you want students to see across LibraryHub.",
+      "You can update these details later from Library Profile after onboarding.",
+    ],
+  },
+  {
+    title: "Amenities",
+    subtitle: "Show students the facilities available at your library.",
+    checklist: [
+      "Select the amenities that are genuinely available at this library.",
+      "Include the most important facilities students normally ask about.",
+      "Review the selected amenities before moving to seat setup.",
+    ],
+    tips: [
+      "Amenities improve the public library profile and help students compare study spaces.",
+      "You can manage amenities again after onboarding.",
+    ],
+  },
+  {
+    title: "Seats & slots",
+    subtitle: "Create the first usable seating and booking configuration.",
+    checklist: [
+      "Create or confirm the floor used for the initial seat layout.",
+      "Configure rows and seat positions for the current library layout.",
+      "Create at least one booking slot that matches your operating model.",
+    ],
+    tips: [
+      "Your detailed seat map can be refined later from Seat Mapping.",
+      "Existing saved floors, seats and slots are restored automatically when you resume onboarding.",
+    ],
+  },
+  {
+    title: "LibraryHub plan",
+    subtitle: "Choose the platform plan used by the library owner.",
+    checklist: [
+      "Compare the available LibraryHub platform plans.",
+      "Select the plan that fits the library's current operating needs.",
+      "Complete the required subscription payment when prompted.",
+    ],
+    tips: [
+      "This is the owner's LibraryHub SaaS plan; it is separate from student library membership plans.",
+      "If a payment was started earlier, LibraryHub attempts to restore the saved payment state.",
+    ],
+  },
+  {
+    title: "Review & launch",
+    subtitle: "Review the complete setup before finishing onboarding.",
+    checklist: [
+      "Check owner, library, amenities, seats, slots and plan information.",
+      "Use Edit on any section that needs correction.",
+      "Confirm the information before completing onboarding.",
+    ],
+    tips: [
+      "Changes made from Review return you back to Review after saving.",
+      "Once onboarding is completed, ongoing management moves to the Owner Dashboard.",
+    ],
+  },
+];
+
 const STEP_INDEX = {
   LIBRARY_DETAILS: 1,
   AMENITIES: 2,
@@ -105,6 +193,26 @@ const STEP_INDEX = {
 };
 
 const ONBOARDING_DRAFT_KEY = "libraryOnboardingDraft";
+
+const WHATSAPP_AUTH_ENABLED =
+  String(
+    import.meta.env.VITE_WHATSAPP_AUTH_ENABLED ?? "false",
+  ).toLowerCase() === "true";
+
+const PREMIUM = {
+  primary: "#4F46E5",
+  primaryDark: "#3730A3",
+  primarySoft: "#EEF2FF",
+  success: "#16A34A",
+  successSoft: "#ECFDF3",
+  text: "#101828",
+  muted: "#667085",
+  border: "#E4E7EC",
+  page: "#F7F8FC",
+  card: "#FFFFFF",
+  shadow: "0 24px 70px rgba(16, 24, 40, 0.08)",
+  softShadow: "0 10px 40px rgba(79, 70, 229, 0.08)",
+};
 
 const loadOnboardingDraft = () => {
   try {
@@ -138,6 +246,7 @@ const saveOnboardingDraft = ({
         formData: {
           ...formData,
           password: "",
+          phoneVerificationToken: "",
           termsAccepted: false,
         },
         createdSlots,
@@ -212,6 +321,7 @@ const createInitialFormData = (selectedPlanId = "") => ({
   ownerName: "",
   email: "",
   phone: "",
+  phoneVerificationToken: "",
   password: "",
 
   // Library
@@ -513,6 +623,7 @@ const RegisterLibrary = () => {
     user,
     initializing: authInitializing,
     login,
+    logout,
     refreshProfile,
   } = useAuth();
 
@@ -582,6 +693,22 @@ const RegisterLibrary = () => {
   const [registrationResult, setRegistrationResult] = useState(null);
 
   const [showPassword, setShowPassword] = useState(false);
+
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // ==========================================================
+  // OWNER WHATSAPP VERIFICATION
+  // ==========================================================
+
+  const [otpOpen, setOtpOpen] = useState(false);
+
+  const [otpLoading, setOtpLoading] = useState(false);
+
+  const [otpChallengeId, setOtpChallengeId] = useState("");
+
+  const [otpResendSeconds, setOtpResendSeconds] = useState(60);
+
+  const [verifiedPhone, setVerifiedPhone] = useState("");
 
   // ==========================================================
   // AMENITY STATE
@@ -1048,6 +1175,10 @@ const RegisterLibrary = () => {
   });
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const [showOwnerLoginPassword, setShowOwnerLoginPassword] = useState(false);
+
+  const [ownerLoginError, setOwnerLoginError] = useState("");
 
   // ==========================================================
   // LOCAL DRAFT AUTO-SAVE
@@ -1685,6 +1816,7 @@ const RegisterLibrary = () => {
       fullName: formData.ownerName.trim(),
       email: formData.email.trim().toLowerCase(),
       phone: formData.phone.trim(),
+      phoneVerificationToken: formData.phoneVerificationToken,
       password: formData.password,
     };
 
@@ -1766,6 +1898,7 @@ const RegisterLibrary = () => {
     setFormData((previous) => ({
       ...previous,
       password: "",
+      phoneVerificationToken: "",
     }));
 
     return {
@@ -1910,17 +2043,367 @@ const RegisterLibrary = () => {
 
   const progress = Math.round(((currentStep + 1) / steps.length) * 100);
 
+  const currentHelp = ONBOARDING_HELP[currentStep] ?? ONBOARDING_HELP[0];
+
   // ==========================================================
   // UPDATE FIELD
   // ==========================================================
 
   const updateField = (field, value) => {
-    setFormData((previous) => ({
-      ...previous,
-      [field]: value,
-    }));
+    setFormData((previous) => {
+      const next = {
+        ...previous,
+        [field]: value,
+      };
+
+      if (field === "phone" && value !== previous.phone) {
+        next.phoneVerificationToken = "";
+        setVerifiedPhone("");
+        setOtpChallengeId("");
+      }
+
+      return next;
+    });
 
     setError("");
+  };
+
+  // ==========================================================
+  // OWNER WHATSAPP OTP
+  // ==========================================================
+
+  const requestOwnerPhoneOtp = async () => {
+    const phone = String(formData.phone || "")
+      .replace(/\D/g, "")
+      .slice(0, 10);
+
+    if (!WHATSAPP_AUTH_ENABLED) {
+      setError(
+        "WhatsApp verification is currently disabled in this environment.",
+      );
+      return null;
+    }
+
+    if (!/^[6-9]\d{9}$/.test(phone)) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+      return null;
+    }
+
+    try {
+      setOtpLoading(true);
+      setError("");
+
+      const response = await whatsappOtpApi.requestRegistrationOtp(phone);
+
+      if (!response?.challengeId) {
+        throw new Error("OTP challenge was not returned by the server.");
+      }
+
+      setOtpChallengeId(response.challengeId);
+
+      setOtpResendSeconds(
+        Number(
+          response?.resendAvailableInSeconds ??
+            response?.resendAfterSeconds ??
+            60,
+        ),
+      );
+
+      setOtpOpen(true);
+
+      return response;
+    } catch (requestError) {
+      console.error("Owner phone OTP request failed:", requestError);
+
+      setError(
+        getErrorMessage(
+          requestError,
+          "Unable to send WhatsApp verification OTP.",
+        ),
+      );
+
+      return null;
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const verifyOwnerPhoneOtp = async (otp) => {
+    try {
+      setOtpLoading(true);
+      setError("");
+
+      const response = await whatsappOtpApi.verifyRegistrationOtp({
+        challengeId: otpChallengeId,
+        otp,
+      });
+
+      const verificationToken =
+        response?.verificationToken ?? response?.data?.verificationToken;
+
+      const responsePhone =
+        response?.phoneNumber ?? response?.data?.phoneNumber;
+
+      if (!verificationToken) {
+        throw new Error(
+          "Phone verification token was not returned by the server.",
+        );
+      }
+
+      setFormData((previous) => ({
+        ...previous,
+        phoneVerificationToken: verificationToken,
+      }));
+
+      setVerifiedPhone(
+        responsePhone || whatsappOtpApi.normalizePhoneNumber(formData.phone),
+      );
+
+      setOtpOpen(false);
+      setSuccessMessage("Owner mobile number verified successfully.");
+    } catch (requestError) {
+      console.error("Owner phone OTP verification failed:", requestError);
+
+      setError(
+        getErrorMessage(requestError, "Unable to verify the WhatsApp OTP."),
+      );
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleResendOwnerOtp = async () => requestOwnerPhoneOtp();
+
+  // ==========================================================
+  // OWNER SIGN IN & CONTINUE SETUP
+  // ==========================================================
+
+  const closeOwnerLogin = () => {
+    if (isLoggingIn) {
+      return;
+    }
+
+    setShowOwnerLogin(false);
+    setOwnerLoginError("");
+    setShowOwnerLoginPassword(false);
+
+    setLoginData({
+      email: "",
+      password: "",
+    });
+  };
+
+  const handleOwnerLogin = async (event) => {
+    event.preventDefault();
+
+    setOwnerLoginError("");
+    setError("");
+    setSuccessMessage("");
+
+    const email = String(loginData.email || "")
+      .trim()
+      .toLowerCase();
+
+    const password = String(loginData.password || "");
+
+    if (!email) {
+      setOwnerLoginError("Please enter your owner email address.");
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setOwnerLoginError("Please enter a valid email address.");
+      return;
+    }
+
+    if (!password) {
+      setOwnerLoginError("Please enter your password.");
+      return;
+    }
+
+    try {
+      setIsLoggingIn(true);
+
+      const response = await authApi.login({
+        email,
+        password,
+      });
+
+      const authToken =
+        response?.token ??
+        response?.accessToken ??
+        response?.data?.token ??
+        response?.data?.accessToken ??
+        null;
+
+      const responseUser = response?.user ?? response?.data?.user ?? null;
+
+      const flatResponseUser =
+        !responseUser && (response?.userId || response?.role || response?.email)
+          ? {
+              id: response?.userId ?? null,
+              fullName: response?.fullName ?? "",
+              email: response?.email ?? email,
+              phone: response?.phone ?? "",
+              role: response?.role ?? null,
+              onboardingStep: response?.onboardingStep ?? null,
+              onboardingCompleted: Boolean(response?.onboardingCompleted),
+              libraryId: response?.libraryId ?? null,
+            }
+          : null;
+
+      const loginUser = responseUser ?? flatResponseUser;
+
+      if (!authToken) {
+        throw new Error("Authentication token was not returned by the server.");
+      }
+
+      if (loginUser?.role && loginUser.role !== "LIBRARY_OWNER") {
+        throw new Error(
+          "This account is not a Library Owner account. Please use a Library Owner account.",
+        );
+      }
+
+      login(authToken, loginUser, false);
+
+      let ownerUser = loginUser;
+
+      try {
+        const refreshedUser = await refreshProfile();
+
+        if (refreshedUser) {
+          ownerUser = refreshedUser;
+        }
+      } catch (profileError) {
+        console.warn(
+          "Unable to refresh owner profile after login:",
+          profileError,
+        );
+      }
+
+      if (ownerUser?.role && ownerUser.role !== "LIBRARY_OWNER") {
+        logout();
+
+        throw new Error("This account does not have Library Owner access.");
+      }
+
+      let context;
+
+      try {
+        context = await ownerDashboardApi.getContext();
+      } catch (contextError) {
+        if (
+          contextError?.response?.status === 401 ||
+          contextError?.response?.status === 403
+        ) {
+          logout();
+
+          throw new Error("This account does not have Library Owner access.");
+        }
+
+        throw contextError;
+      }
+
+      if (
+        context?.onboardingCompleted ||
+        context?.onboardingStep === "COMPLETED"
+      ) {
+        setShowOwnerLogin(false);
+
+        navigate("/owner/dashboard", {
+          replace: true,
+        });
+
+        return;
+      }
+
+      const restoredOwner = {
+        ...(ownerUser || {}),
+
+        id: context?.ownerId ?? ownerUser?.id ?? null,
+
+        fullName: context?.ownerName ?? ownerUser?.fullName ?? "",
+
+        email: context?.email ?? ownerUser?.email ?? email,
+
+        phone: ownerUser?.phone ?? "",
+
+        role: "LIBRARY_OWNER",
+
+        onboardingStep:
+          context?.onboardingStep ??
+          ownerUser?.onboardingStep ??
+          "LIBRARY_DETAILS",
+
+        onboardingCompleted: Boolean(context?.onboardingCompleted),
+
+        libraryId: context?.libraryId ?? ownerUser?.libraryId ?? null,
+      };
+
+      setAuthenticatedOwner(restoredOwner);
+
+      setFormData((previous) => ({
+        ...previous,
+
+        ownerName: restoredOwner.fullName || previous.ownerName,
+
+        email: restoredOwner.email || previous.email,
+
+        phone: restoredOwner.phone || previous.phone,
+
+        password: "",
+        phoneVerificationToken: "",
+      }));
+
+      if (restoredOwner.libraryId) {
+        const restoredLibraryId = Number(restoredOwner.libraryId);
+
+        setLibraryId(restoredLibraryId);
+
+        localStorage.setItem(
+          "libraryOnboardingLibraryId",
+          String(restoredLibraryId),
+        );
+      } else {
+        setLibraryId(null);
+        localStorage.removeItem("libraryOnboardingLibraryId");
+      }
+
+      const resumeStep = STEP_INDEX[restoredOwner.onboardingStep];
+
+      setCurrentStep(
+        resumeStep !== undefined ? resumeStep : STEP_INDEX.LIBRARY_DETAILS,
+      );
+
+      setShowOwnerLogin(false);
+      setOwnerLoginError("");
+      setShowOwnerLoginPassword(false);
+
+      setLoginData({
+        email: "",
+        password: "",
+      });
+
+      setSuccessMessage(
+        "Welcome back. Your saved library setup has been restored.",
+      );
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    } catch (loginError) {
+      console.error("Owner onboarding login failed:", loginError);
+
+      setOwnerLoginError(
+        getErrorMessage(
+          loginError,
+          "Unable to sign in. Please check your email and password.",
+        ),
+      );
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   // ==========================================================
@@ -1978,8 +2461,15 @@ const RegisterLibrary = () => {
 
       const phone = formData.phone.replace(/\D/g, "");
 
-      if (phone.length < 10) {
-        setError("Please enter a valid phone number.");
+      if (!/^[6-9]\d{9}$/.test(phone)) {
+        setError("Please enter a valid 10-digit Indian mobile number.");
+        return false;
+      }
+
+      if (!formData.phoneVerificationToken) {
+        setError(
+          "Please verify the owner's mobile number through WhatsApp before continuing.",
+        );
         return false;
       }
 
@@ -3335,13 +3825,62 @@ const RegisterLibrary = () => {
     <>
       <StepHeading
         icon={<Person />}
-        title="OWNER DETAILS"
-        subtitle="Who will manage this library?"
+        title="Owner account"
+        subtitle="Create the secure account that will manage this library."
       />
 
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        These details will be used for the owner account.
-      </Typography>
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: {
+            xs: 2,
+            md: 2.5,
+          },
+          borderRadius: 3,
+          border: `1px solid ${PREMIUM.border}`,
+          bgcolor: "#FAFBFF",
+        }}
+      >
+        <Stack
+          direction={{
+            xs: "column",
+            sm: "row",
+          }}
+          spacing={1.5}
+          alignItems={{
+            xs: "flex-start",
+            sm: "center",
+          }}
+        >
+          <Box
+            sx={{
+              width: 42,
+              height: 42,
+              borderRadius: 2.5,
+              bgcolor: PREMIUM.primarySoft,
+              color: PREMIUM.primary,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Lock />
+          </Box>
+
+          <Box>
+            <Typography fontWeight={800} color={PREMIUM.text}>
+              Your owner account is protected
+            </Typography>
+
+            <Typography variant="body2" color={PREMIUM.muted}>
+              Email and password remain available, while your verified mobile
+              enables secure WhatsApp OTP sign-in.
+            </Typography>
+          </Box>
+        </Stack>
+      </Paper>
 
       <Stack spacing={2.5}>
         <TextField
@@ -3384,20 +3923,154 @@ const RegisterLibrary = () => {
             <TextField
               fullWidth
               required
-              label="Phone"
-              placeholder="+91 98765 43210"
+              label="Mobile Number"
+              placeholder="9876543210"
               value={formData.phone}
-              onChange={(event) => updateField("phone", event.target.value)}
+              onChange={(event) =>
+                updateField(
+                  "phone",
+                  String(event.target.value).replace(/\D/g, "").slice(0, 10),
+                )
+              }
+              inputProps={{
+                inputMode: "numeric",
+                maxLength: 10,
+              }}
+              helperText={
+                formData.phoneVerificationToken
+                  ? "Verified for WhatsApp OTP login"
+                  : "Verify this number before continuing"
+              }
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <Phone color="disabled" />
+                    <Stack direction="row" spacing={0.75} alignItems="center">
+                      <Typography component="span">🇮🇳</Typography>
+                      <Typography variant="body2" fontWeight={800}>
+                        +91
+                      </Typography>
+                    </Stack>
                   </InputAdornment>
                 ),
+
+                endAdornment: formData.phoneVerificationToken ? (
+                  <InputAdornment position="end">
+                    <CheckCircle color="success" />
+                  </InputAdornment>
+                ) : null,
               }}
             />
           </Grid>
         </Grid>
+
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            borderRadius: 3,
+            border: formData.phoneVerificationToken
+              ? "1px solid #BBF7D0"
+              : `1px solid ${PREMIUM.border}`,
+            bgcolor: formData.phoneVerificationToken ? "#F0FDF4" : "#FAFBFC",
+          }}
+        >
+          <Stack
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
+            spacing={2}
+            alignItems={{
+              xs: "stretch",
+              sm: "center",
+            }}
+            justifyContent="space-between"
+          >
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Box
+                sx={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 2.5,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  bgcolor: formData.phoneVerificationToken
+                    ? "#DCFCE7"
+                    : "#ECFDF3",
+                  color: PREMIUM.success,
+                }}
+              >
+                <WhatsApp />
+              </Box>
+
+              <Box>
+                <Typography fontWeight={800} color={PREMIUM.text}>
+                  {formData.phoneVerificationToken
+                    ? "Mobile verified"
+                    : "Verify with WhatsApp"}
+                </Typography>
+
+                <Typography variant="caption" color={PREMIUM.muted}>
+                  {formData.phoneVerificationToken
+                    ? `Verified ${
+                        verifiedPhone
+                          ? `as +${verifiedPhone}`
+                          : "for secure OTP login"
+                      }`
+                    : "We'll send a secure 6-digit verification code."}
+                </Typography>
+              </Box>
+            </Stack>
+
+            {formData.phoneVerificationToken ? (
+              <Chip
+                icon={<CheckCircle />}
+                label="Verified"
+                color="success"
+                sx={{
+                  fontWeight: 800,
+                  alignSelf: {
+                    xs: "flex-start",
+                    sm: "center",
+                  },
+                }}
+              />
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<WhatsApp />}
+                onClick={requestOwnerPhoneOtp}
+                disabled={
+                  otpLoading ||
+                  formData.phone.length !== 10 ||
+                  !WHATSAPP_AUTH_ENABLED
+                }
+                sx={{
+                  minHeight: 44,
+                  px: 2.4,
+                  textTransform: "none",
+                  fontWeight: 800,
+                  borderRadius: 2.5,
+                  bgcolor: PREMIUM.success,
+                  boxShadow: "0 8px 20px rgba(22,163,74,.18)",
+                  "&:hover": {
+                    bgcolor: "#15803D",
+                  },
+                }}
+              >
+                Verify Number
+              </Button>
+            )}
+          </Stack>
+
+          {!WHATSAPP_AUTH_ENABLED && !formData.phoneVerificationToken && (
+            <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+              WhatsApp verification is disabled in this environment. Enable
+              VITE_WHATSAPP_AUTH_ENABLED when the Meta integration is ready.
+            </Alert>
+          )}
+        </Paper>
 
         <TextField
           fullWidth
@@ -3427,19 +4100,78 @@ const RegisterLibrary = () => {
           }}
         />
 
-        <Divider sx={{ my: 2.5 }}>
-          <Typography variant="body2" color="text.secondary">
-            Already have an account?
-          </Typography>
-        </Divider>
-
-        <Button
-          fullWidth
-          variant="outlined"
-          onClick={() => setShowOwnerLogin(true)}
+        <Paper
+          elevation={0}
+          sx={{
+            mt: 1,
+            p: 2.25,
+            borderRadius: 3,
+            border: `1px solid ${PREMIUM.border}`,
+            background: "linear-gradient(135deg, #FAFAFF 0%, #F5F7FF 100%)",
+          }}
         >
-          Sign In & Continue Setup
-        </Button>
+          <Stack
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
+            spacing={2}
+            alignItems={{
+              xs: "stretch",
+              sm: "center",
+            }}
+            justifyContent="space-between"
+          >
+            <Box>
+              <Typography fontWeight={800} color={PREMIUM.text}>
+                Already started your setup?
+              </Typography>
+
+              <Typography
+                variant="body2"
+                color={PREMIUM.muted}
+                sx={{
+                  mt: 0.4,
+                }}
+              >
+                Sign in to restore your saved library setup and continue from
+                exactly where you stopped.
+              </Typography>
+            </Box>
+
+            <Button
+              variant="outlined"
+              startIcon={<Lock />}
+              onClick={() => {
+                setOwnerLoginError("");
+
+                setLoginData((previous) => ({
+                  ...previous,
+                  email: previous.email || formData.email || "",
+                }));
+
+                setShowOwnerLogin(true);
+              }}
+              sx={{
+                minHeight: 46,
+                px: 2.5,
+                whiteSpace: "nowrap",
+                borderRadius: 2.5,
+                textTransform: "none",
+                fontWeight: 800,
+                borderColor: "#C7D2FE",
+                color: PREMIUM.primary,
+                bgcolor: "#FFFFFF",
+                "&:hover": {
+                  borderColor: PREMIUM.primary,
+                  bgcolor: PREMIUM.primarySoft,
+                },
+              }}
+            >
+              Sign In & Continue
+            </Button>
+          </Stack>
+        </Paper>
       </Stack>
     </>
   );
@@ -4572,8 +5304,12 @@ const RegisterLibrary = () => {
     <Box
       sx={{
         minHeight: "100vh",
-        bgcolor: "#f6faff",
-        pb: 6,
+        pb: 8,
+        background: `
+          radial-gradient(circle at 15% 5%, rgba(79, 70, 229, 0.08), transparent 28%),
+          radial-gradient(circle at 92% 18%, rgba(59, 130, 246, 0.08), transparent 24%),
+          linear-gradient(180deg, #F9FAFF 0%, #F5F7FC 100%)
+        `,
       }}
     >
       {/* HEADER */}
@@ -4619,16 +5355,33 @@ const RegisterLibrary = () => {
             <Stack direction="row" spacing={2} alignItems="center">
               <Button
                 startIcon={<HelpOutlineOutlined />}
+                onClick={() => setHelpOpen(true)}
                 sx={{
-                  display: {
-                    xs: "none",
-                    sm: "flex",
+                  minWidth: {
+                    xs: 42,
+                    sm: "auto",
+                  },
+                  px: {
+                    xs: 1,
+                    sm: 1.5,
                   },
                   textTransform: "none",
                   color: "text.secondary",
+                  fontWeight: 700,
+                  borderRadius: 2,
                 }}
               >
-                Need help?
+                <Box
+                  component="span"
+                  sx={{
+                    display: {
+                      xs: "none",
+                      sm: "inline",
+                    },
+                  }}
+                >
+                  Need help?
+                </Box>
               </Button>
 
               <Button
@@ -4658,33 +5411,164 @@ const RegisterLibrary = () => {
           },
         }}
       >
-        {/* TITLE */}
+        {/* PREMIUM ONBOARDING HERO */}
 
-        <Box sx={{ mb: 3 }}>
-          <Typography
-            variant="h3"
-            fontWeight={800}
-            color="#0b1b5c"
+        <Paper
+          elevation={0}
+          sx={{
+            position: "relative",
+            overflow: "hidden",
+            mb: 3,
+            px: {
+              xs: 2.5,
+              md: 4,
+            },
+            py: {
+              xs: 3,
+              md: 4,
+            },
+            borderRadius: 5,
+            color: "#fff",
+            background:
+              "linear-gradient(135deg, #312E81 0%, #4F46E5 48%, #2563EB 100%)",
+            boxShadow: "0 24px 60px rgba(79, 70, 229, 0.20)",
+
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              width: 280,
+              height: 280,
+              borderRadius: "50%",
+              right: -100,
+              top: -150,
+              background: "rgba(255,255,255,0.10)",
+            },
+
+            "&::after": {
+              content: '""',
+              position: "absolute",
+              width: 190,
+              height: 190,
+              borderRadius: "50%",
+              right: 90,
+              bottom: -140,
+              background: "rgba(255,255,255,0.07)",
+            },
+          }}
+        >
+          <Stack
+            direction={{
+              xs: "column",
+              md: "row",
+            }}
+            justifyContent="space-between"
+            spacing={3}
             sx={{
-              fontSize: {
-                xs: 32,
-                md: 42,
-              },
+              position: "relative",
+              zIndex: 1,
             }}
           >
-            Register your library
-          </Typography>
+            <Box>
+              <Chip
+                label="LIBRARYHUB ONBOARDING"
+                size="small"
+                sx={{
+                  mb: 2,
+                  bgcolor: "rgba(255,255,255,0.14)",
+                  color: "#fff",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  fontWeight: 800,
+                  letterSpacing: 0.6,
+                }}
+              />
 
-          <Typography
-            color="#52658f"
-            sx={{
-              mt: 0.5,
-              fontSize: 18,
-            }}
-          >
-            Complete the setup and start managing your library
-          </Typography>
-        </Box>
+              <Typography
+                fontWeight={900}
+                sx={{
+                  fontSize: {
+                    xs: 30,
+                    md: 42,
+                  },
+                  lineHeight: 1.08,
+                  letterSpacing: "-0.04em",
+                }}
+              >
+                Build your library,
+                <br />
+                beautifully.
+              </Typography>
+
+              <Typography
+                sx={{
+                  mt: 1.5,
+                  maxWidth: 650,
+                  color: "rgba(255,255,255,0.82)",
+                  fontSize: {
+                    xs: 15,
+                    md: 17,
+                  },
+                }}
+              >
+                Set up your owner account, library profile, amenities, seat
+                layout, booking slots and subscription through one guided
+                onboarding experience.
+              </Typography>
+            </Box>
+
+            <Box
+              sx={{
+                minWidth: {
+                  md: 210,
+                },
+                alignSelf: "center",
+                p: 2.25,
+                borderRadius: 3,
+                bgcolor: "rgba(255,255,255,0.12)",
+                border: "1px solid rgba(255,255,255,0.16)",
+                backdropFilter: "blur(12px)",
+              }}
+            >
+              <Typography
+                variant="caption"
+                sx={{
+                  color: "rgba(255,255,255,0.72)",
+                  fontWeight: 800,
+                  letterSpacing: 0.7,
+                }}
+              >
+                SETUP PROGRESS
+              </Typography>
+
+              <Stack direction="row" alignItems="baseline" spacing={0.5}>
+                <Typography
+                  fontWeight={900}
+                  sx={{
+                    fontSize: 36,
+                  }}
+                >
+                  {progress}
+                </Typography>
+
+                <Typography fontWeight={800}>%</Typography>
+              </Stack>
+
+              <LinearProgress
+                variant="determinate"
+                value={progress}
+                sx={{
+                  mt: 1,
+                  height: 7,
+                  borderRadius: 20,
+                  bgcolor: "rgba(255,255,255,0.18)",
+                  "& .MuiLinearProgress-bar": {
+                    bgcolor: "#fff",
+                    borderRadius: 20,
+                  },
+                }}
+              />
+            </Box>
+          </Stack>
+        </Paper>
 
         {/* CUSTOM STEPPER */}
 
@@ -4755,16 +5639,30 @@ const RegisterLibrary = () => {
 
           <Grid item xs={12} lg={8.4}>
             <Paper
-              variant="outlined"
+              elevation={0}
               sx={{
-                borderRadius: 4,
+                position: "relative",
+                overflow: "hidden",
+                borderRadius: 5,
                 p: {
                   xs: 2.5,
                   md: 4,
                 },
-                borderColor: "#d7e6fb",
-                bgcolor: "#fff",
+                border: `1px solid ${PREMIUM.border}`,
+                bgcolor: "rgba(255,255,255,0.97)",
                 minHeight: 500,
+                boxShadow: PREMIUM.shadow,
+
+                "&::before": {
+                  content: '""',
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 4,
+                  background:
+                    "linear-gradient(90deg, #4F46E5, #2563EB, #06B6D4)",
+                },
               }}
             >
               {renderStepContent()}
@@ -4789,8 +5687,11 @@ const RegisterLibrary = () => {
                     startIcon={<ArrowBack />}
                     onClick={() => navigate("/")}
                     sx={{
+                      minHeight: 46,
+                      px: 2.25,
+                      borderRadius: 2.5,
                       textTransform: "none",
-                      fontWeight: 700,
+                      fontWeight: 800,
                     }}
                   >
                     Cancel
@@ -4801,8 +5702,11 @@ const RegisterLibrary = () => {
                     onClick={handleBack}
                     disabled={isSubmitting}
                     sx={{
+                      minHeight: 46,
+                      px: 2.25,
+                      borderRadius: 2.5,
                       textTransform: "none",
-                      fontWeight: 700,
+                      fontWeight: 800,
                     }}
                   >
                     {reviewEditStep !== null ? "Cancel Edit" : "Back"}
@@ -4821,6 +5725,21 @@ const RegisterLibrary = () => {
                     }
                     onClick={handleNext}
                     disabled={isSubmitting}
+                    sx={{
+                      minHeight: 50,
+                      px: 3,
+                      borderRadius: 2.5,
+                      textTransform: "none",
+                      fontWeight: 800,
+                      background: "linear-gradient(135deg, #4F46E5, #2563EB)",
+                      boxShadow: "0 10px 25px rgba(79,70,229,.22)",
+                      transition: "all .2s ease",
+                      "&:hover": {
+                        background: "linear-gradient(135deg, #4338CA, #1D4ED8)",
+                        boxShadow: "0 14px 30px rgba(79,70,229,.28)",
+                        transform: "translateY(-1px)",
+                      },
+                    }}
                   >
                     {isSubmitting
                       ? "Saving..."
@@ -4847,6 +5766,18 @@ const RegisterLibrary = () => {
                     }
                     onClick={handleSubmit}
                     disabled={isSubmitting}
+                    sx={{
+                      minHeight: 50,
+                      px: 3,
+                      borderRadius: 2.5,
+                      textTransform: "none",
+                      fontWeight: 800,
+                      background: "linear-gradient(135deg, #16A34A, #059669)",
+                      boxShadow: "0 10px 25px rgba(22,163,74,.20)",
+                      "&:hover": {
+                        background: "linear-gradient(135deg, #15803D, #047857)",
+                      },
+                    }}
                   >
                     {isSubmitting ? "Completing Setup..." : "Complete Setup"}
                   </Button>
@@ -4870,6 +5801,687 @@ const RegisterLibrary = () => {
           </Grid>
         </Grid>
       </Container>
+
+      {/* ===================================================== */}
+      {/* OWNER WHATSAPP OTP DIALOG */}
+      {/* ===================================================== */}
+
+      {/* ===================================================== */}
+      {/* CONTEXTUAL ONBOARDING HELP */}
+      {/* ===================================================== */}
+
+      <Dialog
+        open={helpOpen}
+        onClose={() => setHelpOpen(false)}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            overflow: "hidden",
+            boxShadow: "0 30px 90px rgba(15, 23, 42, 0.24)",
+          },
+        }}
+      >
+        <Box
+          sx={{
+            position: "relative",
+            px: {
+              xs: 2.5,
+              sm: 4,
+            },
+            py: {
+              xs: 3,
+              sm: 3.5,
+            },
+            color: "#FFFFFF",
+            background:
+              "linear-gradient(135deg, #312E81 0%, #4F46E5 58%, #2563EB 100%)",
+          }}
+        >
+          <IconButton
+            type="button"
+            onClick={() => setHelpOpen(false)}
+            aria-label="Close onboarding help"
+            sx={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              color: "rgba(255,255,255,.86)",
+              "&:hover": {
+                bgcolor: "rgba(255,255,255,.10)",
+              },
+            }}
+          >
+            <Close />
+          </IconButton>
+
+          <Stack
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
+            spacing={2}
+            alignItems={{
+              xs: "flex-start",
+              sm: "center",
+            }}
+          >
+            <Box
+              sx={{
+                width: 54,
+                height: 54,
+                flexShrink: 0,
+                borderRadius: 2.7,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: "rgba(255,255,255,.14)",
+                border: "1px solid rgba(255,255,255,.18)",
+              }}
+            >
+              <HelpOutlineOutlined sx={{ fontSize: 28 }} />
+            </Box>
+
+            <Box sx={{ pr: 5 }}>
+              <Chip
+                size="small"
+                label={`STEP ${currentStep + 1} OF ${steps.length}`}
+                sx={{
+                  mb: 1,
+                  bgcolor: "rgba(255,255,255,.13)",
+                  color: "#FFFFFF",
+                  border: "1px solid rgba(255,255,255,.16)",
+                  fontWeight: 850,
+                  letterSpacing: 0.6,
+                }}
+              />
+
+              <Typography
+                variant="h5"
+                fontWeight={900}
+                sx={{
+                  letterSpacing: "-0.025em",
+                }}
+              >
+                Need help with {currentHelp.title}?
+              </Typography>
+
+              <Typography
+                variant="body2"
+                sx={{
+                  mt: 0.6,
+                  maxWidth: 650,
+                  color: "rgba(255,255,255,.78)",
+                  lineHeight: 1.65,
+                }}
+              >
+                {currentHelp.subtitle}
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+
+        <DialogContent
+          sx={{
+            p: {
+              xs: 2.5,
+              sm: 3.5,
+            },
+            bgcolor: "#FBFCFF",
+          }}
+        >
+          <Grid container spacing={2.5}>
+            <Grid size={{ xs: 12, md: 7 }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  height: "100%",
+                  borderRadius: 3,
+                  bgcolor: "#FFFFFF",
+                  border: `1px solid ${PREMIUM.border}`,
+                }}
+              >
+                <Typography
+                  variant="overline"
+                  color="primary.main"
+                  fontWeight={900}
+                  sx={{ letterSpacing: 0.8 }}
+                >
+                  What to do in this step
+                </Typography>
+
+                <Stack spacing={1.5} sx={{ mt: 1.25 }}>
+                  {currentHelp.checklist.map((item, index) => (
+                    <Stack
+                      key={item}
+                      direction="row"
+                      spacing={1.4}
+                      alignItems="flex-start"
+                    >
+                      <Box
+                        sx={{
+                          width: 28,
+                          height: 28,
+                          flexShrink: 0,
+                          borderRadius: "50%",
+                          display: "grid",
+                          placeItems: "center",
+                          bgcolor: PREMIUM.primarySoft,
+                          color: PREMIUM.primary,
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {index + 1}
+                      </Box>
+
+                      <Typography
+                        variant="body2"
+                        color={PREMIUM.text}
+                        sx={{
+                          pt: 0.35,
+                          lineHeight: 1.65,
+                        }}
+                      >
+                        {item}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+
+            <Grid size={{ xs: 12, md: 5 }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  height: "100%",
+                  borderRadius: 3,
+                  bgcolor: PREMIUM.primarySoft,
+                  border: "1px solid rgba(79,70,229,.14)",
+                }}
+              >
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="center"
+                  sx={{ mb: 1.4 }}
+                >
+                  <CheckCircle
+                    sx={{
+                      color: PREMIUM.primary,
+                      fontSize: 22,
+                    }}
+                  />
+
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={900}
+                    color={PREMIUM.text}
+                  >
+                    Helpful tips
+                  </Typography>
+                </Stack>
+
+                <Stack spacing={1.3}>
+                  {currentHelp.tips.map((tip) => (
+                    <Stack
+                      key={tip}
+                      direction="row"
+                      spacing={1}
+                      alignItems="flex-start"
+                    >
+                      <ChevronRight
+                        sx={{
+                          mt: 0.15,
+                          fontSize: 18,
+                          color: PREMIUM.primary,
+                        }}
+                      />
+
+                      <Typography
+                        variant="body2"
+                        color={PREMIUM.muted}
+                        sx={{
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        {tip}
+                      </Typography>
+                    </Stack>
+                  ))}
+                </Stack>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          <Divider sx={{ my: 2.5 }} />
+
+          <Stack
+            direction={{
+              xs: "column",
+              sm: "row",
+            }}
+            spacing={1.25}
+            justifyContent="space-between"
+          >
+            <Button
+              variant="text"
+              startIcon={<LibraryBooks />}
+              onClick={() => {
+                setHelpOpen(false);
+                navigate("/register-library");
+              }}
+              sx={{
+                textTransform: "none",
+                fontWeight: 800,
+              }}
+            >
+              View owner features
+            </Button>
+
+            <Stack
+              direction={{
+                xs: "column",
+                sm: "row",
+              }}
+              spacing={1}
+            >
+              {authenticatedOwner && (
+                <Button
+                  variant="outlined"
+                  startIcon={<Save />}
+                  onClick={() => {
+                    setHelpOpen(false);
+                    handleSaveAndExit();
+                  }}
+                  disabled={isSubmitting}
+                  sx={{
+                    textTransform: "none",
+                    fontWeight: 800,
+                    borderRadius: 2,
+                  }}
+                >
+                  Save Draft & Exit
+                </Button>
+              )}
+
+              <Button
+                variant="contained"
+                endIcon={<ArrowForward />}
+                onClick={() => setHelpOpen(false)}
+                sx={{
+                  minWidth: 170,
+                  textTransform: "none",
+                  fontWeight: 850,
+                  borderRadius: 2,
+                  background: "linear-gradient(135deg, #4F46E5, #2563EB)",
+                  boxShadow: "0 10px 24px rgba(79,70,229,.20)",
+                  "&:hover": {
+                    background: "linear-gradient(135deg, #4338CA, #1D4ED8)",
+                  },
+                }}
+              >
+                Continue setup
+              </Button>
+            </Stack>
+          </Stack>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={otpOpen}
+        onClose={
+          otpLoading
+            ? undefined
+            : () => {
+                setOtpOpen(false);
+                setOtpChallengeId("");
+              }
+        }
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            overflow: "hidden",
+            boxShadow: "0 28px 80px rgba(15, 23, 42, 0.28)",
+          },
+        }}
+      >
+        <DialogContent
+          sx={{
+            position: "relative",
+            p: {
+              xs: 3,
+              sm: 4,
+            },
+            background: "linear-gradient(180deg, #FFFFFF 0%, #FAFBFF 100%)",
+          }}
+        >
+          <IconButton
+            disabled={otpLoading}
+            onClick={() => {
+              setOtpOpen(false);
+              setOtpChallengeId("");
+            }}
+            sx={{
+              position: "absolute",
+              top: 10,
+              right: 10,
+              zIndex: 2,
+            }}
+          >
+            <Close />
+          </IconButton>
+
+          <Box
+            sx={{
+              width: 52,
+              height: 52,
+              mb: 2,
+              borderRadius: 3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              bgcolor: PREMIUM.successSoft,
+              color: PREMIUM.success,
+              boxShadow: "0 10px 24px rgba(22,163,74,.12)",
+            }}
+          >
+            <WhatsApp />
+          </Box>
+
+          <OtpVerificationForm
+            phone={formData.phone}
+            loading={otpLoading}
+            resendAfterSeconds={otpResendSeconds}
+            title="Verify Owner Mobile"
+            description="Enter the 6-digit verification code sent to the owner's WhatsApp number."
+            submitLabel="Verify Mobile"
+            loadingLabel="Verifying..."
+            onVerify={verifyOwnerPhoneOtp}
+            onResend={handleResendOwnerOtp}
+            onChangeNumber={() => {
+              setOtpOpen(false);
+              setOtpChallengeId("");
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* ===================================================== */}
+      {/* OWNER SIGN IN & CONTINUE SETUP DIALOG */}
+      {/* ===================================================== */}
+
+      <Dialog
+        open={showOwnerLogin}
+        onClose={isLoggingIn ? undefined : closeOwnerLogin}
+        fullWidth
+        maxWidth="xs"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            overflow: "hidden",
+            boxShadow: "0 30px 90px rgba(15, 23, 42, 0.30)",
+          },
+        }}
+      >
+        <Box
+          sx={{
+            position: "relative",
+            px: {
+              xs: 3,
+              sm: 4,
+            },
+            pt: 4,
+            pb: 3,
+            color: "#FFFFFF",
+            background:
+              "linear-gradient(135deg, #312E81 0%, #4F46E5 55%, #2563EB 100%)",
+          }}
+        >
+          <IconButton
+            type="button"
+            disabled={isLoggingIn}
+            onClick={closeOwnerLogin}
+            aria-label="Close owner login"
+            sx={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              color: "rgba(255,255,255,.82)",
+              "&:hover": {
+                bgcolor: "rgba(255,255,255,.10)",
+              },
+            }}
+          >
+            <Close />
+          </IconButton>
+
+          <Box
+            sx={{
+              width: 52,
+              height: 52,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 3,
+              mb: 2,
+              bgcolor: "rgba(255,255,255,.14)",
+              border: "1px solid rgba(255,255,255,.18)",
+            }}
+          >
+            <LibraryBooks />
+          </Box>
+
+          <Typography
+            variant="h5"
+            fontWeight={900}
+            sx={{
+              letterSpacing: "-0.025em",
+            }}
+          >
+            Welcome back
+          </Typography>
+
+          <Typography
+            sx={{
+              mt: 0.75,
+              color: "rgba(255,255,255,.82)",
+              lineHeight: 1.6,
+            }}
+          >
+            Sign in with your Library Owner account and continue your setup from
+            where you stopped.
+          </Typography>
+        </Box>
+
+        <DialogContent
+          sx={{
+            px: {
+              xs: 3,
+              sm: 4,
+            },
+            py: 3.5,
+            background: "linear-gradient(180deg, #FFFFFF 0%, #FAFBFF 100%)",
+          }}
+        >
+          <Box component="form" onSubmit={handleOwnerLogin} noValidate>
+            <Stack spacing={2.5}>
+              {ownerLoginError && (
+                <Alert
+                  severity="error"
+                  onClose={() => setOwnerLoginError("")}
+                  sx={{
+                    borderRadius: 2.5,
+                  }}
+                >
+                  {ownerLoginError}
+                </Alert>
+              )}
+
+              <TextField
+                fullWidth
+                required
+                autoFocus
+                label="Owner Email"
+                type="email"
+                autoComplete="email"
+                value={loginData.email}
+                disabled={isLoggingIn}
+                onChange={(event) => {
+                  setLoginData((previous) => ({
+                    ...previous,
+                    email: event.target.value,
+                  }));
+
+                  setOwnerLoginError("");
+                }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Email color="disabled" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <TextField
+                fullWidth
+                required
+                label="Password"
+                type={showOwnerLoginPassword ? "text" : "password"}
+                autoComplete="current-password"
+                value={loginData.password}
+                disabled={isLoggingIn}
+                onChange={(event) => {
+                  setLoginData((previous) => ({
+                    ...previous,
+                    password: event.target.value,
+                  }));
+
+                  setOwnerLoginError("");
+                }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Lock color="disabled" />
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        type="button"
+                        edge="end"
+                        disabled={isLoggingIn}
+                        onClick={() =>
+                          setShowOwnerLoginPassword((previous) => !previous)
+                        }
+                        aria-label={
+                          showOwnerLoginPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
+                      >
+                        {showOwnerLoginPassword ? (
+                          <VisibilityOff />
+                        ) : (
+                          <Visibility />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  borderRadius: 2.5,
+                  bgcolor: "#F8FAFC",
+                  border: `1px solid ${PREMIUM.border}`,
+                }}
+              >
+                <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                  <Save
+                    sx={{
+                      color: PREMIUM.primary,
+                      fontSize: 21,
+                      mt: 0.1,
+                    }}
+                  />
+
+                  <Box>
+                    <Typography
+                      variant="body2"
+                      fontWeight={800}
+                      color={PREMIUM.text}
+                    >
+                      Your setup will be restored
+                    </Typography>
+
+                    <Typography
+                      variant="caption"
+                      color={PREMIUM.muted}
+                      sx={{
+                        display: "block",
+                        mt: 0.25,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      Library details, amenities, seats, booking slots and your
+                      selected LibraryHub plan are restored from your saved
+                      onboarding progress.
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+
+              <Button
+                fullWidth
+                size="large"
+                type="submit"
+                variant="contained"
+                disabled={isLoggingIn}
+                endIcon={!isLoggingIn ? <ArrowForward /> : null}
+                sx={{
+                  minHeight: 52,
+                  borderRadius: 2.5,
+                  textTransform: "none",
+                  fontWeight: 900,
+                  background: "linear-gradient(135deg, #4F46E5, #2563EB)",
+                  boxShadow: "0 12px 28px rgba(79,70,229,.24)",
+                  "&:hover": {
+                    background: "linear-gradient(135deg, #4338CA, #1D4ED8)",
+                  },
+                }}
+              >
+                {isLoggingIn ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <CircularProgress size={19} color="inherit" />
+                    <span>Restoring setup...</span>
+                  </Stack>
+                ) : (
+                  "Sign In & Continue Setup"
+                )}
+              </Button>
+
+              <Typography
+                variant="caption"
+                color={PREMIUM.muted}
+                textAlign="center"
+              >
+                Only Library Owner accounts can resume library onboarding from
+                this screen.
+              </Typography>
+            </Stack>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };
@@ -4880,14 +6492,17 @@ const RegisterLibrary = () => {
 
 const RegistrationStepper = ({ steps, currentStep, onStepClick }) => (
   <Paper
-    variant="outlined"
+    elevation={0}
     sx={{
       p: {
-        xs: 2,
-        md: 3,
+        xs: 1.5,
+        md: 2,
       },
       borderRadius: 4,
-      borderColor: "#d7e6fb",
+      border: `1px solid ${PREMIUM.border}`,
+      bgcolor: "rgba(255,255,255,0.92)",
+      backdropFilter: "blur(16px)",
+      boxShadow: PREMIUM.softShadow,
       overflowX: "auto",
     }}
   >
@@ -4900,15 +6515,14 @@ const RegistrationStepper = ({ steps, currentStep, onStepClick }) => (
     >
       {steps.map((step, index) => {
         const completed = index < currentStep;
-
         const active = index === currentStep;
 
         return (
           <React.Fragment key={step.label}>
             <Stack
               direction="row"
+              spacing={1.1}
               alignItems="center"
-              spacing={1.2}
               onClick={() => {
                 if (completed) {
                   onStepClick(index);
@@ -4916,51 +6530,72 @@ const RegistrationStepper = ({ steps, currentStep, onStepClick }) => (
               }}
               sx={{
                 cursor: completed ? "pointer" : "default",
+                transition: "all .2s ease",
+                "&:hover": {
+                  transform: completed ? "translateY(-1px)" : "none",
+                },
               }}
             >
               <Box
                 sx={{
                   width: 42,
                   height: 42,
-                  borderRadius: "50%",
+                  borderRadius: active ? 2.5 : "50%",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,
-
                   bgcolor: completed
-                    ? "#18b76a"
+                    ? PREMIUM.success
                     : active
-                      ? "#0d6efd"
-                      : "#e7eef8",
-
-                  color: completed || active ? "#fff" : "#183269",
-
-                  fontWeight: 800,
+                      ? PREMIUM.primary
+                      : "#F2F4F7",
+                  color: completed || active ? "#fff" : "#667085",
+                  fontWeight: 900,
+                  boxShadow: active ? "0 8px 22px rgba(79,70,229,.28)" : "none",
+                  transition: "all .2s ease",
                 }}
               >
                 {completed ? <Check /> : index + 1}
               </Box>
 
-              <Typography
-                fontWeight={active || completed ? 700 : 500}
-                color={completed ? "#18a85f" : active ? "#0d6efd" : "#324b7d"}
-                whiteSpace="nowrap"
-              >
-                {step.label}
-              </Typography>
+              <Box>
+                <Typography
+                  variant="caption"
+                  color={active ? PREMIUM.primary : PREMIUM.muted}
+                  sx={{
+                    fontWeight: 800,
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  STEP {index + 1}
+                </Typography>
+
+                <Typography
+                  fontWeight={active || completed ? 800 : 600}
+                  color={
+                    completed
+                      ? PREMIUM.success
+                      : active
+                        ? PREMIUM.text
+                        : PREMIUM.muted
+                  }
+                  whiteSpace="nowrap"
+                >
+                  {step.label}
+                </Typography>
+              </Box>
             </Stack>
 
             {index < steps.length - 1 && (
               <Box
                 sx={{
                   flexGrow: 1,
-                  minWidth: 55,
-                  height: 4,
-                  borderRadius: 4,
-                  mx: 2,
-
-                  bgcolor: index < currentStep ? "#18b76a" : "#dbe5f2",
+                  minWidth: 48,
+                  height: 3,
+                  mx: 1.6,
+                  borderRadius: 20,
+                  bgcolor: index < currentStep ? PREMIUM.success : "#EAECF0",
                 }}
               />
             )}
@@ -4976,34 +6611,51 @@ const RegistrationStepper = ({ steps, currentStep, onStepClick }) => (
 // ============================================================
 
 const StepHeading = ({ icon, title, subtitle }) => (
-  <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-    <Box
-      sx={{
-        width: 58,
-        height: 58,
-        borderRadius: 2.5,
-        bgcolor: "#e6f2ff",
-        color: "#0d6efd",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+  <Box sx={{ mb: 3.5 }}>
+    <Stack direction="row" spacing={2} alignItems="center">
+      <Box
+        sx={{
+          width: 58,
+          height: 58,
+          borderRadius: 3,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: PREMIUM.primary,
+          background: "linear-gradient(135deg, #EEF2FF, #E0E7FF)",
+          border: "1px solid #DDE3FF",
+          boxShadow: "0 8px 24px rgba(79,70,229,.10)",
+          "& svg": {
+            fontSize: 30,
+          },
+        }}
+      >
+        {icon}
+      </Box>
 
-        "& svg": {
-          fontSize: 32,
-        },
-      }}
-    >
-      {icon}
-    </Box>
+      <Box>
+        <Typography
+          variant="h5"
+          fontWeight={900}
+          sx={{
+            color: PREMIUM.text,
+            letterSpacing: "-0.025em",
+          }}
+        >
+          {title}
+        </Typography>
 
-    <Box>
-      <Typography variant="h5" fontWeight={800} color="#0b1b5c">
-        {title}
-      </Typography>
-
-      <Typography color="#52658f">{subtitle}</Typography>
-    </Box>
-  </Stack>
+        <Typography
+          color={PREMIUM.muted}
+          sx={{
+            mt: 0.4,
+          }}
+        >
+          {subtitle}
+        </Typography>
+      </Box>
+    </Stack>
+  </Box>
 );
 
 // ============================================================
@@ -5062,162 +6714,196 @@ const SetupSummary = ({
 
   return (
     <Paper
-      variant="outlined"
+      elevation={0}
       sx={{
-        p: 2,
-        borderRadius: 4,
-        borderColor: "#cfe3fb",
-        bgcolor: "#fafdff",
-
+        borderRadius: 5,
+        overflow: "hidden",
+        border: `1px solid ${PREMIUM.border}`,
+        bgcolor: "#fff",
+        boxShadow: PREMIUM.shadow,
         position: {
           lg: "sticky",
         },
-
         top: {
-          lg: 20,
+          lg: 24,
         },
       }}
     >
-      <Stack
-        direction="row"
-        spacing={1.5}
-        alignItems="center"
+      <Box
         sx={{
-          px: 1,
-          pb: 2,
+          p: 2.5,
+          color: "#fff",
+          background: "linear-gradient(135deg, #111827, #312E81)",
         }}
       >
-        <Box
-          sx={{
-            width: 52,
-            height: 52,
-            borderRadius: 2.5,
-            bgcolor: "#e6f2ff",
-            color: "#0d6efd",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Description />
-        </Box>
-
-        <Box>
-          <Typography variant="h6" fontWeight={800} color="#0b1b5c">
-            YOUR SETUP
-          </Typography>
-
-          <Typography color="text.secondary" variant="body2">
-            Track your progress
-          </Typography>
-        </Box>
-      </Stack>
-
-      <Stack spacing={1}>
-        {items.map((item) => (
-          <Paper
-            key={item.title}
-            variant="outlined"
-            onClick={() => {
-              if (item.step <= currentStep) {
-                onNavigate(item.step);
-              }
-            }}
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Box
             sx={{
-              p: 1.5,
+              width: 48,
+              height: 48,
               borderRadius: 2.5,
-              borderColor: "#e2ebf5",
-              cursor: item.step <= currentStep ? "pointer" : "default",
+              bgcolor: "rgba(255,255,255,.10)",
+              color: "#C7D2FE",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <Stack direction="row" alignItems="center" spacing={1.5}>
-              <Box
-                sx={{
-                  width: 50,
-                  height: 50,
-                  borderRadius: 2,
-                  bgcolor: item.background,
-                  color: item.color,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {item.icon}
-              </Box>
+            <Description />
+          </Box>
 
-              <Box
-                sx={{
-                  flexGrow: 1,
-                  minWidth: 0,
-                }}
-              >
-                <Typography fontWeight={700} color="#0b1b5c">
-                  {item.title}
-                </Typography>
+          <Box sx={{ flex: 1 }}>
+            <Typography
+              variant="caption"
+              sx={{
+                color: "rgba(255,255,255,.65)",
+                fontWeight: 800,
+                letterSpacing: 0.8,
+              }}
+            >
+              YOUR SETUP
+            </Typography>
 
-                <Typography variant="body2" color="text.secondary" noWrap>
-                  {item.value}
-                </Typography>
-              </Box>
-
-              <ChevronRight
-                sx={{
-                  color: "#5d739c",
-                }}
-              />
-            </Stack>
-          </Paper>
-        ))}
-      </Stack>
-
-      <Divider
-        sx={{
-          my: 3,
-        }}
-      />
-
-      <Box sx={{ mt: 3 }}>
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          sx={{
-            mb: 1.2,
-            width: "100%",
-          }}
-        >
-          <Typography variant="body2" fontWeight={700} color="#0b1b5c">
-            Step {currentStep + 1} of {steps.length}
-          </Typography>
-
-          <Typography
-            variant="body2"
-            fontWeight={800}
-            color="primary.main"
-            sx={{
-              ml: 2,
-              flexShrink: 0,
-            }}
-          >
-            {progress}%
-          </Typography>
+            <Typography variant="h6" fontWeight={900}>
+              Almost ready to launch
+            </Typography>
+          </Box>
         </Stack>
 
         <LinearProgress
           variant="determinate"
           value={progress}
           sx={{
-            width: "100%",
-            height: 9,
-            borderRadius: 10,
-            bgcolor: "#dce8f6",
-
+            mt: 2,
+            height: 7,
+            borderRadius: 20,
+            bgcolor: "rgba(255,255,255,.15)",
             "& .MuiLinearProgress-bar": {
-              borderRadius: 10,
+              bgcolor: "#818CF8",
+              borderRadius: 20,
             },
           }}
         />
+      </Box>
+
+      <Box sx={{ p: 2 }}>
+        <Stack spacing={1}>
+          {items.map((item) => (
+            <Paper
+              key={item.title}
+              variant="outlined"
+              onClick={() => {
+                if (item.step <= currentStep) {
+                  onNavigate(item.step);
+                }
+              }}
+              sx={{
+                p: 1.5,
+                borderRadius: 2.5,
+                borderColor: "#EAECF0",
+                bgcolor: "#fff",
+                cursor: item.step <= currentStep ? "pointer" : "default",
+                transition: "all .2s ease",
+                "&:hover": {
+                  borderColor: item.step <= currentStep ? "#C7D2FE" : "#EAECF0",
+                  boxShadow:
+                    item.step <= currentStep
+                      ? "0 8px 22px rgba(79,70,229,.08)"
+                      : "none",
+                  transform:
+                    item.step <= currentStep ? "translateY(-1px)" : "none",
+                },
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Box
+                  sx={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 2,
+                    bgcolor: item.background,
+                    color: item.color,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {item.icon}
+                </Box>
+
+                <Box
+                  sx={{
+                    flexGrow: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <Typography fontWeight={700} color="#0b1b5c">
+                    {item.title}
+                  </Typography>
+
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    {item.value}
+                  </Typography>
+                </Box>
+
+                <ChevronRight
+                  sx={{
+                    color: "#5d739c",
+                  }}
+                />
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
+
+        <Divider
+          sx={{
+            my: 3,
+          }}
+        />
+
+        <Box sx={{ mt: 3 }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{
+              mb: 1.2,
+              width: "100%",
+            }}
+          >
+            <Typography variant="body2" fontWeight={700} color="#0b1b5c">
+              Step {currentStep + 1} of {steps.length}
+            </Typography>
+
+            <Typography
+              variant="body2"
+              fontWeight={800}
+              color="primary.main"
+              sx={{
+                ml: 2,
+                flexShrink: 0,
+              }}
+            >
+              {progress}%
+            </Typography>
+          </Stack>
+
+          <LinearProgress
+            variant="determinate"
+            value={progress}
+            sx={{
+              width: "100%",
+              height: 9,
+              borderRadius: 10,
+              bgcolor: "#dce8f6",
+
+              "& .MuiLinearProgress-bar": {
+                borderRadius: 10,
+              },
+            }}
+          />
+        </Box>
       </Box>
     </Paper>
   );

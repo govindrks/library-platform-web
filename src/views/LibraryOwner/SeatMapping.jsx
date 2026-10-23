@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   Add,
@@ -10,6 +10,7 @@ import {
   MeetingRoomOutlined,
   Refresh,
   Settings,
+  SwapHoriz,
 } from "@mui/icons-material";
 
 import {
@@ -81,6 +82,16 @@ const DEFAULT_COLUMNS = 5;
 const DEFAULT_SEAT_TYPE = "NORMAL";
 
 const DEFAULT_SEAT_STATUS = "AVAILABLE";
+
+const SEAT_NUMBERING_MODES = {
+  ROW_COLUMN: "ROW_COLUMN",
+  CONTINUOUS: "CONTINUOUS",
+};
+
+const SEAT_NUMBERING_LABELS = {
+  ROW_COLUMN: "Row + position (A1, A2, B1...)",
+  CONTINUOUS: "Continuous numbers (1, 2, 3...)",
+};
 
 const SEAT_TYPES = ["NORMAL", "PREMIUM", "FEMALE_ONLY", "WINDOW", "QUIET_ZONE"];
 
@@ -195,6 +206,65 @@ const flattenRows = (rows) => {
 };
 
 const getRowLabel = (index) => String.fromCharCode(65 + index);
+
+const isNumericSeatNumber = (value) => /^\d+$/.test(String(value ?? "").trim());
+
+const getDetectedNumberingMode = (seatList = []) => {
+  const validSeats = Array.isArray(seatList)
+    ? seatList.filter((seat) => String(seat?.seatNumber ?? "").trim())
+    : [];
+
+  if (
+    validSeats.length > 0 &&
+    validSeats.every((seat) => isNumericSeatNumber(seat.seatNumber))
+  ) {
+    return SEAT_NUMBERING_MODES.CONTINUOUS;
+  }
+
+  return SEAT_NUMBERING_MODES.ROW_COLUMN;
+};
+
+const getHighestNumericSeatNumber = (seatList = []) => {
+  const numericValues = (Array.isArray(seatList) ? seatList : [])
+    .map((seat) => String(seat?.seatNumber ?? "").trim())
+    .filter(isNumericSeatNumber)
+    .map(Number)
+    .filter(Number.isFinite);
+
+  return numericValues.length > 0 ? Math.max(...numericValues) : 0;
+};
+
+const buildSeatNumber = ({
+  mode,
+  rowLabel,
+  rowIndex,
+  columnNumber,
+  columnsPerRow,
+  startNumber = 1,
+}) => {
+  if (mode === SEAT_NUMBERING_MODES.CONTINUOUS) {
+    const start = Math.max(Number(startNumber) || 1, 1);
+    const columns = Math.max(Number(columnsPerRow) || 1, 1);
+
+    return String(
+      start +
+        Math.max(Number(rowIndex) || 0, 0) * columns +
+        (Math.max(Number(columnNumber) || 1, 1) - 1),
+    );
+  }
+
+  return `${normalizeRow(rowLabel)}${Number(columnNumber)}`;
+};
+
+const getSuggestedSeatNumber = ({ seatList = [], rowLabel, columnNumber }) => {
+  const mode = getDetectedNumberingMode(seatList);
+
+  if (mode === SEAT_NUMBERING_MODES.CONTINUOUS) {
+    return String(getHighestNumericSeatNumber(seatList) + 1);
+  }
+
+  return `${normalizeRow(rowLabel)}${Number(columnNumber)}`;
+};
 
 // ============================================================
 // FLOOR DIMENSION HELPERS
@@ -436,6 +506,8 @@ function StatisticCard({ label, value, tone = "primary" }) {
 const SeatMapping = () => {
   const theme = useTheme();
 
+  const seatMapScrollRef = useRef(null);
+
   // ==========================================================
   // LIBRARY
   // ==========================================================
@@ -517,6 +589,19 @@ const SeatMapping = () => {
   const [bulkSeatStatus, setBulkSeatStatus] = useState("AVAILABLE");
 
   // ==========================================================
+  // REVERSE NUMBERING
+  // ==========================================================
+
+  const [reverseNumberingDialogOpen, setReverseNumberingDialogOpen] =
+    useState(false);
+
+  const [reverseNumberingScope, setReverseNumberingScope] =
+    useState("ROW");
+
+  const [reverseNumberingTarget, setReverseNumberingTarget] =
+    useState("");
+
+  // ==========================================================
   // CONFIGURE LAYOUT
   // ==========================================================
 
@@ -529,6 +614,14 @@ const SeatMapping = () => {
   const [layoutSeatType, setLayoutSeatType] = useState(DEFAULT_SEAT_TYPE);
 
   const [layoutSeatStatus, setLayoutSeatStatus] = useState(DEFAULT_SEAT_STATUS);
+
+  const [layoutNumberingMode, setLayoutNumberingMode] = useState(
+    SEAT_NUMBERING_MODES.ROW_COLUMN,
+  );
+
+  const [layoutStartSeatNumber, setLayoutStartSeatNumber] = useState(1);
+
+  const [layoutRenumberExisting, setLayoutRenumberExisting] = useState(false);
 
   const [layoutEntrance, setLayoutEntrance] = useState("TOP_CENTER");
 
@@ -827,7 +920,21 @@ const SeatMapping = () => {
   useEffect(() => {
     setSelectedSeatIds([]);
     setBulkMode(false);
+
+    window.requestAnimationFrame(() => {
+      if (seatMapScrollRef.current) {
+        seatMapScrollRef.current.scrollLeft = 0;
+      }
+    });
   }, [libraryId, floorId]);
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      if (seatMapScrollRef.current) {
+        seatMapScrollRef.current.scrollLeft = 0;
+      }
+    });
+  }, [rowCount, columnCount]);
 
   // ==========================================================
   // CURRENT LIBRARY / FLOOR
@@ -865,6 +972,29 @@ const SeatMapping = () => {
 
   const isGapPosition = (rowLabel, columnNumber) =>
     gapKeys.has(positionKey(rowLabel, columnNumber));
+
+  const availableRows = useMemo(() => {
+    return Array.from(
+      new Set(
+        seats
+          .map((seat) => normalizeRow(seat?.rowLabel))
+          .filter(Boolean),
+      ),
+    ).sort(
+      (left, right) =>
+        getRowIndexFromLabel(left) - getRowIndexFromLabel(right),
+    );
+  }, [seats]);
+
+  const availableColumns = useMemo(() => {
+    return Array.from(
+      new Set(
+        seats
+          .map((seat) => Number(seat?.columnNumber))
+          .filter((column) => Number.isInteger(column) && column > 0),
+      ),
+    ).sort((left, right) => left - right);
+  }, [seats]);
 
   // ==========================================================
   // STATISTICS
@@ -1218,6 +1348,226 @@ const SeatMapping = () => {
   };
 
   // ==========================================================
+  // REVERSE NUMBERING IN ONE ROW OR COLUMN
+  // ==========================================================
+  //
+  // This reverses ONLY the seatNumber values in the selected
+  // physical row or column.
+  //
+  // Example row:
+  //
+  // 1  2  3  4
+  //
+  // becomes:
+  //
+  // 4  3  2  1
+  //
+  // Example column:
+  //
+  // 1
+  // 18
+  // 35
+  //
+  // becomes:
+  //
+  // 35
+  // 18
+  // 1
+  //
+  // IMPORTANT:
+  //
+  // - seat IDs stay unchanged
+  // - rowLabel stays unchanged
+  // - columnNumber stays unchanged
+  // - seatType stays unchanged
+  // - status stays unchanged
+  //
+  // Only the displayed seat number/name is reassigned.
+  // ==========================================================
+
+  const buildReverseNumberingPreview = ({
+    scope = reverseNumberingScope,
+    target = reverseNumberingTarget,
+  } = {}) => {
+    if (!target) {
+      return [];
+    }
+
+    const selectedSeats =
+      scope === "ROW"
+        ? seats
+            .filter(
+              (seat) => normalizeRow(seat?.rowLabel) === normalizeRow(target),
+            )
+            .sort(
+              (left, right) =>
+                Number(left?.columnNumber || 0) -
+                Number(right?.columnNumber || 0),
+            )
+        : seats
+            .filter(
+              (seat) => Number(seat?.columnNumber) === Number(target),
+            )
+            .sort(
+              (left, right) =>
+                getRowIndexFromLabel(left?.rowLabel) -
+                getRowIndexFromLabel(right?.rowLabel),
+            );
+
+    const reversedNumbers = selectedSeats
+      .map((seat) => String(seat?.seatNumber ?? ""))
+      .reverse();
+
+    return selectedSeats.map((seat, index) => ({
+      ...seat,
+      nextSeatNumber: reversedNumbers[index],
+    }));
+  };
+
+  const handleOpenReverseNumbering = () => {
+    if (!floorId) {
+      setError("Please select a floor first.");
+      return;
+    }
+
+    if (seats.length < 2) {
+      setError("At least two seats are required to reverse numbering.");
+      return;
+    }
+
+    const defaultScope =
+      availableRows.length > 0
+        ? "ROW"
+        : "COLUMN";
+
+    const defaultTarget =
+      defaultScope === "ROW"
+        ? availableRows[0] || ""
+        : String(availableColumns[0] || "");
+
+    setReverseNumberingScope(defaultScope);
+    setReverseNumberingTarget(defaultTarget);
+    setReverseNumberingDialogOpen(true);
+  };
+
+  const handleReverseNumbering = async () => {
+    const preview = buildReverseNumberingPreview();
+
+    if (preview.length < 2) {
+      setError(
+        reverseNumberingScope === "ROW"
+          ? "The selected row must contain at least two seats."
+          : "The selected column must contain at least two seats.",
+      );
+
+      return;
+    }
+
+    const numberBySeatId = new Map(
+      preview.map((seat) => [
+        String(seat.id ?? seat.seatId ?? ""),
+        seat.nextSeatNumber,
+      ]),
+    );
+
+    const nextSeats = seats.map((seat) => {
+      const key = String(seat.id ?? seat.seatId ?? "");
+
+      if (!numberBySeatId.has(key)) {
+        return {
+          ...seat,
+        };
+      }
+
+      return {
+        ...seat,
+        seatNumber: numberBySeatId.get(key),
+      };
+    });
+
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      await saveCompleteLayout({
+        nextSeats,
+      });
+
+      setReverseNumberingDialogOpen(false);
+
+      setSuccess(
+        reverseNumberingScope === "ROW"
+          ? `Seat numbering reversed successfully in Row ${normalizeRow(
+              reverseNumberingTarget,
+            )}.`
+          : `Seat numbering reversed successfully in Column ${Number(
+              reverseNumberingTarget,
+            )}.`,
+      );
+
+      await loadFloorLayout();
+    } catch (err) {
+      console.error("Failed to reverse seat numbering:", err);
+
+      setError(
+        getErrorMessage(
+          err,
+          "Failed to reverse seat numbering.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+
+  // ==========================================================
+  // RENUMBER EXISTING SEATS
+  // ==========================================================
+  //
+  // Seat number is only the public/display identity.
+  // Physical row/column positions are preserved.
+  //
+  // Continuous numbering renumbers ACTUAL seats in physical
+  // order. Intentional gaps therefore do not consume a number.
+  // ==========================================================
+
+  const renumberExistingSeats = ({
+    seatList,
+    mode,
+    startNumber,
+  }) => {
+    const orderedSeats = [...(Array.isArray(seatList) ? seatList : [])].sort(
+      (left, right) => {
+        const leftRow = getRowIndexFromLabel(left?.rowLabel);
+        const rightRow = getRowIndexFromLabel(right?.rowLabel);
+
+        if (leftRow !== rightRow) {
+          return leftRow - rightRow;
+        }
+
+        return Number(left?.columnNumber || 0) - Number(right?.columnNumber || 0);
+      },
+    );
+
+    if (mode === SEAT_NUMBERING_MODES.CONTINUOUS) {
+      const start = Math.max(Number(startNumber) || 1, 1);
+
+      return orderedSeats.map((seat, index) => ({
+        ...seat,
+        seatNumber: String(start + index),
+      }));
+    }
+
+    return orderedSeats.map((seat) => ({
+      ...seat,
+      seatNumber: `${normalizeRow(seat.rowLabel)}${Number(seat.columnNumber)}`,
+    }));
+  };
+
+
+  // ==========================================================
   // APPLY / UPDATE FLOOR LAYOUT CONFIGURATION
   // ==========================================================
   //
@@ -1261,6 +1611,17 @@ const SeatMapping = () => {
 
     if (!Number.isInteger(columns) || columns < 1) {
       setError("Columns per row must be greater than zero.");
+
+      return;
+    }
+
+    const startingSeatNumber = Number(layoutStartSeatNumber);
+
+    if (
+      layoutNumberingMode === SEAT_NUMBERING_MODES.CONTINUOUS &&
+      (!Number.isInteger(startingSeatNumber) || startingSeatNumber < 1)
+    ) {
+      setError("Starting seat number must be a positive whole number.");
 
       return;
     }
@@ -1343,7 +1704,14 @@ const SeatMapping = () => {
           nextSeats.push({
             id: null,
 
-            seatNumber: `${rowLabel}${column}`,
+            seatNumber: buildSeatNumber({
+              mode: layoutNumberingMode,
+              rowLabel,
+              rowIndex,
+              columnNumber: column,
+              columnsPerRow: columns,
+              startNumber: layoutStartSeatNumber,
+            }),
 
             rowLabel,
 
@@ -1360,22 +1728,22 @@ const SeatMapping = () => {
       // EXISTING FLOOR
       // ======================================================
       //
-      // Preserve actual seat identities and positions.
+      // Preserve existing identities by default.
       //
-      // DO NOT fill:
-      //
-      // B7
-      // F6
-      // F7
-      // etc.
-      //
-      // Those positions remain unconfigured until the owner
-      // explicitly chooses Add Seat or Add Space.
+      // If the owner explicitly enables renumbering, only
+      // seatNumber changes. ID, row, column, type and status
+      // stay exactly the same.
       // ======================================================
 
-      nextSeats = seats.map((seat) => ({
-        ...seat,
-      }));
+      nextSeats = layoutRenumberExisting
+        ? renumberExistingSeats({
+            seatList: seats,
+            mode: layoutNumberingMode,
+            startNumber: layoutStartSeatNumber,
+          })
+        : seats.map((seat) => ({
+            ...seat,
+          }));
     }
 
     // ========================================================
@@ -1464,8 +1832,12 @@ const SeatMapping = () => {
       setSuccess(
         floorIsEmpty
           ? `${nextSeats.length} seats and floor layout created successfully.`
-          : "Floor layout configuration updated successfully.",
+          : layoutRenumberExisting
+            ? `Floor layout updated and ${nextSeats.length} seats renumbered successfully.`
+            : "Floor layout configuration updated successfully.",
       );
+
+      setLayoutRenumberExisting(false);
 
       await loadFloorLayout();
     } catch (err) {
@@ -1878,7 +2250,13 @@ const SeatMapping = () => {
 
     setAddSeatRow(suggestedRow);
     setAddSeatColumn(String(suggestedColumn));
-    setAddSeatNumber(`${suggestedRow}${suggestedColumn}`);
+    setAddSeatNumber(
+      getSuggestedSeatNumber({
+        seatList: seats,
+        rowLabel: suggestedRow,
+        columnNumber: suggestedColumn,
+      }),
+    );
     setAddSeatType("NORMAL");
     setAddSeatStatus("AVAILABLE");
 
@@ -1897,9 +2275,15 @@ const SeatMapping = () => {
 
     setAddSeatColumn(String(columnNumber));
 
-    // Seat number is independent from row / column.
-    // Owner will enter the actual seat number manually.
-    setAddSeatNumber("");
+    // Seat number remains independent from physical position.
+    // Suggest a sensible value based on the floor's current numbering style.
+    setAddSeatNumber(
+      getSuggestedSeatNumber({
+        seatList: seats,
+        rowLabel,
+        columnNumber,
+      }),
+    );
 
     setAddSeatType("NORMAL");
 
@@ -2061,11 +2445,21 @@ const SeatMapping = () => {
 
     const nextSeats = [...seats];
 
+    const detectedNumberingMode = getDetectedNumberingMode(seats);
+
+    const nextContinuousNumber =
+      detectedNumberingMode === SEAT_NUMBERING_MODES.CONTINUOUS
+        ? getHighestNumericSeatNumber(seats) + 1
+        : null;
+
     for (let column = 1; column <= seatCount; column++) {
       nextSeats.push({
         id: null,
 
-        seatNumber: `${rowLabel}${column}`,
+        seatNumber:
+          detectedNumberingMode === SEAT_NUMBERING_MODES.CONTINUOUS
+            ? String(nextContinuousNumber + (column - 1))
+            : `${rowLabel}${column}`,
 
         rowLabel,
 
@@ -2933,6 +3327,28 @@ const SeatMapping = () => {
                 setLayoutColumns(columnCount || DEFAULT_COLUMNS);
                 setLayoutEntrance(entrancePosition || "TOP_CENTER");
                 setLayoutReception(receptionPosition || "BOTTOM_CENTER");
+
+                const detectedNumberingMode = getDetectedNumberingMode(seats);
+
+                setLayoutNumberingMode(detectedNumberingMode);
+                setLayoutRenumberExisting(false);
+
+                if (detectedNumberingMode === SEAT_NUMBERING_MODES.CONTINUOUS) {
+                  const numericSeatNumbers = seats
+                    .map((seat) => String(seat?.seatNumber ?? "").trim())
+                    .filter(isNumericSeatNumber)
+                    .map(Number)
+                    .filter(Number.isFinite);
+
+                  setLayoutStartSeatNumber(
+                    numericSeatNumbers.length > 0
+                      ? Math.min(...numericSeatNumbers)
+                      : 1,
+                  );
+                } else {
+                  setLayoutStartSeatNumber(1);
+                }
+
                 setLayoutDialogOpen(true);
               }}
               sx={{
@@ -3383,6 +3799,21 @@ const SeatMapping = () => {
                   {bulkMode ? "Exit Bulk Edit" : "Bulk Edit Seats"}
                 </Button>
 
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<SwapHoriz />}
+                  disabled={!floorId || saving || seats.length < 2}
+                  onClick={handleOpenReverseNumbering}
+                  sx={{
+                    textTransform: "none",
+                    borderRadius: 2,
+                    fontWeight: 800,
+                  }}
+                >
+                  Reverse Numbering
+                </Button>
+
                 {bulkMode && (
                   <Chip
                     size="small"
@@ -3572,8 +4003,28 @@ const SeatMapping = () => {
                     </Stack>
                   )}
 
-                  <Box sx={{ overflowX: "auto", py: 1.5, px: 0.5 }}>
-                    <Stack spacing={2} sx={{ minWidth: columnCount * 78 + 80 }}>
+                  <Box
+                    ref={seatMapScrollRef}
+                    sx={{
+                      width: "100%",
+                      minWidth: 0,
+                      overflowX: "auto",
+                      overflowY: "hidden",
+                      py: 1.5,
+                      px: 1.5,
+                      scrollPaddingLeft: 12,
+                      scrollbarGutter: "stable",
+                      overscrollBehaviorX: "contain",
+                    }}
+                  >
+                    <Stack
+                      spacing={2}
+                      sx={{
+                        minWidth: columnCount * 78 + 80,
+                        width: "max-content",
+                        pr: 2,
+                      }}
+                    >
                       {Array.from({ length: rowCount }).map((_, rowIndex) => {
                         const rowLabel = getRowLabel(rowIndex);
 
@@ -4048,12 +4499,13 @@ const SeatMapping = () => {
         open={layoutDialogOpen}
         onClose={() => !saving && setLayoutDialogOpen(false)}
         fullWidth
-        maxWidth="lg"
+        maxWidth="xl"
         slotProps={{
           paper: {
             sx: {
               borderRadius: 4,
               overflow: "hidden",
+              maxHeight: "calc(100vh - 48px)",
               boxShadow: "0 28px 80px rgba(15,23,42,0.20)",
             },
           },
@@ -4095,8 +4547,15 @@ const SeatMapping = () => {
           </Stack>
         </DialogTitle>
 
-        <DialogContent sx={{ px: { xs: 2.5, md: 3.2 }, py: 3 }}>
-          <Grid container spacing={3}>
+        <DialogContent
+          dividers
+          sx={{
+            px: { xs: 2.5, md: 3.2 },
+            py: 3,
+            overflowY: "auto",
+          }}
+        >
+          <Grid container spacing={3} alignItems="flex-start">
             <Grid size={{ xs: 12, md: 5 }}>
               <Stack spacing={2.1}>
                 <TextField
@@ -4149,6 +4608,149 @@ const SeatMapping = () => {
                   </Select>
                 </FormControl>
 
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2.5,
+                    border: "1px solid",
+                    borderColor: alpha(theme.palette.primary.main, 0.12),
+                    bgcolor: alpha(theme.palette.primary.main, 0.025),
+                  }}
+                >
+                  <Typography
+                    variant="subtitle2"
+                    fontWeight={850}
+                    sx={{ mb: 1.5 }}
+                  >
+                    Seat Numbering
+                  </Typography>
+
+                  <Stack spacing={1.5}>
+                    <FormControl fullWidth>
+                      <InputLabel>Numbering Format</InputLabel>
+
+                      <Select
+                        value={layoutNumberingMode}
+                        label="Numbering Format"
+                        onChange={(event) => {
+                          setLayoutNumberingMode(event.target.value);
+
+                          if (
+                            event.target.value !==
+                            SEAT_NUMBERING_MODES.CONTINUOUS
+                          ) {
+                            setLayoutStartSeatNumber(1);
+                          }
+                        }}
+                      >
+                        {Object.entries(SEAT_NUMBERING_LABELS).map(
+                          ([value, label]) => (
+                            <MenuItem key={value} value={value}>
+                              {label}
+                            </MenuItem>
+                          ),
+                        )}
+                      </Select>
+                    </FormControl>
+
+                    {layoutNumberingMode ===
+                      SEAT_NUMBERING_MODES.CONTINUOUS && (
+                      <TextField
+                        label="Starting Seat Number"
+                        type="number"
+                        value={layoutStartSeatNumber}
+                        onChange={(event) =>
+                          setLayoutStartSeatNumber(event.target.value)
+                        }
+                        slotProps={{
+                          htmlInput: {
+                            min: 1,
+                            step: 1,
+                          },
+                        }}
+                        helperText={
+                          seats.length > 0
+                            ? layoutRenumberExisting
+                              ? `Existing seats will be renumbered starting from ${
+                                  Number(layoutStartSeatNumber) || 1
+                                }.`
+                              : "Choose a start number, then enable Renumber existing seats."
+                            : `The first generated seat will be ${
+                                Number(layoutStartSeatNumber) || 1
+                              }.`
+                        }
+                        fullWidth
+                      />
+                    )}
+
+                    {seats.length > 0 && (
+                      <Paper
+                        elevation={0}
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 2,
+                          border: "1px solid",
+                          borderColor: layoutRenumberExisting
+                            ? alpha(theme.palette.warning.main, 0.35)
+                            : alpha(theme.palette.primary.main, 0.12),
+                          bgcolor: layoutRenumberExisting
+                            ? alpha(theme.palette.warning.main, 0.045)
+                            : alpha(theme.palette.primary.main, 0.025),
+                        }}
+                      >
+                        <Stack
+                          direction="row"
+                          spacing={1.2}
+                          alignItems="flex-start"
+                        >
+                          <Checkbox
+                            checked={layoutRenumberExisting}
+                            onChange={(event) =>
+                              setLayoutRenumberExisting(event.target.checked)
+                            }
+                            sx={{ p: 0.25, mt: -0.15 }}
+                          />
+
+                          <Box>
+                            <Typography
+                              variant="body2"
+                              fontWeight={800}
+                              color="text.primary"
+                            >
+                              Renumber existing seats
+                            </Typography>
+
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{ display: "block", mt: 0.25 }}
+                            >
+                              Only seat names/numbers will change. Physical row,
+                              column, seat type and status remain unchanged.
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </Paper>
+                    )}
+
+                    {seats.length > 0 && !layoutRenumberExisting && (
+                      <Alert severity="info" sx={{ borderRadius: 2 }}>
+                        Existing seat numbers are preserved unless you
+                        explicitly enable renumbering.
+                      </Alert>
+                    )}
+
+                    {seats.length > 0 && layoutRenumberExisting && (
+                      <Alert severity="warning" sx={{ borderRadius: 2 }}>
+                        This will rename all existing seats on this floor when
+                        you apply the layout. Existing seat IDs and physical
+                        positions are preserved.
+                      </Alert>
+                    )}
+                  </Stack>
+                </Paper>
+
                 <FormControl fullWidth>
                   <InputLabel>Default Seat Type</InputLabel>
 
@@ -4194,8 +4796,8 @@ const SeatMapping = () => {
               <Paper
                 elevation={0}
                 sx={{
-                  p: 3,
-                  height: "100%",
+                  p: { xs: 2, md: 3 },
+                  minHeight: 420,
                   borderRadius: 3.2,
                   border: "1px solid",
                   borderColor: alpha(theme.palette.primary.main, 0.1),
@@ -4206,14 +4808,35 @@ const SeatMapping = () => {
                   Layout Preview
                 </Typography>
 
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 3 }}
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  spacing={1}
+                  alignItems={{ xs: "flex-start", sm: "center" }}
+                  justifyContent="space-between"
+                  sx={{ mb: 2.5 }}
                 >
-                  {Number(layoutRows) || 0} rows × {Number(layoutColumns) || 0}{" "}
-                  positions
-                </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {Number(layoutRows) || 0} rows ×{" "}
+                    {Number(layoutColumns) || 0} positions
+                  </Typography>
+
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={
+                      seats.length > 0 && !layoutRenumberExisting
+                        ? "Existing seat names preserved"
+                        : layoutNumberingMode ===
+                            SEAT_NUMBERING_MODES.CONTINUOUS
+                          ? `Continuous • starts at ${Number(layoutStartSeatNumber) || 1}`
+                          : "Row-based • A1, A2..."
+                    }
+                    sx={{
+                      fontWeight: 750,
+                      bgcolor: "background.paper",
+                    }}
+                  />
+                </Stack>
 
                 {layoutEntrance.startsWith("TOP_") && (
                   <Stack
@@ -4230,16 +4853,30 @@ const SeatMapping = () => {
                   </Stack>
                 )}
 
-                <Box sx={{ overflowX: "auto" }}>
+                <Box
+                  sx={{
+                    width: "100%",
+                    minWidth: 0,
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    pb: 1,
+                    pl: 0.5,
+                    pr: 1,
+                    scrollbarGutter: "stable",
+                    overscrollBehaviorX: "contain",
+                  }}
+                >
                   <Stack
                     spacing={1}
                     sx={{
                       minWidth:
-                        Math.min(Number(layoutColumns) || 1, 10) * 52 + 50,
+                        Math.max(Number(layoutColumns) || 1, 1) * 52 + 50,
+                      width: "max-content",
+                      pr: 1,
                     }}
                   >
                     {Array.from({
-                      length: Math.min(Number(layoutRows) || 0, 8),
+                      length: Math.min(Number(layoutRows) || 0, 10),
                     }).map((_, rowIndex) => {
                       const row = getRowLabel(rowIndex);
 
@@ -4261,39 +4898,115 @@ const SeatMapping = () => {
                           </Typography>
 
                           {Array.from({
-                            length: Math.min(Number(layoutColumns) || 0, 10),
-                          }).map((__, columnIndex) => (
-                            <Box
-                              key={columnIndex}
-                              sx={{
-                                width: 44,
-                                height: 44,
-                                borderRadius: 1.7,
-                                border: "1px solid",
-                                borderColor: alpha(
-                                  theme.palette.success.main,
-                                  0.25,
-                                ),
-                                bgcolor: alpha(
-                                  theme.palette.success.main,
-                                  0.06,
-                                ),
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <EventSeat
-                                sx={{ fontSize: 18, color: "success.main" }}
-                              />
+                            length: Math.max(Number(layoutColumns) || 0, 0),
+                          }).map((__, columnIndex) => {
+                            const columnNumber = columnIndex + 1;
 
-                              <Typography variant="caption" fontWeight={700}>
-                                {row}
-                                {columnIndex + 1}
-                              </Typography>
-                            </Box>
-                          ))}
+                            const existingSeat = seatByPosition.get(
+                              positionKey(row, columnNumber),
+                            );
+
+                            let previewSeatNumber;
+
+                            if (existingSeat && !layoutRenumberExisting) {
+                              previewSeatNumber = existingSeat.seatNumber;
+                            } else if (
+                              existingSeat &&
+                              layoutRenumberExisting &&
+                              layoutNumberingMode ===
+                                SEAT_NUMBERING_MODES.CONTINUOUS
+                            ) {
+                              const orderedExistingSeats = [...seats].sort(
+                                (left, right) => {
+                                  const leftRow = getRowIndexFromLabel(
+                                    left?.rowLabel,
+                                  );
+                                  const rightRow = getRowIndexFromLabel(
+                                    right?.rowLabel,
+                                  );
+
+                                  if (leftRow !== rightRow) {
+                                    return leftRow - rightRow;
+                                  }
+
+                                  return (
+                                    Number(left?.columnNumber || 0) -
+                                    Number(right?.columnNumber || 0)
+                                  );
+                                },
+                              );
+
+                              const existingIndex =
+                                orderedExistingSeats.findIndex(
+                                  (seat) =>
+                                    String(seat?.id ?? "") ===
+                                    String(existingSeat?.id ?? ""),
+                                );
+
+                              previewSeatNumber = String(
+                                Math.max(
+                                  Number(layoutStartSeatNumber) || 1,
+                                  1,
+                                ) + Math.max(existingIndex, 0),
+                              );
+                            } else if (
+                              existingSeat &&
+                              layoutRenumberExisting &&
+                              layoutNumberingMode ===
+                                SEAT_NUMBERING_MODES.ROW_COLUMN
+                            ) {
+                              previewSeatNumber = `${row}${columnNumber}`;
+                            } else {
+                              previewSeatNumber = buildSeatNumber({
+                                mode: layoutNumberingMode,
+                                rowLabel: row,
+                                rowIndex,
+                                columnNumber,
+                                columnsPerRow: Number(layoutColumns) || 1,
+                                startNumber: layoutStartSeatNumber,
+                              });
+                            }
+
+                            return (
+                              <Box
+                                key={columnIndex}
+                                sx={{
+                                  width: 44,
+                                  height: 44,
+                                  borderRadius: 1.7,
+                                  border: "1px solid",
+                                  borderColor: alpha(
+                                    theme.palette.success.main,
+                                    0.25,
+                                  ),
+                                  bgcolor: alpha(
+                                    theme.palette.success.main,
+                                    0.06,
+                                  ),
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <EventSeat
+                                  sx={{ fontSize: 18, color: "success.main" }}
+                                />
+
+                                <Typography
+                                  variant="caption"
+                                  fontWeight={750}
+                                  noWrap
+                                  sx={{
+                                    maxWidth: 38,
+                                    lineHeight: 1.1,
+                                  }}
+                                >
+                                  {previewSeatNumber}
+                                </Typography>
+                              </Box>
+                            );
+                          })}
                         </Stack>
                       );
                     })}
@@ -4746,6 +5459,255 @@ const SeatMapping = () => {
       </Dialog>
 
       <Dialog
+        open={reverseNumberingDialogOpen}
+        onClose={() => !saving && setReverseNumberingDialogOpen(false)}
+        fullWidth
+        maxWidth="sm"
+        slotProps={{
+          paper: {
+            sx: {
+              borderRadius: 4,
+              boxShadow: "0 24px 70px rgba(15,23,42,0.18)",
+            },
+          },
+        }}
+      >
+        <DialogTitle sx={{ px: 3, pt: 3, pb: 1.5 }}>
+          <Stack direction="row" spacing={1.4} alignItems="center">
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: 2.3,
+                display: "grid",
+                placeItems: "center",
+                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                color: "primary.main",
+              }}
+            >
+              <SwapHoriz />
+            </Box>
+
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                Reverse Seat Numbering
+              </Typography>
+
+              <Typography variant="body2" color="text.secondary">
+                Reverse seat numbers in one physical row or column without
+                moving any seats.
+              </Typography>
+            </Box>
+          </Stack>
+        </DialogTitle>
+
+        <DialogContent sx={{ px: 3 }}>
+          <Stack spacing={2.2} sx={{ mt: 1 }}>
+            <Alert severity="info" sx={{ borderRadius: 2.2 }}>
+              Only seat names/numbers are reversed. Seat IDs, physical
+              positions, types and statuses remain unchanged.
+            </Alert>
+
+            <FormControl fullWidth>
+              <InputLabel>Reverse By</InputLabel>
+
+              <Select
+                value={reverseNumberingScope}
+                label="Reverse By"
+                onChange={(event) => {
+                  const nextScope = event.target.value;
+
+                  setReverseNumberingScope(nextScope);
+
+                  setReverseNumberingTarget(
+                    nextScope === "ROW"
+                      ? availableRows[0] || ""
+                      : String(availableColumns[0] || ""),
+                  );
+                }}
+              >
+                <MenuItem value="ROW">
+                  Row
+                </MenuItem>
+
+                <MenuItem value="COLUMN">
+                  Column
+                </MenuItem>
+              </Select>
+            </FormControl>
+
+            {reverseNumberingScope === "ROW" ? (
+              <FormControl fullWidth>
+                <InputLabel>Row</InputLabel>
+
+                <Select
+                  value={reverseNumberingTarget}
+                  label="Row"
+                  onChange={(event) =>
+                    setReverseNumberingTarget(event.target.value)
+                  }
+                >
+                  {availableRows.map((row) => (
+                    <MenuItem key={row} value={row}>
+                      Row {row}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <FormControl fullWidth>
+                <InputLabel>Column</InputLabel>
+
+                <Select
+                  value={reverseNumberingTarget}
+                  label="Column"
+                  onChange={(event) =>
+                    setReverseNumberingTarget(event.target.value)
+                  }
+                >
+                  {availableColumns.map((column) => (
+                    <MenuItem key={column} value={String(column)}>
+                      Column {column}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+
+            {reverseNumberingTarget && (
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  borderRadius: 2.5,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: alpha(theme.palette.primary.main, 0.018),
+                }}
+              >
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={850}
+                  sx={{ mb: 1.3 }}
+                >
+                  Preview
+                </Typography>
+
+                {(() => {
+                  const preview = buildReverseNumberingPreview();
+
+                  if (preview.length === 0) {
+                    return (
+                      <Typography variant="body2" color="text.secondary">
+                        No seats found in this selection.
+                      </Typography>
+                    );
+                  }
+
+                  return (
+                    <Stack spacing={1}>
+                      {preview.map((seat) => (
+                        <Stack
+                          key={seat.id ?? seat.seatId}
+                          direction="row"
+                          alignItems="center"
+                          justifyContent="space-between"
+                          spacing={2}
+                          sx={{
+                            px: 1.25,
+                            py: 0.9,
+                            borderRadius: 1.8,
+                            bgcolor: "#FFFFFF",
+                            border: "1px solid",
+                            borderColor: alpha(
+                              theme.palette.text.primary,
+                              0.07,
+                            ),
+                          }}
+                        >
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                          >
+                            {normalizeRow(seat.rowLabel)}
+                            {Number(seat.columnNumber)}
+                          </Typography>
+
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            alignItems="center"
+                          >
+                            <Chip
+                              size="small"
+                              label={String(seat.seatNumber)}
+                              variant="outlined"
+                              sx={{ fontWeight: 750 }}
+                            />
+
+                            <Typography color="text.secondary">
+                              →
+                            </Typography>
+
+                            <Chip
+                              size="small"
+                              label={String(seat.nextSeatNumber)}
+                              color="primary"
+                              variant="outlined"
+                              sx={{ fontWeight: 800 }}
+                            />
+                          </Stack>
+                        </Stack>
+                      ))}
+                    </Stack>
+                  );
+                })()}
+              </Paper>
+            )}
+
+            <Alert severity="warning" sx={{ borderRadius: 2.2 }}>
+              This action changes seat numbers immediately after you click
+              Apply Reverse. You can reverse the same row or column again to
+              restore the previous order.
+            </Alert>
+          </Stack>
+        </DialogContent>
+
+        <DialogActions sx={{ px: 3, pb: 3, pt: 1.5 }}>
+          <Button
+            disabled={saving}
+            onClick={() => setReverseNumberingDialogOpen(false)}
+            variant="outlined"
+            sx={{
+              textTransform: "none",
+              borderRadius: 2.2,
+              fontWeight: 700,
+            }}
+          >
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            disabled={
+              saving ||
+              !reverseNumberingTarget ||
+              buildReverseNumberingPreview().length < 2
+            }
+            onClick={handleReverseNumbering}
+            startIcon={!saving ? <SwapHoriz /> : undefined}
+            sx={{
+              textTransform: "none",
+              borderRadius: 2.2,
+              fontWeight: 800,
+            }}
+          >
+            {saving ? "Applying..." : "Apply Reverse"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
         open={addRowDialogOpen}
         onClose={() => !saving && setAddRowDialogOpen(false)}
         fullWidth
@@ -4776,6 +5738,11 @@ const SeatMapping = () => {
               <strong>
                 {rowCount < 26 ? getRowLabel(rowCount) : "No row available"}
               </strong>
+              .{" "}
+              {getDetectedNumberingMode(seats) ===
+              SEAT_NUMBERING_MODES.CONTINUOUS
+                ? `Seat numbers will continue from ${getHighestNumericSeatNumber(seats) + 1}.`
+                : "Seat names will follow the row format (for example H1, H2...)."}
             </Alert>
 
             <TextField

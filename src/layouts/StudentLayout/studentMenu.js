@@ -7,12 +7,19 @@ import {
   HelpOutlineOutlined,
   LibraryBooks,
   Notifications,
+  NotificationsActiveOutlined,
   Payments,
   ReceiptLong,
   SwapHoriz,
 } from "@mui/icons-material";
 
+
+// ============================================================
+// STUDENT MENU
+// ============================================================
+
 const studentMenu = [
+
   // ==========================================================
   // OVERVIEW
   // ==========================================================
@@ -28,6 +35,7 @@ const studentMenu = [
       },
     ],
   },
+
 
   // ==========================================================
   // DISCOVER
@@ -50,6 +58,7 @@ const studentMenu = [
       },
     ],
   },
+
 
   // ==========================================================
   // MY LIBRARY
@@ -79,6 +88,7 @@ const studentMenu = [
     ],
   },
 
+
   // ==========================================================
   // FINANCE
   // ==========================================================
@@ -101,6 +111,7 @@ const studentMenu = [
     ],
   },
 
+
   // ==========================================================
   // ACCOUNT
   // ==========================================================
@@ -113,6 +124,12 @@ const studentMenu = [
         label: "Notifications",
         path: "/student/notifications",
         icon: Notifications,
+      },
+
+      {
+        label: "Notification Preferences",
+        path: "/student/notification-preferences",
+        icon: NotificationsActiveOutlined,
       },
 
       {
@@ -129,5 +146,6 @@ const studentMenu = [
     ],
   },
 ];
+
 
 export default studentMenu;

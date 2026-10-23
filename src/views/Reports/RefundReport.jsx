@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
+import { useParams } from "react-router-dom";
+
 import {
   Alert,
   Box,
@@ -48,22 +50,32 @@ import {
 } from "recharts";
 
 import ReportHeader from "../../components/reports/ReportHeader";
+
 import ReportFilter from "../../components/reports/ReportFilter";
+
 import ReportStatCard from "../../components/reports/ReportStatCard";
 
 import libraryApi from "../../api/libraryApi";
+
 import reportApi from "../../api/reportApi";
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const REFUND_STATUSES = [
   "ALL",
+
   "PENDING",
+
   "PROCESSING",
+
   "SUCCESS",
+
   "FAILED",
+
   "CANCELLED",
 ];
 
@@ -72,7 +84,9 @@ const REFERENCE_TYPES = ["ALL", "BOOKING", "MEMBERSHIP"];
 const STATUS_COLORS = ["#F59E0B", "#0284C7", "#16A34A", "#DC2626", "#64748B"];
 
 // ============================================================
+
 // DATE HELPERS
+
 // ============================================================
 
 const formatBackendDate = (date) => {
@@ -120,6 +134,7 @@ const getPeriodRange = (period) => {
       break;
 
     case "month":
+
     default:
       from.setDate(1);
 
@@ -134,7 +149,9 @@ const getPeriodRange = (period) => {
 };
 
 // ============================================================
+
 // FORMATTERS
+
 // ============================================================
 
 const formatCurrency = (value, currency = "INR") => {
@@ -143,7 +160,9 @@ const formatCurrency = (value, currency = "INR") => {
   try {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
+
       currency: currency || "INR",
+
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
@@ -164,7 +183,9 @@ const formatDate = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
   }).format(date);
 };
@@ -182,9 +203,13 @@ const formatDateTime = (value) => {
 
   return new Intl.DateTimeFormat("en-IN", {
     day: "2-digit",
+
     month: "short",
+
     year: "numeric",
+
     hour: "2-digit",
+
     minute: "2-digit",
   }).format(date);
 };
@@ -196,8 +221,11 @@ const formatEnum = (value) => {
 
   return String(value)
     .toLowerCase()
+
     .split("_")
+
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+
     .join(" ");
 };
 
@@ -207,10 +235,12 @@ const getStatusColor = (status) => {
       return "success";
 
     case "PENDING":
+
     case "PROCESSING":
       return "warning";
 
     case "FAILED":
+
     case "CANCELLED":
       return "error";
 
@@ -229,17 +259,30 @@ const getErrorMessage = (error, fallback) => {
 };
 
 // ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function RefundReport() {
+  const { libraryId: routeLibraryId } = useParams();
+
+  const isAdminReport =
+    routeLibraryId !== undefined &&
+    routeLibraryId !== null &&
+    routeLibraryId !== "";
+
   // ========================================================
+
   // STATE
+
   // ========================================================
 
   const [libraries, setLibraries] = useState([]);
 
-  const [selectedLibraryId, setSelectedLibraryId] = useState("");
+  const [selectedLibraryId, setSelectedLibraryId] = useState(() =>
+    isAdminReport ? String(routeLibraryId) : "",
+  );
 
   const [period, setPeriod] = useState("month");
 
@@ -260,13 +303,17 @@ function RefundReport() {
   const [error, setError] = useState("");
 
   // ========================================================
+
   // DATE RANGE
+
   // ========================================================
 
   const dateRange = useMemo(() => getPeriodRange(period), [period]);
 
   // ========================================================
+
   // REQUEST PAYLOAD
+
   // ========================================================
 
   const reportPayload = useMemo(() => {
@@ -300,10 +347,20 @@ function RefundReport() {
   }, [selectedLibraryId, dateRange, refundStatus, referenceType]);
 
   // ========================================================
+
   // LOAD OWNER LIBRARIES
+
   // ========================================================
 
   useEffect(() => {
+    if (isAdminReport) {
+      setLibraries([]);
+      setSelectedLibraryId(String(routeLibraryId));
+      setLoadingLibraries(false);
+      setError("");
+      return undefined;
+    }
+
     let active = true;
 
     const loadLibraries = async () => {
@@ -355,10 +412,12 @@ function RefundReport() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [isAdminReport, routeLibraryId]);
 
   // ========================================================
+
   // LOAD REFUND REPORT
+
   // ========================================================
 
   const loadReport = useCallback(async () => {
@@ -396,7 +455,9 @@ function RefundReport() {
   }, [loadingLibraries, reportPayload, loadReport]);
 
   // ========================================================
+
   // BACKEND DATA
+
   // ========================================================
 
   const summary = report?.summary || {};
@@ -404,7 +465,9 @@ function RefundReport() {
   const records = Array.isArray(report?.records) ? report.records : [];
 
   // ========================================================
+
   // SUMMARY VALUES
+
   // ========================================================
 
   const totalRefunds = Number(summary.totalRefunds || 0);
@@ -428,7 +491,9 @@ function RefundReport() {
   );
 
   // ========================================================
+
   // STATUS DISTRIBUTION
+
   // ========================================================
 
   const statusData = useMemo(
@@ -439,38 +504,49 @@ function RefundReport() {
 
           value: pendingRefunds,
         },
+
         {
           name: "Processing",
 
           value: processingRefunds,
         },
+
         {
           name: "Success",
 
           value: successfulRefunds,
         },
+
         {
           name: "Failed",
 
           value: failedRefunds,
         },
+
         {
           name: "Cancelled",
 
           value: cancelledRefunds,
         },
       ].filter((item) => item.value > 0),
+
     [
       pendingRefunds,
+
       processingRefunds,
+
       successfulRefunds,
+
       failedRefunds,
+
       cancelledRefunds,
     ],
   );
 
   // ========================================================
+
   // REFUNDS BY SOURCE
+
   // ========================================================
 
   const sourceData = useMemo(() => {
@@ -481,7 +557,9 @@ function RefundReport() {
 
       const existing = grouped.get(source) || {
         source,
+
         refunds: 0,
+
         amount: 0,
       };
 
@@ -493,6 +571,7 @@ function RefundReport() {
     });
 
     return Array.from(grouped.values())
+
       .map((item) => ({
         source: formatEnum(item.source),
 
@@ -500,17 +579,22 @@ function RefundReport() {
 
         amount: item.amount,
       }))
+
       .sort((a, b) => b.amount - a.amount);
   }, [records]);
 
   // ========================================================
+
   // RECENT REFUNDS
+
   // ========================================================
 
   const recentRefunds = useMemo(() => records.slice(0, 15), [records]);
 
   // ========================================================
+
   // SELECTED LIBRARY
+
   // ========================================================
 
   const selectedLibrary = useMemo(
@@ -518,16 +602,20 @@ function RefundReport() {
       libraries.find(
         (library) => String(library.id) === String(selectedLibraryId),
       ) || null,
+
     [libraries, selectedLibraryId],
   );
 
   const periodLabel = useMemo(
     () => `${formatDate(dateRange.fromDate)} - ${formatDate(dateRange.toDate)}`,
+
     [dateRange],
   );
 
   // ========================================================
+
   // EXPORT PDF
+
   // ========================================================
 
   const handlePdfExport = async () => {
@@ -551,7 +639,9 @@ function RefundReport() {
   };
 
   // ========================================================
+
   // EXPORT EXCEL
+
   // ========================================================
 
   const handleExcelExport = async () => {
@@ -575,7 +665,9 @@ function RefundReport() {
   };
 
   // ========================================================
+
   // INITIAL LOADING
+
   // ========================================================
 
   if (loadingLibraries) {
@@ -596,15 +688,13 @@ function RefundReport() {
   }
 
   // ========================================================
+
   // UI
+
   // ========================================================
 
   return (
     <Box>
-      {/* ==================================================
-                HEADER
-            ================================================== */}
-
       <ReportHeader
         title="Refund Report"
         description="Track refund requests, processing states and successfully refunded amounts."
@@ -612,30 +702,43 @@ function RefundReport() {
           <Stack
             direction={{
               xs: "column",
+
               md: "row",
             }}
             spacing={1}
           >
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 180,
-              }}
-            >
-              <InputLabel>Library</InputLabel>
-
-              <Select
-                value={selectedLibraryId}
-                label="Library"
-                onChange={(event) => setSelectedLibraryId(event.target.value)}
+            {isAdminReport ? (
+              <Chip
+                label={`Library #${selectedLibraryId} · Admin scope`}
+                color="primary"
+                variant="outlined"
+                sx={{
+                  minHeight: 40,
+                  fontWeight: 700,
+                }}
+              />
+            ) : (
+              <FormControl
+                size="small"
+                sx={{
+                  minWidth: 180,
+                }}
               >
-                {libraries.map((library) => (
-                  <MenuItem key={library.id} value={String(library.id)}>
-                    {library.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                <InputLabel>Library</InputLabel>
+
+                <Select
+                  value={selectedLibraryId}
+                  label="Library"
+                  onChange={(event) => setSelectedLibraryId(event.target.value)}
+                >
+                  {libraries.map((library) => (
+                    <MenuItem key={library.id} value={String(library.id)}>
+                      {library.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
             <ReportFilter value={period} onChange={setPeriod} />
 
@@ -677,10 +780,6 @@ function RefundReport() {
         }
       />
 
-      {/* ==================================================
-                ERROR
-            ================================================== */}
-
       {error && (
         <Alert
           severity="error"
@@ -692,10 +791,6 @@ function RefundReport() {
         </Alert>
       )}
 
-      {/* ==================================================
-                FILTERS
-            ================================================== */}
-
       <Card
         sx={{
           mb: 3,
@@ -705,11 +800,13 @@ function RefundReport() {
           <Stack
             direction={{
               xs: "column",
+
               md: "row",
             }}
             spacing={2}
             alignItems={{
               xs: "stretch",
+
               md: "center",
             }}
           >
@@ -764,6 +861,7 @@ function RefundReport() {
             <Stack
               direction={{
                 xs: "column",
+
                 sm: "row",
               }}
               spacing={1}
@@ -782,15 +880,13 @@ function RefundReport() {
         </CardContent>
       </Card>
 
-      {/* ==================================================
-                LOADING
-            ================================================== */}
-
       {loadingReport && (
         <Box
           sx={{
             py: 8,
+
             display: "flex",
+
             justifyContent: "center",
           }}
         >
@@ -800,10 +896,6 @@ function RefundReport() {
 
       {!loadingReport && report && (
         <>
-          {/* ======================================
-                            SUMMARY CARDS
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             <Grid item xs={12} sm={6} lg={3}>
               <ReportStatCard
@@ -838,10 +930,6 @@ function RefundReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            STATUS + SOURCE
-                        ====================================== */}
-
           <Grid container spacing={2.5} mb={3}>
             {/* REFUND STATUS */}
 
@@ -862,8 +950,11 @@ function RefundReport() {
                     <Box
                       sx={{
                         minHeight: 300,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -876,6 +967,7 @@ function RefundReport() {
                       <Box
                         sx={{
                           height: 250,
+
                           position: "relative",
                         }}
                       >
@@ -908,9 +1000,13 @@ function RefundReport() {
                         <Box
                           sx={{
                             position: "absolute",
+
                             top: "50%",
+
                             left: "50%",
+
                             transform: "translate(-50%, -50%)",
+
                             textAlign: "center",
                           }}
                         >
@@ -939,8 +1035,11 @@ function RefundReport() {
                               <Box
                                 sx={{
                                   width: 10,
+
                                   height: 10,
+
                                   borderRadius: "50%",
+
                                   backgroundColor:
                                     STATUS_COLORS[index % STATUS_COLORS.length],
                                 }}
@@ -983,8 +1082,11 @@ function RefundReport() {
                     <Box
                       sx={{
                         minHeight: 320,
+
                         display: "flex",
+
                         alignItems: "center",
+
                         justifyContent: "center",
                       }}
                     >
@@ -996,6 +1098,7 @@ function RefundReport() {
                     <Box
                       sx={{
                         width: "100%",
+
                         height: 320,
                       }}
                     >
@@ -1038,10 +1141,6 @@ function RefundReport() {
             </Grid>
           </Grid>
 
-          {/* ======================================
-                            REFUND PERFORMANCE
-                        ====================================== */}
-
           <Card
             sx={{
               mb: 3,
@@ -1061,8 +1160,11 @@ function RefundReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1080,8 +1182,11 @@ function RefundReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1099,8 +1204,11 @@ function RefundReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1118,8 +1226,11 @@ function RefundReport() {
                   <Box
                     sx={{
                       p: 2,
+
                       border: "1px solid",
+
                       borderColor: "divider",
+
                       borderRadius: 2,
                     }}
                   >
@@ -1136,20 +1247,18 @@ function RefundReport() {
             </CardContent>
           </Card>
 
-          {/* ======================================
-                            REFUND TABLE
-                        ====================================== */}
-
           <Card>
             <CardContent>
               <Stack
                 direction={{
                   xs: "column",
+
                   sm: "row",
                 }}
                 justifyContent="space-between"
                 alignItems={{
                   xs: "flex-start",
+
                   sm: "center",
                 }}
                 spacing={1}
@@ -1261,6 +1370,7 @@ function RefundReport() {
                             >
                               {formatCurrency(
                                 refund.originalPaymentAmount,
+
                                 refund.currency,
                               )}
                             </Typography>
@@ -1289,6 +1399,7 @@ function RefundReport() {
                             <Typography fontWeight={600}>
                               {formatCurrency(
                                 refund.refundAmount,
+
                                 refund.currency,
                               )}
                             </Typography>

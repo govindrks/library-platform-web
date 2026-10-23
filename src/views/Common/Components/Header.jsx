@@ -45,13 +45,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../../context/AuthContext";
+
 import { useNotifications } from "../../../context/NotificationContext";
 
+import usePlatformConfig from "../../../api/usePlatformConfig";
+
 import libraryApi from "../../../api/libraryApi";
+
 import getImageUrl from "../../../utility/imageUrl";
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const drawerWidth = 250;
@@ -59,155 +65,240 @@ const drawerWidth = 250;
 const OWNER_SELECTED_LIBRARY_KEY = "ownerSelectedLibraryId";
 
 // ============================================================
+
 // IMAGE ROLES
+
 // ============================================================
 
 const IMAGE_ROLES = {
   PROFILE: "PROFILE",
+
   COVER: "COVER",
+
   GALLERY: "GALLERY",
 };
 
 // ============================================================
+
 // OWNER SEARCH ITEMS
+
 // ============================================================
 
 const OWNER_SEARCH_ITEMS = [
   {
     label: "Dashboard",
+
     description: "Operational overview",
+
     path: "/owner/dashboard",
+
     icon: DashboardRounded,
+
     keywords: "dashboard overview operations",
   },
 
   {
     label: "Library Profile",
+
     description: "Library identity, location and images",
+
     path: "/owner/library",
+
     icon: LibraryBooksRounded,
+
     keywords: "library profile identity image location",
   },
 
   {
     label: "Members",
+
     description: "Members and memberships",
+
     path: "/owner/members",
+
     icon: PersonRounded,
+
     keywords: "members students memberships subscriptions",
   },
 
   {
     label: "Bookings",
+
     description: "Manage library bookings",
+
     path: "/owner/bookings",
+
     icon: LibraryBooksRounded,
+
     keywords: "booking reservation seats",
   },
 
   {
     label: "Seat Availability",
+
     description: "Live seat occupancy",
+
     path: "/owner/seat-availability",
+
     icon: TuneRounded,
+
     keywords: "seat availability occupancy",
   },
 
   {
     label: "Seat Mapping",
+
     description: "Configure floors and seats",
+
     path: "/owner/seat-mapping",
+
     icon: TuneRounded,
+
     keywords: "seat map layout floors",
   },
 
   {
     label: "Payments",
+
     description: "Payment transactions",
+
     path: "/owner/payments",
+
     icon: LibraryBooksRounded,
+
     keywords: "payment transaction cash upi",
   },
 
   {
     label: "Revenue",
+
     description: "Revenue and profitability",
+
     path: "/owner/revenue",
+
     icon: DashboardRounded,
+
     keywords: "revenue income net expenses profit",
   },
 
   {
     label: "Expenses",
+
     description: "Operating expenses",
+
     path: "/owner/expenses",
+
     icon: LibraryBooksRounded,
+
     keywords: "expense cost vendor electricity rent",
   },
 
   {
     label: "Automation",
+
     description: "Automation workflows",
+
     path: "/owner/automation",
+
     icon: AutoAwesomeRounded,
+
     keywords: "automation workflow rules executions",
   },
 
   {
+    label: "Help & Support",
+
+    description: "Support tickets, documentation and student support",
+
+    path: "/owner/help-support",
+
+    icon: HelpOutlineRounded,
+
+    keywords:
+      "help support documentation faq ticket tickets student support assistance",
+  },
+
+  {
     label: "Settings",
+
     description: "Library configuration",
+
     path: "/owner/settings",
+
     icon: SettingsRounded,
+
     keywords: "settings preferences booking notifications",
   },
 ];
 
 // ============================================================
+
 // ADMIN SEARCH ITEMS
+
 // ============================================================
 
 const ADMIN_SEARCH_ITEMS = [
   {
     label: "Admin Dashboard",
+
     description: "Platform administration",
+
     path: "/admin/dashboard",
+
     icon: DashboardRounded,
+
     keywords: "dashboard platform admin",
   },
 
   {
     label: "Settings",
+
     description: "Platform settings",
+
     path: "/admin/settings",
+
     icon: SettingsRounded,
+
     keywords: "settings platform",
   },
 ];
 
 // ============================================================
+
 // MEMBER SEARCH ITEMS
+
 // ============================================================
 
 const MEMBER_SEARCH_ITEMS = [
   {
     label: "My Profile",
+
     description: "Member profile",
+
     path: "/student/profile",
+
     icon: PersonRounded,
+
     keywords: "profile account",
   },
 
   {
     label: "Notifications",
+
     description: "Member notifications",
+
     path: "/student/notifications",
+
     icon: NotificationsNoneRounded,
+
     keywords: "notification alerts",
   },
 ];
 
 // ============================================================
+
 // HELPERS
+
 // ============================================================
 
 const getInitials = (name) => {
@@ -218,9 +309,13 @@ const getInitials = (name) => {
   }
 
   return normalized
+
     .split(/\s+/)
+
     .slice(0, 2)
+
     .map((part) => part.charAt(0).toUpperCase())
+
     .join("");
 };
 
@@ -242,7 +337,9 @@ const formatRole = (role) => {
     default:
       return String(role)
         .toLowerCase()
-        .replace(/_/g, " ")
+
+        .replace(/\_/g, " ")
+
         .replace(/\b\w/g, (character) => character.toUpperCase());
   }
 };
@@ -272,7 +369,9 @@ const getStoredLibraryId = () => {
 };
 
 // ============================================================
+
 // LIBRARY IMAGE HELPERS
+
 // ============================================================
 
 const resolveImageRole = (image) => {
@@ -312,7 +411,9 @@ const resolveLibraryProfileImage = (library) => {
 };
 
 // ============================================================
+
 // HEADER
+
 // ============================================================
 
 function Header({ onMenuClick }) {
@@ -326,8 +427,12 @@ function Header({ onMenuClick }) {
 
   const { unreadCount = 0 } = useNotifications();
 
+  const { platformName } = usePlatformConfig();
+
   // =========================================================
+
   // USER
+
   // =========================================================
 
   const userName = user?.fullName?.trim() || "User";
@@ -349,7 +454,9 @@ function Header({ onMenuClick }) {
   const userRoleLabel = useMemo(() => formatRole(userRole), [userRole]);
 
   // =========================================================
+
   // USER MENU
+
   // =========================================================
 
   const [anchorEl, setAnchorEl] = useState(null);
@@ -357,7 +464,9 @@ function Header({ onMenuClick }) {
   const userMenuOpen = Boolean(anchorEl);
 
   // =========================================================
+
   // LIBRARY STATE
+
   // =========================================================
 
   const [libraries, setLibraries] = useState([]);
@@ -373,7 +482,9 @@ function Header({ onMenuClick }) {
   const [libraryIdentityVersion, setLibraryIdentityVersion] = useState(0);
 
   // =========================================================
+
   // SEARCH
+
   // =========================================================
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -383,7 +494,9 @@ function Header({ onMenuClick }) {
   const searchRef = useRef(null);
 
   // =========================================================
+
   // SELECTED LIBRARY SUMMARY
+
   // =========================================================
 
   const selectedLibrarySummary = useMemo(
@@ -391,11 +504,14 @@ function Header({ onMenuClick }) {
       libraries.find(
         (library) => String(library.id) === String(selectedLibraryId),
       ) || null,
+
     [libraries, selectedLibraryId],
   );
 
   // =========================================================
+
   // SELECTED LIBRARY PROFILE IMAGE
+
   // =========================================================
 
   const libraryProfileImageUrl = useMemo(() => {
@@ -409,7 +525,9 @@ function Header({ onMenuClick }) {
   }, [selectedLibraryDetails, selectedLibrarySummary]);
 
   // =========================================================
+
   // HEADER DISPLAY IDENTITY
+
   // =========================================================
 
   const headerDisplayName = isLibraryOwner
@@ -425,7 +543,9 @@ function Header({ onMenuClick }) {
     : userInitials;
 
   // =========================================================
+
   // SEARCH ITEMS
+
   // =========================================================
 
   const searchItems = useMemo(() => {
@@ -452,17 +572,21 @@ function Header({ onMenuClick }) {
     }
 
     return searchItems
+
       .filter((item) => {
         const searchable =
           `${item.label} ${item.description} ${item.keywords}`.toLowerCase();
 
         return searchable.includes(query);
       })
+
       .slice(0, 8);
   }, [searchItems, searchQuery]);
 
   // =========================================================
+
   // LOAD OWNER LIBRARIES
+
   // =========================================================
 
   useEffect(() => {
@@ -528,7 +652,9 @@ function Header({ onMenuClick }) {
   }, [isLibraryOwner]);
 
   // =========================================================
+
   // LOAD SELECTED LIBRARY DETAILS
+
   // =========================================================
 
   const loadSelectedLibraryIdentity = useCallback(async () => {
@@ -560,7 +686,9 @@ function Header({ onMenuClick }) {
   }, [loadSelectedLibraryIdentity, libraryIdentityVersion]);
 
   // =========================================================
+
   // SYNC LIBRARY SELECTION
+
   // =========================================================
 
   useEffect(() => {
@@ -608,7 +736,9 @@ function Header({ onMenuClick }) {
   }, [isLibraryOwner]);
 
   // =========================================================
+
   // LIVE PROFILE / IMAGE REFRESH
+
   // =========================================================
 
   useEffect(() => {
@@ -632,19 +762,23 @@ function Header({ onMenuClick }) {
 
     window.addEventListener(
       "owner-library-profile-updated",
+
       handleLibraryProfileUpdated,
     );
 
     return () => {
       window.removeEventListener(
         "owner-library-profile-updated",
+
         handleLibraryProfileUpdated,
       );
     };
   }, [isLibraryOwner, selectedLibraryId]);
 
   // =========================================================
+
   // LIBRARY CHANGE
+
   // =========================================================
 
   const handleLibraryChange = (event) => {
@@ -666,7 +800,9 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
+
   // USER MENU
+
   // =========================================================
 
   const handleUserMenuOpen = (event) => {
@@ -678,7 +814,9 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
+
   // NOTIFICATIONS
+
   // =========================================================
 
   const handleNotificationNavigation = () => {
@@ -706,7 +844,9 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
+
   // SETTINGS
+
   // =========================================================
 
   const handleSettingsNavigation = () => {
@@ -734,7 +874,27 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
+
+  // HELP & SUPPORT
+
+  // =========================================================
+
+  const handleHelpSupportNavigation = () => {
+    handleUserMenuClose();
+
+    if (isLibraryOwner) {
+      navigate("/owner/help-support");
+
+      return;
+    }
+
+    navigate("/dashboard");
+  };
+
+  // =========================================================
+
   // PROFILE
+
   // =========================================================
 
   const handleProfileNavigation = () => {
@@ -762,21 +922,59 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
+
   // LOGOUT
+
   // =========================================================
 
   const handleLogout = () => {
-    handleUserMenuClose();
+    // Close account menu first
 
-    logout();
+    setAnchorEl(null);
 
-    navigate("/login", {
+    // ==========================================================
+
+    // IMPORTANT
+
+    // ==========================================================
+
+    //
+
+    // Move away from the protected route BEFORE clearing auth.
+
+    //
+
+    // Otherwise ProtectedRoute sees:
+
+    //
+
+    // isAuthenticated = false
+
+    // current URL = /owner/... or /admin/...
+
+    //
+
+    // and immediately redirects to /login.
+
+    //
+
+    // ==========================================================
+
+    navigate("/", {
       replace: true,
     });
+
+    // Clear authentication only after navigation has started.
+
+    window.setTimeout(() => {
+      logout();
+    }, 0);
   };
 
   // =========================================================
+
   // SEARCH
+
   // =========================================================
 
   const openSearch = () => {
@@ -806,7 +1004,9 @@ function Header({ onMenuClick }) {
   };
 
   // =========================================================
+
   // CURRENT PAGE LABEL
+
   // =========================================================
 
   const pageLabel = useMemo(() => {
@@ -822,6 +1022,10 @@ function Header({ onMenuClick }) {
 
     if (path.includes("/automation")) {
       return "Automation";
+    }
+
+    if (path.includes("/help-support")) {
+      return "Help & Support";
     }
 
     if (path.includes("/settings")) {
@@ -860,7 +1064,9 @@ function Header({ onMenuClick }) {
   }, [location.pathname, isLibraryOwner, isAdmin]);
 
   // =========================================================
+
   // RENDER
+
   // =========================================================
 
   return (
@@ -870,11 +1076,13 @@ function Header({ onMenuClick }) {
       sx={{
         width: {
           xs: "100%",
+
           md: `calc(100% - ${drawerWidth}px)`,
         },
 
         ml: {
           xs: 0,
+
           md: `${drawerWidth}px`,
         },
 
@@ -899,25 +1107,27 @@ function Header({ onMenuClick }) {
 
           px: {
             xs: 1.5,
+
             sm: 2,
+
             md: 3,
           },
 
           gap: {
             xs: 1,
+
             md: 1.5,
           },
         }}
       >
-        {/* =====================================================
-            MOBILE MENU
-           ===================================================== */}
+        {/* =====================================================* *  MOBILE MENU* *  ===================================================== */}
 
         <IconButton
           onClick={onMenuClick}
           sx={{
             display: {
               xs: "flex",
+
               md: "none",
             },
           }}
@@ -925,19 +1135,19 @@ function Header({ onMenuClick }) {
           <MenuRounded />
         </IconButton>
 
-        {/* =====================================================
-            WORKSPACE CONTEXT
-           ===================================================== */}
+        {/* =====================================================* *  WORKSPACE CONTEXT* *  ===================================================== */}
 
         <Box
           sx={{
             minWidth: {
               xs: 0,
+
               md: 185,
             },
 
             display: {
               xs: "none",
+
               sm: "block",
             },
           }}
@@ -954,10 +1164,10 @@ function Header({ onMenuClick }) {
             }}
           >
             {isLibraryOwner
-              ? "LibraryHub Owner"
+              ? `${platformName} Owner`
               : isAdmin
-                ? "LibraryHub Admin"
-                : "LibraryHub"}
+                ? `${platformName} Admin`
+                : platformName}
           </Typography>
 
           <Typography
@@ -972,9 +1182,7 @@ function Header({ onMenuClick }) {
           </Typography>
         </Box>
 
-        {/* =====================================================
-            LIBRARY SELECTOR
-           ===================================================== */}
+        {/* =====================================================* *  LIBRARY SELECTOR* *  ===================================================== */}
 
         {isLibraryOwner && (
           <Paper
@@ -982,6 +1190,7 @@ function Header({ onMenuClick }) {
             sx={{
               display: {
                 xs: "none",
+
                 md: "flex",
               },
 
@@ -1011,6 +1220,7 @@ function Header({ onMenuClick }) {
               alt={headerDisplayName}
               sx={{
                 width: 31,
+
                 height: 31,
 
                 bgcolor: "primary.main",
@@ -1073,9 +1283,7 @@ function Header({ onMenuClick }) {
           </Paper>
         )}
 
-        {/* =====================================================
-            SEARCH
-           ===================================================== */}
+        {/* =====================================================* *  SEARCH* *  ===================================================== */}
 
         <Paper
           ref={searchRef}
@@ -1085,6 +1293,7 @@ function Header({ onMenuClick }) {
           sx={{
             display: {
               xs: "none",
+
               sm: "flex",
             },
 
@@ -1092,7 +1301,9 @@ function Header({ onMenuClick }) {
 
             width: {
               sm: 220,
+
               lg: 340,
+
               xl: 430,
             },
 
@@ -1145,7 +1356,7 @@ function Header({ onMenuClick }) {
             value={searchQuery}
             placeholder={
               isLibraryOwner
-                ? "Search LibraryHub..."
+                ? `Search ${platformName}...`
                 : isAdmin
                   ? "Search platform..."
                   : "Search..."
@@ -1157,7 +1368,7 @@ function Header({ onMenuClick }) {
               openSearch();
             }}
             inputProps={{
-              "aria-label": "Search LibraryHub",
+              "aria-label": `Search ${platformName}`,
 
               autoComplete: "off",
             }}
@@ -1207,9 +1418,7 @@ function Header({ onMenuClick }) {
           }}
         />
 
-        {/* =====================================================
-            LIVE STATUS
-           ===================================================== */}
+        {/* =====================================================* *  LIVE STATUS* *  ===================================================== */}
 
         {isLibraryOwner && (
           <Chip
@@ -1220,6 +1429,7 @@ function Header({ onMenuClick }) {
             sx={{
               display: {
                 xs: "none",
+
                 lg: "inline-flex",
               },
 
@@ -1230,26 +1440,41 @@ function Header({ onMenuClick }) {
           />
         )}
 
-        {/* =====================================================
-            HELP
-           ===================================================== */}
+        {/* =====================================================* *  HELP* *  ===================================================== */}
 
-        <Tooltip title="Help & Documentation">
-          <IconButton
-            sx={{
-              display: {
-                xs: "none",
-                sm: "inline-flex",
-              },
-            }}
-          >
-            <HelpOutlineRounded />
-          </IconButton>
-        </Tooltip>
+        {isLibraryOwner && (
+          <Tooltip title="Help & Support">
+            <IconButton
+              onClick={handleHelpSupportNavigation}
+              aria-label="Open Help and Support"
+              sx={{
+                display: {
+                  xs: "none",
 
-        {/* =====================================================
-            NOTIFICATIONS
-           ===================================================== */}
+                  sm: "inline-flex",
+                },
+
+                bgcolor: location.pathname.startsWith("/owner/help-support")
+                  ? alpha(theme.palette.primary.main, 0.08)
+                  : "transparent",
+
+                color: location.pathname.startsWith("/owner/help-support")
+                  ? "primary.main"
+                  : "text.secondary",
+
+                "&:hover": {
+                  bgcolor: alpha(theme.palette.primary.main, 0.08),
+
+                  color: "primary.main",
+                },
+              }}
+            >
+              <HelpOutlineRounded />
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {/* =====================================================* *  NOTIFICATIONS* *  ===================================================== */}
 
         <Tooltip
           title={
@@ -1280,9 +1505,7 @@ function Header({ onMenuClick }) {
           </IconButton>
         </Tooltip>
 
-        {/* =====================================================
-            PROFILE
-           ===================================================== */}
+        {/* =====================================================* *  PROFILE* *  ===================================================== */}
 
         <ButtonBase
           onClick={handleUserMenuOpen}
@@ -1291,6 +1514,7 @@ function Header({ onMenuClick }) {
 
             px: {
               xs: 0.25,
+
               sm: 0.7,
             },
 
@@ -1314,6 +1538,7 @@ function Header({ onMenuClick }) {
               <Box
                 sx={{
                   width: 38,
+
                   height: 38,
 
                   display: "grid",
@@ -1344,6 +1569,7 @@ function Header({ onMenuClick }) {
 
                   boxShadow: `0 0 0 3px ${alpha(
                     theme.palette.primary.main,
+
                     0.055,
                   )}`,
                 }}
@@ -1356,6 +1582,7 @@ function Header({ onMenuClick }) {
               sx={{
                 display: {
                   xs: "none",
+
                   md: "block",
                 },
 
@@ -1385,6 +1612,7 @@ function Header({ onMenuClick }) {
               sx={{
                 display: {
                   xs: "none",
+
                   md: "block",
                 },
 
@@ -1394,9 +1622,7 @@ function Header({ onMenuClick }) {
           </Stack>
         </ButtonBase>
 
-        {/* =====================================================
-            PROFILE MENU
-           ===================================================== */}
+        {/* =====================================================* *  PROFILE MENU* *  ===================================================== */}
 
         <MuiMenu
           anchorEl={anchorEl}
@@ -1482,6 +1708,7 @@ function Header({ onMenuClick }) {
                     }}
                   >
                     {selectedLibraryDetails.city}
+
                     {selectedLibraryDetails?.state
                       ? `, ${selectedLibraryDetails.state}`
                       : ""}
@@ -1532,6 +1759,21 @@ function Header({ onMenuClick }) {
             <ListItemText primary="Notifications" />
           </MenuItem>
 
+          {isLibraryOwner && (
+            <MenuItem
+              onClick={handleHelpSupportNavigation}
+              sx={{
+                py: 1.1,
+              }}
+            >
+              <ListItemIcon>
+                <HelpOutlineRounded fontSize="small" />
+              </ListItemIcon>
+
+              <ListItemText primary="Help & Support" />
+            </MenuItem>
+          )}
+
           <MenuItem
             onClick={handleSettingsNavigation}
             sx={{
@@ -1571,9 +1813,7 @@ function Header({ onMenuClick }) {
           </MenuItem>
         </MuiMenu>
 
-        {/* =====================================================
-            SEARCH POPOVER
-           ===================================================== */}
+        {/* =====================================================* *  SEARCH POPOVER* *  ===================================================== */}
 
         <Popover
           open={Boolean(searchAnchor)}

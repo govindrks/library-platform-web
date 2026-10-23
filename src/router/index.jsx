@@ -5,7 +5,9 @@ import { Navigate, Route, Routes } from "react-router-dom";
 // ============================================================
 
 import PublicLayout from "../layouts/PublicLayout";
+
 import VerticalLayout from "../layouts/VerticalLayout";
+
 import StudentLayout from "../layouts/StudentLayout/StudentLayout";
 
 // ============================================================
@@ -13,7 +15,9 @@ import StudentLayout from "../layouts/StudentLayout/StudentLayout";
 // ============================================================
 
 import ProtectedRoute from "./ProtectedRoute";
+
 import PublicRoute from "./PublicRoute";
+
 import RoleRoute from "./RoleRoute";
 
 // ============================================================
@@ -21,11 +25,17 @@ import RoleRoute from "./RoleRoute";
 // ============================================================
 
 import Home from "../views/Public/Home";
+
 import LibraryList from "../views/Public/LibraryList";
+
 import LibraryDetails from "../views/Public/LibraryDetails";
+
 import SeatAvailability from "../views/Public/SeatAvailability";
+
 import LibraryEnquiry from "../views/Public/LibraryEnquiry";
+
 import PlatformPlans from "../views/Public/PlatformPlans";
+
 import QrRedirect from "../views/Public/QrRedirect";
 
 // ============================================================
@@ -33,6 +43,7 @@ import QrRedirect from "../views/Public/QrRedirect";
 // ============================================================
 
 import Login from "../views/Auth/Login";
+
 import Register from "../views/Auth/Register";
 
 // ============================================================
@@ -46,12 +57,20 @@ import Maintenance from "../views/Common/Maintenance";
 // ============================================================
 
 import RegisterLibrary from "../views/LibraryOwner/RegisterLibrary";
+
 import SeatChangeRequests from "../views/LibraryOwner/SeatChangeRequests";
+
 import SubscriptionBilling from "../views/LibraryOwner/SubscriptionBilling";
+
 import AutomationCenter from "../views/LibraryOwner/AutomationCenter";
+
 import Notifications from "../views/LibraryOwner/Notifications";
+
 import Settings from "../views/LibraryOwner/Settings";
+
 import Coupons from "../views/LibraryOwner/Coupons";
+
+import LibraryEnquiries from "../views/LibraryOwner/components/LibraryEnquiries";
 
 // ============================================================
 // STUDENT / MEMBER
@@ -64,9 +83,13 @@ import MembershipPaymentSuccess from "../views/Student/Membership/MembershipPaym
 // ============================================================
 
 import adminRoutes from "./routes/Admin";
+
 import ownerRoutes from "./routes/Owner";
+
 import studentRoutes from "./routes/StudentRoutes";
+
 import bookingRoutes from "./routes/Booking";
+
 import reportRoutes from "./routes/Reports";
 
 // ============================================================
@@ -74,7 +97,43 @@ import reportRoutes from "./routes/Reports";
 // ============================================================
 
 import DashboardRedirect from "./routes/Dashboard";
-import LibraryEnquiries from "../views/LibraryOwner/components/LibraryEnquiries";
+import LibraryOwnerFeatures from "../views/LibraryOwner/LibraryOwnerFeatures";
+
+// ============================================================
+// LOGIN OVERLAY
+// ============================================================
+//
+// Home remains rendered underneath Login.
+//
+// ============================================================
+
+function LoginOverlay() {
+  return (
+    <>
+      <Home />
+
+      <Login />
+    </>
+  );
+}
+
+// ============================================================
+// REGISTER OVERLAY
+// ============================================================
+//
+// Home remains rendered underneath Register.
+//
+// ============================================================
+
+function RegisterOverlay() {
+  return (
+    <>
+      <Home />
+
+      <Register />
+    </>
+  );
+}
 
 // ============================================================
 // APP ROUTER
@@ -143,20 +202,42 @@ function AppRouter() {
         <Route path="/platform-plans" element={<PlatformPlans />} />
 
         {/* =================================================== */}
+        {/* LIBRARY OWNER INTRO */}
+        {/* =================================================== */}
+
+        <Route path="/register-library" element={<LibraryOwnerFeatures />} />
+
+        {/* =================================================== */}
         {/* PUBLIC LIBRARY REGISTRATION */}
         {/* =================================================== */}
 
-        <Route path="/register-library" element={<RegisterLibrary />} />
-      </Route>
+        <Route path="/register-library/start" element={<RegisterLibrary />} />
 
-      {/* ===================================================== */}
-      {/* AUTHENTICATION */}
-      {/* ===================================================== */}
+        {/* =================================================== */}
+        {/* AUTHENTICATION OVER HOME */}
+        {/* =================================================== */}
 
-      <Route element={<PublicRoute />}>
-        <Route path="/login" element={<Login />} />
+        <Route element={<PublicRoute />}>
+          {/* =============================================== */}
+          {/* LOGIN */}
+          {/* =============================================== */}
 
-        <Route path="/register" element={<Register />} />
+          <Route path="/login" element={<LoginOverlay />} />
+
+          {/* =============================================== */}
+          {/* REGISTER */}
+          {/* =============================================== */}
+
+          <Route path="/register" element={<RegisterOverlay />} />
+
+          {/* =============================================== */}
+          {/* LEGACY WHATSAPP LOGIN */}
+          {/* =============================================== */}
+          {/* WhatsApp login is now inside Login.jsx. */}
+          {/* Keep old URL compatibility. */}
+
+          <Route path="/whatsapp-login" element={<LoginOverlay />} />
+        </Route>
       </Route>
 
       {/* ===================================================== */}

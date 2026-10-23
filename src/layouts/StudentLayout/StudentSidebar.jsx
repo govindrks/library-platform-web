@@ -11,40 +11,43 @@ import {
   Typography,
 } from "@mui/material";
 
-import {
-  useLocation,
-  useNavigate,
-} from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import studentMenu from "./studentMenu";
+import usePlatformConfig from "../../api/usePlatformConfig";
 
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const drawerWidth = 260;
 
-
 // ============================================================
+
 // STUDENT SIDEBAR
+
 // ============================================================
 
-function StudentSidebar({
-  mobileOpen,
-  onMobileClose,
-}) {
+function StudentSidebar({ mobileOpen, onMobileClose }) {
+  const { platformName, brandInitial } = usePlatformConfig();
+
   // ==========================================================
+
   // ROUTER
+
   // ==========================================================
 
   const location = useLocation();
 
   const navigate = useNavigate();
 
-
   // ==========================================================
+
   // NAVIGATION
+
   // ==========================================================
 
   const handleNavigation = (path) => {
@@ -57,224 +60,163 @@ function StudentSidebar({
     onMobileClose?.();
   };
 
-
   // ==========================================================
+
   // ACTIVE ROUTE
+
   // ==========================================================
 
   const isActive = (path) => {
-    const currentPath =
-      location.pathname;
-
+    const currentPath = location.pathname;
 
     // ------------------------------------------------------
+
     // DASHBOARD
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/dashboard"
-    ) {
-      return (
-        currentPath ===
-        "/student/dashboard"
-      );
+    if (path === "/student/dashboard") {
+      return currentPath === "/student/dashboard";
     }
 
-
     // ------------------------------------------------------
+
     // BROWSE LIBRARIES
-    // ------------------------------------------------------
-    //
-    // This should remain active on:
-    //
-    // /student/libraries
-    // /student/libraries/3
-    // /student/libraries/3/plans
-    //
-    // but NOT for the dedicated Find Seats menu item if
-    // that menu item later receives its own route.
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/libraries"
-    ) {
+    if (path === "/student/libraries") {
       return (
-        currentPath ===
-          "/student/libraries" ||
-        currentPath.startsWith(
-          "/student/libraries/",
-        )
+        currentPath === "/student/libraries" ||
+        currentPath.startsWith("/student/libraries/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // MEMBERSHIP
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/membership"
-    ) {
+    if (path === "/student/membership") {
       return (
-        currentPath === path ||
-        currentPath.startsWith(
-          "/student/membership/",
-        )
+        currentPath === path || currentPath.startsWith("/student/membership/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // BOOKINGS
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/bookings"
-    ) {
+    if (path === "/student/bookings") {
       return (
-        currentPath === path ||
-        currentPath.startsWith(
-          "/student/bookings/",
-        )
+        currentPath === path || currentPath.startsWith("/student/bookings/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // SEAT CHANGE
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/seat-change"
-    ) {
+    if (path === "/student/seat-change") {
       return (
-        currentPath === path ||
-        currentPath.startsWith(
-          "/student/seat-change/",
-        )
+        currentPath === path || currentPath.startsWith("/student/seat-change/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // PAYMENTS
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/payments"
-    ) {
+    if (path === "/student/payments") {
       return (
-        currentPath === path ||
-        currentPath.startsWith(
-          "/student/payments/",
-        )
+        currentPath === path || currentPath.startsWith("/student/payments/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // INVOICES
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/invoices"
-    ) {
+    if (path === "/student/invoices") {
       return (
-        currentPath === path ||
-        currentPath.startsWith(
-          "/student/invoices/",
-        )
+        currentPath === path || currentPath.startsWith("/student/invoices/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // NOTIFICATIONS
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/notifications"
-    ) {
+    if (path === "/student/notifications") {
       return (
         currentPath === path ||
-        currentPath.startsWith(
-          "/student/notifications/",
-        )
+        currentPath.startsWith("/student/notifications/")
       );
     }
 
+    // ------------------------------------------------------
+
+    // NOTIFICATION PREFERENCES
 
     // ------------------------------------------------------
+
+    if (path === "/student/notification-preferences") {
+      return (
+        currentPath === path ||
+        currentPath.startsWith("/student/notification-preferences/")
+      );
+    }
+
+    // ------------------------------------------------------
+
     // PROFILE
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/profile"
-    ) {
+    if (path === "/student/profile") {
       return (
-        currentPath === path ||
-        currentPath.startsWith(
-          "/student/profile/",
-        )
+        currentPath === path || currentPath.startsWith("/student/profile/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // HELP & SUPPORT
-    // ------------------------------------------------------
-    //
-    // Keep Help & Support active for both:
-    //
-    // /student/help-support
-    //
-    // and:
-    //
-    // /student/support/tickets/:ticketId
-    //
+
     // ------------------------------------------------------
 
-    if (
-      path ===
-      "/student/help-support"
-    ) {
+    if (path === "/student/help-support") {
       return (
-        currentPath ===
-          "/student/help-support" ||
-        currentPath.startsWith(
-          "/student/help-support/",
-        ) ||
-        currentPath.startsWith(
-          "/student/support/tickets/",
-        )
+        currentPath === "/student/help-support" ||
+        currentPath.startsWith("/student/help-support/") ||
+        currentPath.startsWith("/student/support/tickets/")
       );
     }
 
-
     // ------------------------------------------------------
+
     // DEFAULT
+
     // ------------------------------------------------------
 
-    return (
-      currentPath === path ||
-      currentPath.startsWith(
-        `${path}/`,
-      )
-    );
+    return currentPath === path || currentPath.startsWith(`${path}/`);
   };
 
-
   // ==========================================================
+
   // SIDEBAR CONTENT
+
   // ==========================================================
 
   const content = (
@@ -286,19 +228,18 @@ function StudentSidebar({
 
         flexDirection: "column",
 
-        bgcolor:
-          "background.paper",
+        bgcolor: "background.paper",
       }}
     >
-
       {/* ===================================================== */}
+
       {/* LOGO */}
+
       {/* ===================================================== */}
 
       <Toolbar
         sx={{
-          minHeight:
-            "76px !important",
+          minHeight: "76px !important",
 
           px: 2.5,
 
@@ -313,18 +254,15 @@ function StudentSidebar({
 
             borderRadius: 2.7,
 
-            background:
-              "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
+            background: "linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)",
 
-            color:
-              "primary.contrastText",
+            color: "primary.contrastText",
 
             display: "flex",
 
             alignItems: "center",
 
-            justifyContent:
-              "center",
+            justifyContent: "center",
 
             fontWeight: 900,
 
@@ -332,11 +270,10 @@ function StudentSidebar({
 
             flexShrink: 0,
 
-            boxShadow:
-              "0 7px 18px rgba(79,70,229,0.24)",
+            boxShadow: "0 7px 18px rgba(79,70,229,0.24)",
           }}
         >
-          L
+          {brandInitial}
         </Box>
 
         <Box
@@ -346,20 +283,11 @@ function StudentSidebar({
             minWidth: 0,
           }}
         >
-          <Typography
-            variant="h6"
-            fontWeight={800}
-            lineHeight={1.1}
-            noWrap
-          >
-            LibraryHub
+          <Typography variant="h6" fontWeight={800} lineHeight={1.1} noWrap>
+            {platformName}
           </Typography>
 
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            noWrap
-          >
+          <Typography variant="caption" color="text.secondary" noWrap>
             Member Portal
           </Typography>
         </Box>
@@ -367,9 +295,10 @@ function StudentSidebar({
 
       <Divider />
 
-
       {/* ===================================================== */}
+
       {/* MENU */}
+
       {/* ===================================================== */}
 
       <Box
@@ -384,289 +313,217 @@ function StudentSidebar({
 
           px: 1.25,
 
-          scrollbarWidth:
-            "thin",
+          scrollbarWidth: "thin",
 
-          "&::-webkit-scrollbar":
-            {
-              width: 5,
-            },
+          "&::-webkit-scrollbar": {
+            width: 5,
+          },
 
-          "&::-webkit-scrollbar-thumb":
-            {
-              bgcolor:
-                "action.disabled",
+          "&::-webkit-scrollbar-thumb": {
+            bgcolor: "action.disabled",
 
-              borderRadius: 20,
-            },
+            borderRadius: 20,
+          },
         }}
       >
-        {studentMenu.map(
-          (
-            section,
-            sectionIndex,
-          ) => (
-            <Box
-              key={
-                section.title ||
-                section.section ||
-                sectionIndex
-              }
+        {studentMenu.map((section, sectionIndex) => (
+          <Box
+            key={section.title || section.section || sectionIndex}
+            sx={{
+              mb: 2,
+            }}
+          >
+            {/* ============================================= */}
+
+            {/* SECTION TITLE */}
+
+            {/* ============================================= */}
+
+            <Typography
+              variant="caption"
+              fontWeight={700}
+              color="text.secondary"
               sx={{
-                mb: 2,
+                display: "block",
+
+                px: 1.5,
+
+                mb: 0.75,
+
+                letterSpacing: 0.65,
+
+                fontSize: 11.5,
               }}
             >
+              {section.title || section.section}
+            </Typography>
 
-              {/* ============================================= */}
-              {/* SECTION TITLE */}
-              {/* ============================================= */}
+            {/* ============================================= */}
 
-              <Typography
-                variant="caption"
-                fontWeight={700}
-                color="text.secondary"
-                sx={{
-                  display: "block",
+            {/* MENU ITEMS */}
 
-                  px: 1.5,
+            {/* ============================================= */}
 
-                  mb: 0.75,
+            <List disablePadding>
+              {section.items.map((item) => {
+                const Icon = item.icon;
 
-                  letterSpacing:
-                    0.65,
+                const active = isActive(item.path);
 
-                  fontSize: 11.5,
-                }}
-              >
-                {section.title ||
-                  section.section}
-              </Typography>
+                return (
+                  <Tooltip
+                    key={`${section.title || section.section}-${item.label}-${item.path}`}
+                    title=""
+                    placement="right"
+                  >
+                    <ListItemButton
+                      selected={active}
+                      onClick={() => handleNavigation(item.path)}
+                      sx={{
+                        position: "relative",
 
+                        borderRadius: 2.5,
 
-              {/* ============================================= */}
-              {/* MENU ITEMS */}
-              {/* ============================================= */}
+                        mb: 0.5,
 
-              <List disablePadding>
-                {section.items.map(
-                  (item) => {
-                    const Icon =
-                      item.icon;
+                        minHeight: 48,
 
-                    const active =
-                      isActive(
-                        item.path,
-                      );
+                        px: 1.5,
 
-                    return (
-                      <Tooltip
-                        key={`${section.title || section.section}-${item.label}-${item.path}`}
-                        title=""
-                        placement="right"
+                        overflow: "hidden",
+
+                        color: active ? "primary.main" : "text.primary",
+
+                        transition: "all 0.18s ease",
+
+                        "&::before": {
+                          content: '""',
+
+                          position: "absolute",
+
+                          left: 0,
+
+                          top: "50%",
+
+                          transform: "translateY(-50%)",
+
+                          width: active ? 4 : 0,
+
+                          height: "58%",
+
+                          borderRadius: "0 6px 6px 0",
+
+                          bgcolor: "primary.main",
+
+                          transition: "width 0.18s ease",
+                        },
+
+                        "&:hover": {
+                          bgcolor: active
+                            ? "rgba(79,70,229,0.10)"
+                            : "action.hover",
+
+                          transform: "translateX(2px)",
+                        },
+
+                        "&.Mui-selected": {
+                          bgcolor: "rgba(79,70,229,0.09)",
+
+                          color: "primary.main",
+
+                          "& .MuiListItemIcon-root": {
+                            color: "primary.main",
+                          },
+                        },
+
+                        "&.Mui-selected:hover": {
+                          bgcolor: "rgba(79,70,229,0.12)",
+                        },
+                      }}
+                    >
+                      {/* ================================= */}
+
+                      {/* ICON */}
+
+                      {/* ================================= */}
+
+                      <ListItemIcon
+                        sx={{
+                          minWidth: 40,
+
+                          color: active ? "primary.main" : "text.secondary",
+
+                          transition: "color 0.18s ease",
+                        }}
                       >
-                        <ListItemButton
-                          selected={
-                            active
-                          }
-                          onClick={() =>
-                            handleNavigation(
-                              item.path,
-                            )
-                          }
+                        {Icon && <Icon fontSize="small" />}
+                      </ListItemIcon>
+
+                      {/* ================================= */}
+
+                      {/* LABEL */}
+
+                      {/* ================================= */}
+
+                      <ListItemText
+                        primary={item.label}
+                        primaryTypographyProps={{
+                          fontSize: 15,
+
+                          lineHeight: 1.35,
+
+                          fontWeight: active ? 700 : 500,
+                        }}
+                      />
+
+                      {/* ================================= */}
+
+                      {/* OPTIONAL BADGE */}
+
+                      {/* ================================= */}
+
+                      {item.badge != null && (
+                        <Box
                           sx={{
-                            position:
-                              "relative",
+                            minWidth: 22,
 
-                            borderRadius:
-                              2.5,
+                            height: 22,
 
-                            mb: 0.5,
+                            px: 0.75,
 
-                            minHeight: 48,
+                            borderRadius: 50,
 
-                            px: 1.5,
+                            bgcolor: "primary.main",
 
-                            overflow:
-                              "hidden",
+                            color: "primary.contrastText",
 
-                            color: active
-                              ? "primary.main"
-                              : "text.primary",
+                            display: "flex",
 
-                            transition:
-                              "all 0.18s ease",
+                            alignItems: "center",
 
-                            "&::before":
-                              {
-                                content:
-                                  '""',
+                            justifyContent: "center",
 
-                                position:
-                                  "absolute",
+                            fontSize: 11,
 
-                                left: 0,
-
-                                top: "50%",
-
-                                transform:
-                                  "translateY(-50%)",
-
-                                width:
-                                  active
-                                    ? 4
-                                    : 0,
-
-                                height:
-                                  "58%",
-
-                                borderRadius:
-                                  "0 6px 6px 0",
-
-                                bgcolor:
-                                  "primary.main",
-
-                                transition:
-                                  "width 0.18s ease",
-                              },
-
-                            "&:hover": {
-                              bgcolor:
-                                active
-                                  ? "rgba(79,70,229,0.10)"
-                                  : "action.hover",
-
-                              transform:
-                                "translateX(2px)",
-                            },
-
-                            "&.Mui-selected":
-                              {
-                                bgcolor:
-                                  "rgba(79,70,229,0.09)",
-
-                                color:
-                                  "primary.main",
-
-                                "& .MuiListItemIcon-root":
-                                  {
-                                    color:
-                                      "primary.main",
-                                  },
-                              },
-
-                            "&.Mui-selected:hover":
-                              {
-                                bgcolor:
-                                  "rgba(79,70,229,0.12)",
-                              },
+                            fontWeight: 800,
                           }}
                         >
-
-                          {/* ================================= */}
-                          {/* ICON */}
-                          {/* ================================= */}
-
-                          <ListItemIcon
-                            sx={{
-                              minWidth:
-                                40,
-
-                              color:
-                                active
-                                  ? "primary.main"
-                                  : "text.secondary",
-
-                              transition:
-                                "color 0.18s ease",
-                            }}
-                          >
-                            <Icon fontSize="small" />
-                          </ListItemIcon>
-
-
-                          {/* ================================= */}
-                          {/* LABEL */}
-                          {/* ================================= */}
-
-                          <ListItemText
-                            primary={
-                              item.label
-                            }
-                            primaryTypographyProps={{
-                              fontSize:
-                                15,
-
-                              lineHeight:
-                                1.35,
-
-                              fontWeight:
-                                active
-                                  ? 700
-                                  : 500,
-                            }}
-                          />
-
-
-                          {/* ================================= */}
-                          {/* OPTIONAL BADGE */}
-                          {/* ================================= */}
-
-                          {item.badge !=
-                            null && (
-                            <Box
-                              sx={{
-                                minWidth:
-                                  22,
-
-                                height:
-                                  22,
-
-                                px: 0.75,
-
-                                borderRadius:
-                                  50,
-
-                                bgcolor:
-                                  "primary.main",
-
-                                color:
-                                  "primary.contrastText",
-
-                                display:
-                                  "flex",
-
-                                alignItems:
-                                  "center",
-
-                                justifyContent:
-                                  "center",
-
-                                fontSize:
-                                  11,
-
-                                fontWeight:
-                                  800,
-                              }}
-                            >
-                              {
-                                item.badge
-                              }
-                            </Box>
-                          )}
-                        </ListItemButton>
-                      </Tooltip>
-                    );
-                  },
-                )}
-              </List>
-            </Box>
-          ),
-        )}
+                          {item.badge}
+                        </Box>
+                      )}
+                    </ListItemButton>
+                  </Tooltip>
+                );
+              })}
+            </List>
+          </Box>
+        ))}
       </Box>
 
-
       {/* ===================================================== */}
+
       {/* FOOTER */}
+
       {/* ===================================================== */}
 
       <Divider />
@@ -679,31 +536,28 @@ function StudentSidebar({
 
           flexShrink: 0,
 
-          bgcolor:
-            "rgba(248,250,252,0.5)",
+          bgcolor: "rgba(248,250,252,0.5)",
         }}
       >
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          fontWeight={500}
-        >
-          LibraryHub v1.0.0
+        <Typography variant="caption" color="text.secondary" fontWeight={500}>
+          {platformName} v1.0.0
         </Typography>
       </Box>
     </Box>
   );
 
-
   // ==========================================================
+
   // RENDER
+
   // ==========================================================
 
   return (
     <>
-
       {/* ===================================================== */}
+
       {/* DESKTOP */}
+
       {/* ===================================================== */}
 
       <Drawer
@@ -719,42 +573,33 @@ function StudentSidebar({
 
           flexShrink: 0,
 
-          "& .MuiDrawer-paper":
-            {
-              width:
-                drawerWidth,
+          "& .MuiDrawer-paper": {
+            width: drawerWidth,
 
-              boxSizing:
-                "border-box",
+            boxSizing: "border-box",
 
-              borderRight:
-                "1px solid",
+            borderRight: "1px solid",
 
-              borderColor:
-                "divider",
+            borderColor: "divider",
 
-              backgroundImage:
-                "none",
-            },
+            backgroundImage: "none",
+          },
         }}
         open
       >
         {content}
       </Drawer>
 
-
       {/* ===================================================== */}
+
       {/* MOBILE */}
+
       {/* ===================================================== */}
 
       <Drawer
         variant="temporary"
-        open={Boolean(
-          mobileOpen,
-        )}
-        onClose={
-          onMobileClose
-        }
+        open={Boolean(mobileOpen)}
+        onClose={onMobileClose}
         ModalProps={{
           keepMounted: true,
         }}
@@ -765,17 +610,13 @@ function StudentSidebar({
             md: "none",
           },
 
-          "& .MuiDrawer-paper":
-            {
-              width:
-                drawerWidth,
+          "& .MuiDrawer-paper": {
+            width: drawerWidth,
 
-              boxSizing:
-                "border-box",
+            boxSizing: "border-box",
 
-              backgroundImage:
-                "none",
-            },
+            backgroundImage: "none",
+          },
         }}
       >
         {content}
@@ -783,7 +624,6 @@ function StudentSidebar({
     </>
   );
 }
-
 
 export default StudentSidebar;
 

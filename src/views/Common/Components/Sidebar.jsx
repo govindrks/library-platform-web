@@ -2,8 +2,10 @@ import {
   CalendarMonth,
   CardMembership,
   Dashboard,
+  HelpOutlineOutlined,
   LibraryBooks,
   Notifications,
+  NotificationsActiveOutlined,
   Payments,
   Person,
   ReceiptLong,
@@ -27,26 +29,39 @@ import ownerMenu from "../../../navigation/ownerMenu";
 import adminMenu from "../../../navigation/adminMenu";
 
 import { useAuth } from "../../../context/AuthContext";
+import usePlatformConfig from "../../../api/usePlatformConfig";
+
 
 // ============================================================
+
 // CONSTANTS
+
 // ============================================================
 
 const drawerWidth = 250;
 
 // ============================================================
-// STUDENT MENU
+
+// STUDENT FALLBACK MENU
+
 // ============================================================
 
-/**
- * Shared Sidebar normally serves ADMIN / LIBRARY_OWNER through
- * VerticalLayout.
- *
- * USER currently uses StudentLayout + StudentSidebar.
- *
- * We still keep this USER menu valid as a safe fallback in case
- * Sidebar is ever rendered for a USER.
- */
+/***
+
+* * Shared Sidebar normally serves ADMIN / LIBRARY_OWNER*
+
+* * through VerticalLayout.*
+
+* **
+
+* * USER normally uses StudentLayout + StudentSidebar.*
+
+* **
+
+* * This USER menu remains here as a safe fallback.*
+
+* */
+
 const userMenu = [
   {
     title: "OVERVIEW",
@@ -54,7 +69,9 @@ const userMenu = [
     items: [
       {
         label: "Dashboard",
+
         path: "/student/dashboard",
+
         icon: Dashboard,
       },
     ],
@@ -66,19 +83,25 @@ const userMenu = [
     items: [
       {
         label: "Browse Libraries",
+
         path: "/student/libraries",
+
         icon: LibraryBooks,
       },
 
       {
         label: "My Bookings",
+
         path: "/student/bookings",
+
         icon: CalendarMonth,
       },
 
       {
         label: "Membership",
+
         path: "/student/membership",
+
         icon: CardMembership,
       },
     ],
@@ -90,13 +113,17 @@ const userMenu = [
     items: [
       {
         label: "Payments",
+
         path: "/student/payments",
+
         icon: Payments,
       },
 
       {
         label: "Invoices",
+
         path: "/student/invoices",
+
         icon: ReceiptLong,
       },
     ],
@@ -108,34 +135,45 @@ const userMenu = [
     items: [
       {
         label: "Notifications",
+
         path: "/student/notifications",
+
         icon: Notifications,
       },
 
       {
+        label: "Notification Preferences",
+
+        path: "/student/notification-preferences",
+
+        icon: NotificationsActiveOutlined,
+      },
+
+      {
         label: "My Profile",
+
         path: "/student/profile",
+
         icon: Person,
+      },
+
+      {
+        label: "Help & Support",
+
+        path: "/student/help-support",
+
+        icon: HelpOutlineOutlined,
       },
     ],
   },
 ];
 
 // ============================================================
+
 // NORMALIZE OWNER MENU
+
 // ============================================================
 
-/**
- * ownerMenu uses:
- *
- * section
- * items
- *
- * Sidebar expects:
- *
- * title
- * items
- */
 const normalizeOwnerMenu = ownerMenu.map((section) => ({
   title: section.section,
 
@@ -143,7 +181,9 @@ const normalizeOwnerMenu = ownerMenu.map((section) => ({
 }));
 
 // ============================================================
+
 // NORMALIZE ADMIN MENU
+
 // ============================================================
 
 const normalizeAdminMenu = adminMenu.map((section) => ({
@@ -153,12 +193,16 @@ const normalizeAdminMenu = adminMenu.map((section) => ({
 }));
 
 // ============================================================
+
 // SIDEBAR
+
 // ============================================================
 
 function Sidebar({ mobileOpen, onMobileClose }) {
   // ==========================================================
+
   // ROUTER
+
   // ==========================================================
 
   const location = useLocation();
@@ -166,13 +210,19 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   const navigate = useNavigate();
 
   // ==========================================================
+
   // AUTH
+
   // ==========================================================
 
   const { role } = useAuth();
 
+  const { platformName, brandInitial } = usePlatformConfig();
+
   // ==========================================================
+
   // SELECT MENU BY ROLE
+
   // ==========================================================
 
   let menuSections = userMenu;
@@ -186,7 +236,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   }
 
   // ==========================================================
+
   // NAVIGATION
+
   // ==========================================================
 
   const handleNavigation = (path) => {
@@ -200,7 +252,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   };
 
   // ==========================================================
+
   // ACTIVE ROUTE
+
   // ==========================================================
 
   const isActive = (path) => {
@@ -211,7 +265,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     const currentPath = location.pathname;
 
     // --------------------------------------------------------
-    // STUDENT HELP & SUPPORT FALLBACK
+
+    // STUDENT HELP & SUPPORT
+
     // --------------------------------------------------------
 
     if (path === "/student/help-support") {
@@ -223,7 +279,22 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
+    // STUDENT NOTIFICATION PREFERENCES
+
+    // --------------------------------------------------------
+
+    if (path === "/student/notification-preferences") {
+      return (
+        currentPath === path ||
+        currentPath.startsWith("/student/notification-preferences/")
+      );
+    }
+
+    // --------------------------------------------------------
+
     // ADMIN SUPPORT DASHBOARD
+
     // --------------------------------------------------------
 
     if (path === "/admin/support") {
@@ -231,7 +302,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
     // ADMIN SUPPORT TICKETS
+
     // --------------------------------------------------------
 
     if (path === "/admin/support/tickets") {
@@ -242,7 +315,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
     // OWNER HELP & SUPPORT
+
     // --------------------------------------------------------
 
     if (path === "/owner/help-support") {
@@ -250,7 +325,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
     // OWNER -> LIBRARYHUB SUPPORT TICKETS
+
     // --------------------------------------------------------
 
     if (path === "/owner/support/tickets") {
@@ -261,7 +338,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
     // STUDENT -> LIBRARY OWNER SUPPORT
+
     // --------------------------------------------------------
 
     if (path === "/owner/student-support") {
@@ -272,15 +351,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
     // OWNER BOOKINGS
-    // --------------------------------------------------------
-    //
-    // Keeps Bookings selected for:
-    //
-    // /owner/bookings
-    // /owner/bookings/create
-    // /owner/bookings/...
-    //
+
     // --------------------------------------------------------
 
     if (path === "/owner/bookings") {
@@ -291,17 +364,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
     // OWNER EXPENSES
-    // --------------------------------------------------------
-    //
-    // Expenses itself comes from ownerMenu.
-    //
-    // This rule keeps it highlighted for any future routes:
-    //
-    // /owner/expenses
-    // /owner/expenses/:expenseId
-    // /owner/expenses/analytics
-    //
+
     // --------------------------------------------------------
 
     if (path === "/owner/expenses") {
@@ -312,7 +377,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
     }
 
     // --------------------------------------------------------
+
     // DEFAULT
+
     // --------------------------------------------------------
 
     return (
@@ -322,7 +389,9 @@ function Sidebar({ mobileOpen, onMobileClose }) {
   };
 
   // ==========================================================
+
   // DRAWER CONTENT
+
   // ==========================================================
 
   const drawerContent = (
@@ -337,9 +406,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         backgroundColor: "background.paper",
       }}
     >
-      {/* =====================================================
-            LOGO
-           ===================================================== */}
+      {/* ===================================================== */}
+
+      {/* LOGO */}
+
+      {/* ===================================================== */}
 
       <Box
         sx={{
@@ -375,7 +446,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
             fontSize: 18,
           }}
         >
-          L
+          {brandInitial}
         </Box>
 
         <Box
@@ -391,7 +462,7 @@ function Sidebar({ mobileOpen, onMobileClose }) {
               lineHeight: 1.1,
             }}
           >
-            LibraryHub
+            {platformName}
           </Typography>
 
           <Typography variant="caption" color="text.secondary">
@@ -406,9 +477,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
 
       <Divider />
 
-      {/* =====================================================
-            NAVIGATION
-           ===================================================== */}
+      {/* ===================================================== */}
+
+      {/* NAVIGATION */}
+
+      {/* ===================================================== */}
 
       <Box
         sx={{
@@ -501,10 +574,6 @@ function Sidebar({ mobileOpen, onMobileClose }) {
                       }}
                     />
 
-                    {/* ===================================
-                                  OPTIONAL BADGE
-                                 =================================== */}
-
                     {item.badge != null && (
                       <Box
                         sx={{
@@ -542,9 +611,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         ))}
       </Box>
 
-      {/* =====================================================
-            FOOTER
-           ===================================================== */}
+      {/* ===================================================== */}
+
+      {/* FOOTER */}
+
+      {/* ===================================================== */}
 
       <Box
         sx={{
@@ -558,21 +629,25 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         }}
       >
         <Typography variant="caption" color="text.secondary">
-          LibraryHub v1.0.0
+          {platformName} v1.0.0
         </Typography>
       </Box>
     </Box>
   );
 
   // ==========================================================
+
   // RENDER
+
   // ==========================================================
 
   return (
     <>
-      {/* =====================================================
-          DESKTOP DRAWER
-         ===================================================== */}
+      {/* ===================================================== */}
+
+      {/* DESKTOP DRAWER */}
+
+      {/* ===================================================== */}
 
       <Drawer
         variant="permanent"
@@ -597,9 +672,11 @@ function Sidebar({ mobileOpen, onMobileClose }) {
         {drawerContent}
       </Drawer>
 
-      {/* =====================================================
-          MOBILE DRAWER
-         ===================================================== */}
+      {/* ===================================================== */}
+
+      {/* MOBILE DRAWER */}
+
+      {/* ===================================================== */}
 
       <Drawer
         variant="temporary"

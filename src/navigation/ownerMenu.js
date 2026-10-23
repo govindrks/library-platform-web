@@ -1,6 +1,7 @@
 import {
   AccessTime,
   Assessment,
+  AssessmentOutlined,
   Autorenew,
   ContactPhoneRounded,
   Dashboard,
@@ -10,6 +11,7 @@ import {
   HelpOutlineOutlined,
   LibraryBooks,
   LocalOffer,
+  MessageOutlined,
   Notifications,
   Payments,
   Receipt,
@@ -18,14 +20,17 @@ import {
   SupportAgentOutlined,
   TrendingDown,
   TrendingUp,
+  WhatsApp,
   WorkspacePremium,
 } from "@mui/icons-material";
+
 
 // ============================================================
 // LIBRARY OWNER MENU
 // ============================================================
 
 const ownerMenu = [
+
   // ==========================================================
   // OVERVIEW
   // ==========================================================
@@ -41,6 +46,7 @@ const ownerMenu = [
       },
     ],
   },
+
 
   // ==========================================================
   // LIBRARY
@@ -70,6 +76,7 @@ const ownerMenu = [
     ],
   },
 
+
   // ==========================================================
   // SEAT MANAGEMENT
   // ==========================================================
@@ -97,6 +104,7 @@ const ownerMenu = [
       },
     ],
   },
+
 
   // ==========================================================
   // BOOKINGS
@@ -131,6 +139,7 @@ const ownerMenu = [
       },
     ],
   },
+
 
   // ==========================================================
   // FINANCE
@@ -178,6 +187,7 @@ const ownerMenu = [
     ],
   },
 
+
   // ==========================================================
   // INSIGHTS
   // ==========================================================
@@ -206,6 +216,36 @@ const ownerMenu = [
     ],
   },
 
+
+  // ==========================================================
+  // WHATSAPP
+  // ==========================================================
+
+  {
+    section: "WHATSAPP",
+
+    items: [
+      {
+        label: "WhatsApp Settings",
+        path: "/owner/whatsapp/settings",
+        icon: WhatsApp,
+      },
+
+      {
+        label: "WhatsApp Messages",
+        path: "/owner/whatsapp/messages",
+        icon: MessageOutlined,
+      },
+
+      {
+        label: "WhatsApp Usage",
+        path: "/owner/whatsapp/usage",
+        icon: AssessmentOutlined,
+      },
+    ],
+  },
+
+
   // ==========================================================
   // AUTOMATION
   // ==========================================================
@@ -221,6 +261,7 @@ const ownerMenu = [
       },
     ],
   },
+
 
   // ==========================================================
   // SUPPORT
@@ -250,6 +291,7 @@ const ownerMenu = [
     ],
   },
 
+
   // ==========================================================
   // SYSTEM
   // ==========================================================
@@ -272,5 +314,6 @@ const ownerMenu = [
     ],
   },
 ];
+
 
 export default ownerMenu;

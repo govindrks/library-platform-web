@@ -25,6 +25,17 @@ import Reports from "../../views/Reports/Reports";
 
 
 // ============================================================
+// WHATSAPP
+// ============================================================
+
+import WhatsAppSettings from "../../views/LibraryOwner/whatsapp/WhatsAppSettings";
+
+import WhatsAppMessages from "../../views/LibraryOwner/whatsapp/WhatsAppMessages";
+
+import WhatsAppUsage from "../../views/LibraryOwner/whatsapp/WhatsAppUsage";
+
+
+// ============================================================
 // SUPPORT
 // ============================================================
 
@@ -37,12 +48,12 @@ import StudentSupportTickets from "../../views/LibraryOwner/support/StudentSuppo
 import OwnerSupportTicketDetails from "../../views/LibraryOwner/support/OwnerSupportTicketDetails";
 
 
+
 // ============================================================
 // CORE LIBRARY OWNER ROUTES
 // ============================================================
 
 const ownerRoutes = [
-
 
   // ==========================================================
   // OWNER DASHBOARD
@@ -166,6 +177,26 @@ const ownerRoutes = [
   {
     path: "/owner/reports",
     element: <Reports />,
+  },
+
+
+  // ==========================================================
+  // WHATSAPP
+  // ==========================================================
+
+  {
+    path: "/owner/whatsapp/settings",
+    element: <WhatsAppSettings />,
+  },
+
+  {
+    path: "/owner/whatsapp/messages",
+    element: <WhatsAppMessages />,
+  },
+
+  {
+    path: "/owner/whatsapp/usage",
+    element: <WhatsAppUsage />,
   },
 
 

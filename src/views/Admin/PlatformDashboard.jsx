@@ -31,6 +31,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 
 import adminApi from "../../api/adminApi";
+import usePlatformConfig from "../../api/usePlatformConfig";
 
 // ============================================================
 // HELPERS
@@ -172,6 +173,8 @@ function PlatformDashboard() {
 
   const [error, setError] = useState("");
 
+  const { platformName } = usePlatformConfig();
+
   // =========================================================
   // LOAD DASHBOARD
   // =========================================================
@@ -249,7 +252,7 @@ function PlatformDashboard() {
 
         <Typography color="text.secondary" mt={0.5}>
           Monitor libraries, owners, users and platform subscriptions across
-          LibraryHub.
+          {platformName}.
         </Typography>
       </Box>
 

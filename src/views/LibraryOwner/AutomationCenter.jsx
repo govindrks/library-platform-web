@@ -70,6 +70,7 @@ import {
 
 import automationApi from "../../api/automationApi";
 import libraryApi from "../../api/libraryApi";
+import usePlatformConfig from "../../api/usePlatformConfig";
 
 // ============================================================
 // CONSTANTS
@@ -941,7 +942,7 @@ function AutomationRuleCard({
                     ? conditionCount > 0
                       ? "All configured conditions must match"
                       : "No extra conditions"
-                    : "Managed by LibraryHub"
+                    : "Managed by {platformName}"
                 }
                 icon={FilterAltOutlined}
                 tone="warning"
@@ -1129,6 +1130,8 @@ function AutomationCenter() {
   const [selectedExecution, setSelectedExecution] = useState(null);
 
   const [loadingExecution, setLoadingExecution] = useState(false);
+
+  const { platformName } = usePlatformConfig();
 
   // =========================================================
   // SELECTED LIBRARY

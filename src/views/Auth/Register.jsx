@@ -1,10 +1,12 @@
 import {
   ArrowBack,
+  Close,
   EmailOutlined,
   LockOutlined,
   PersonOutlineOutlined,
   Visibility,
   VisibilityOff,
+  WhatsApp,
 } from "@mui/icons-material";
 
 import {
@@ -12,11 +14,10 @@ import {
   Box,
   Button,
   CircularProgress,
-  Container,
-  Divider,
   IconButton,
   InputAdornment,
   Link,
+  Modal,
   Paper,
   Stack,
   TextField,
@@ -25,14 +26,47 @@ import {
 
 import { useMemo, useState } from "react";
 
-import { Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import authApi from "../../api/authApi";
 
+import whatsappOtpApi from "../../api/whatsappOtpApi";
+
+import OtpVerificationForm from "../../components/whatsapp/OtpVerificationForm";
+
 import { useAuth } from "../../context/AuthContext";
+import usePlatformConfig from "../../api/usePlatformConfig";
+
 
 // ============================================================
+
+// SCREENS
+
+// ============================================================
+
+const SCREEN = {
+  DETAILS: "DETAILS",
+
+  MOBILE: "MOBILE",
+
+  OTP: "OTP",
+};
+
+// ============================================================
+
+// WHATSAPP FEATURE FLAG
+
+// ============================================================
+
+const WHATSAPP_AUTH_ENABLED =
+  String(
+    import.meta.env.VITE_WHATSAPP_AUTH_ENABLED ?? "false",
+  ).toLowerCase() === "true";
+
+// ============================================================
+
 // REGISTER
+
 // ============================================================
 
 function Register() {
@@ -40,35 +74,22 @@ function Register() {
 
   const location = useLocation();
 
-  // ==========================================================
-  // AUTH
-  // ==========================================================
-
   const { login, refreshProfile } = useAuth();
 
+  const { platformName } = usePlatformConfig();
+
   // ==========================================================
+
   // ORIGINAL DESTINATION
+
   // ==========================================================
 
   const destination = location.state?.from || null;
 
   // ==========================================================
-  // PRESERVE COMPLETE BOOKING CONTEXT
-  // ==========================================================
-  //
-  // Example:
-  //
-  // Public Library
-  // -> Membership Plan
-  // -> Floor
-  // -> Slot
-  // -> Date
-  // -> Seat
-  // -> Login
-  // -> Register
-  // -> Auto login / Login
-  // -> Return to SeatAvailability
-  //
+
+  // BOOKING CONTEXT
+
   // ==========================================================
 
   const returnState = useMemo(
@@ -87,27 +108,37 @@ function Register() {
 
       seatId: location.state?.seatId,
 
-      /*
-       * Keep old date for compatibility
-       * with any older flow still using it.
-       */
       date: location.state?.date,
 
       startDate: location.state?.startDate,
 
       endDate: location.state?.endDate,
     }),
+
     [location.state],
   );
 
   // ==========================================================
-  // FORM STATE
+
+  // SCREEN
+
+  // ==========================================================
+
+  const [screen, setScreen] = useState(SCREEN.DETAILS);
+
+  // ==========================================================
+
+  // ACCOUNT DETAILS
+
   // ==========================================================
 
   const [formData, setFormData] = useState({
     fullName: "",
+
     email: "",
+
     password: "",
+
     confirmPassword: "",
   });
 
@@ -115,16 +146,46 @@ function Register() {
 
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  // ==========================================================
+
+  // MOBILE VERIFICATION
+
+  // ==========================================================
+
+  const [phone, setPhone] = useState("");
+
+  const [challengeId, setChallengeId] = useState("");
+
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState("");
+
+  const [resendSeconds, setResendSeconds] = useState(60);
+
+  // ==========================================================
+
+  // UI STATE
+
+  // ==========================================================
+
   const [loading, setLoading] = useState(false);
 
   const [error, setError] = useState("");
 
-  const [success, setSuccess] = useState("");
-
   const [fieldErrors, setFieldErrors] = useState({});
 
   // ==========================================================
+
+  // CLEAR MESSAGES
+
+  // ==========================================================
+
+  const clearMessages = () => {
+    setError("");
+  };
+
+  // ==========================================================
+
   // FORM CHANGE
+
   // ==========================================================
 
   const handleChange = (event) => {
@@ -146,21 +207,45 @@ function Register() {
   };
 
   // ==========================================================
-  // VALIDATION
+
+  // PHONE CHANGE
+
   // ==========================================================
 
-  const validateForm = () => {
+  const handlePhoneChange = (event) => {
+    const value = String(event.target.value).replace(/\D/g, "").slice(0, 10);
+
+    setPhone(value);
+
+    setPhoneVerificationToken("");
+
+    setChallengeId("");
+
+    setError("");
+  };
+
+  // ==========================================================
+
+  // VALIDATE DETAILS
+
+  // ==========================================================
+
+  const validateAccountDetails = () => {
     const errors = {};
 
-    if (!formData.fullName.trim()) {
+    const fullName = formData.fullName.trim();
+
+    const email = formData.email.trim();
+
+    if (!fullName) {
       errors.fullName = "Full name is required";
-    } else if (formData.fullName.trim().length < 2) {
+    } else if (fullName.length < 2) {
       errors.fullName = "Full name must contain at least 2 characters";
     }
 
-    if (!formData.email.trim()) {
+    if (!email) {
       errors.email = "Email is required";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       errors.email = "Enter a valid email address";
     }
 
@@ -182,194 +267,236 @@ function Register() {
   };
 
   // ==========================================================
-  // REGISTER SUBMIT
+
+  // CONTINUE TO MOBILE
+
   // ==========================================================
 
-  const handleSubmit = async (event) => {
+  const handleContinueToMobile = (event) => {
     event.preventDefault();
 
-    setError("");
+    clearMessages();
 
-    setSuccess("");
-
-    if (!validateForm()) {
+    if (!validateAccountDetails()) {
       return;
+    }
+
+    setScreen(SCREEN.MOBILE);
+  };
+
+  // ==========================================================
+
+  // REQUEST REGISTRATION OTP
+
+  // ==========================================================
+
+  const requestRegistrationOtp = async () => {
+    clearMessages();
+
+    if (!WHATSAPP_AUTH_ENABLED) {
+      setError("WhatsApp verification is currently unavailable.");
+
+      return null;
+    }
+
+    if (!/^[6-9]\d{9}$/.test(phone)) {
+      setError("Enter a valid 10-digit Indian mobile number.");
+
+      return null;
     }
 
     try {
       setLoading(true);
 
-      // ====================================================
-      // REGISTER REQUEST
-      // ====================================================
+      const response = await whatsappOtpApi.requestRegistrationOtp(phone);
 
-      const payload = {
-        fullName: formData.fullName.trim(),
+      if (!response?.challengeId) {
+        throw new Error("OTP challenge was not returned by the server.");
+      }
 
-        email: formData.email.trim().toLowerCase(),
+      setChallengeId(response.challengeId);
 
-        password: formData.password,
-      };
+      setResendSeconds(
+        Number(
+          response?.resendAvailableInSeconds ??
+            response?.resendAfterSeconds ??
+            60,
+        ),
+      );
 
-      const response = await authApi.register(payload);
+      setScreen(SCREEN.OTP);
 
-      // ====================================================
-      // NORMALIZE RESPONSE
-      // ====================================================
+      return response;
+    } catch (requestError) {
+      console.error("Registration OTP request failed:", requestError);
 
-      const token =
-        response?.token ||
-        response?.accessToken ||
-        response?.data?.token ||
-        response?.data?.accessToken;
+      const backendMessage =
+        requestError?.response?.data?.message ||
+        requestError?.response?.data?.error ||
+        requestError?.response?.data?.detail;
 
-      const registeredUser = response?.user || response?.data?.user || null;
+      setError(
+        backendMessage ||
+          requestError?.message ||
+          "Unable to send WhatsApp verification OTP.",
+      );
 
-      // ====================================================
-      // AUTO LOGIN
-      // ====================================================
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      if (token) {
-        login(token, registeredUser, false);
+  // ==========================================================
 
-        let authenticatedUser = registeredUser;
+  // CREATE ACCOUNT
 
-        // ==================================================
-        // CENTRALIZED PROFILE HYDRATION
-        // ==================================================
+  // ==========================================================
 
-        try {
-          const profile = await refreshProfile();
+  const createAccount = async (verificationToken) => {
+    const payload = {
+      fullName: formData.fullName.trim(),
 
-          if (profile) {
-            authenticatedUser = profile;
-          }
-        } catch (profileError) {
-          /*
-           * Registration/authentication succeeded.
-           *
-           * Do not block navigation because profile hydration
-           * temporarily failed.
-           */
+      email: formData.email.trim().toLowerCase(),
 
-          console.warn(
-            "Unable to refresh profile after registration:",
-            profileError,
-          );
+      password: formData.password,
+
+      phone,
+
+      phoneVerificationToken: verificationToken,
+    };
+
+    const response = await authApi.register(payload);
+
+    const token =
+      response?.token ||
+      response?.accessToken ||
+      response?.data?.token ||
+      response?.data?.accessToken;
+
+    const registeredUser = response?.user || response?.data?.user || null;
+
+    // ======================================================
+
+    // FUTURE AUTO LOGIN SUPPORT
+
+    // ======================================================
+
+    if (token) {
+      login(token, registeredUser, false);
+
+      let authenticatedUser = registeredUser;
+
+      try {
+        const profile = await refreshProfile();
+
+        if (profile) {
+          authenticatedUser = profile;
         }
+      } catch (profileError) {
+        console.warn(
+          "Unable to refresh profile after registration:",
 
-        // ==================================================
-        // RETURN TO ORIGINAL DESTINATION
-        // ==================================================
-        //
-        // This is the important booking fix.
-        //
-        // The complete seat booking selection now survives
-        // registration.
-        //
-        // ==================================================
+          profileError,
+        );
+      }
 
-        if (destination) {
-          navigate(destination, {
-            replace: true,
+      if (destination) {
+        navigate(destination, {
+          replace: true,
 
-            state: returnState,
-          });
+          state: returnState,
+        });
 
-          return;
-        }
+        return;
+      }
 
-        // ==================================================
-        // ROLE REDIRECT
-        // ==================================================
+      const role = authenticatedUser?.role || registeredUser?.role;
 
-        const authenticatedRole =
-          authenticatedUser?.role || registeredUser?.role;
-
-        // ==================================================
-        // ADMIN
-        // ==================================================
-
-        if (authenticatedRole === "ADMIN") {
-          navigate("/admin/dashboard", {
-            replace: true,
-          });
-
-          return;
-        }
-
-        // ==================================================
-        // LIBRARY OWNER
-        // ==================================================
-
-        if (authenticatedRole === "LIBRARY_OWNER") {
-          navigate("/owner/dashboard", {
-            replace: true,
-          });
-
-          return;
-        }
-
-        // ==================================================
-        // STUDENT
-        // ==================================================
-
-        if (authenticatedRole === "USER") {
-          navigate("/student/dashboard", {
-            replace: true,
-          });
-
-          return;
-        }
-
-        // ==================================================
-        // FALLBACK
-        // ==================================================
-
-        navigate("/dashboard", {
+      if (role === "LIBRARY_OWNER") {
+        navigate("/owner/dashboard", {
           replace: true,
         });
 
         return;
       }
 
-      // ====================================================
-      // SEPARATE LOGIN REQUIRED
-      // ====================================================
-      //
-      // Some registration backends create the account but
-      // intentionally do not return a token.
-      //
-      // In that case send the user to Login while preserving
-      // the same complete booking state.
-      //
-      // ====================================================
-
-      setSuccess("Account created successfully. Please sign in.");
-
-      setTimeout(() => {
-        navigate("/login", {
+      if (role === "USER") {
+        navigate("/student/dashboard", {
           replace: true,
-
-          state: {
-            from: destination,
-
-            ...returnState,
-
-            message: "Account created successfully. Sign in to continue.",
-          },
         });
-      }, 1200);
-    } catch (err) {
-      console.error("Registration failed:", err);
+
+        return;
+      }
+
+      navigate("/dashboard", {
+        replace: true,
+      });
+
+      return;
+    }
+
+    // ======================================================
+
+    // CURRENT REGISTER ENDPOINT RETURNS STRING
+
+    // ======================================================
+
+    navigate("/login", {
+      replace: true,
+
+      state: {
+        from: destination,
+
+        ...returnState,
+
+        message: "Account created successfully. Sign in to continue.",
+      },
+    });
+  };
+
+  // ==========================================================
+
+  // VERIFY REGISTRATION OTP
+
+  // ==========================================================
+
+  const verifyRegistrationOtp = async (otp) => {
+    clearMessages();
+
+    try {
+      setLoading(true);
+
+      const response = await whatsappOtpApi.verifyRegistrationOtp({
+        challengeId,
+
+        otp,
+      });
+
+      const verificationToken =
+        response?.verificationToken || response?.data?.verificationToken;
+
+      if (!verificationToken) {
+        throw new Error(
+          "Phone verification token was not returned by the server.",
+        );
+      }
+
+      setPhoneVerificationToken(verificationToken);
+
+      await createAccount(verificationToken);
+    } catch (requestError) {
+      console.error("Registration failed:", requestError);
 
       const backendMessage =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.response?.data?.detail;
+        requestError?.response?.data?.message ||
+        requestError?.response?.data?.error ||
+        requestError?.response?.data?.detail;
 
       setError(
-        backendMessage || "Unable to create your account. Please try again.",
+        backendMessage ||
+          requestError?.message ||
+          "Unable to verify the number or create your account.",
       );
     } finally {
       setLoading(false);
@@ -377,429 +504,569 @@ function Register() {
   };
 
   // ==========================================================
+
+  // RESEND OTP
+
+  // ==========================================================
+
+  const handleResendOtp = async () => {
+    return requestRegistrationOtp();
+  };
+
+  // ==========================================================
+
   // BACK
+
   // ==========================================================
 
   const handleBack = () => {
-    /*
-     * If this registration page belongs to an in-progress
-     * booking, go back to Login and preserve the booking.
-     *
-     * Otherwise return to public LibraryHub.
-     */
+    clearMessages();
+
+    if (screen === SCREEN.OTP) {
+      setChallengeId("");
+
+      setScreen(SCREEN.MOBILE);
+
+      return;
+    }
+
+    if (screen === SCREEN.MOBILE) {
+      setScreen(SCREEN.DETAILS);
+
+      return;
+    }
+
+    navigate("/login", {
+      state: {
+        from: destination,
+
+        ...returnState,
+      },
+    });
+  };
+
+  // ==========================================================
+
+  // CLOSE
+
+  // ==========================================================
+
+  const handleClose = () => {
+    if (loading) {
+      return;
+    }
 
     if (destination) {
-      navigate("/login", {
-        state: {
-          from: destination,
+      navigate(destination, {
+        replace: true,
 
-          ...returnState,
-        },
+        state: returnState,
       });
 
       return;
     }
 
-    navigate("/");
+    navigate("/", {
+      replace: true,
+    });
   };
 
   // ==========================================================
+
+  // ACCOUNT DETAILS
+
+  // ==========================================================
+
+  const renderAccountDetails = () => (
+    <Stack spacing={3}>
+      <IconButton
+        onClick={handleBack}
+        disabled={loading}
+        sx={{
+          alignSelf: "flex-start",
+
+          ml: -1,
+        }}
+      >
+        <ArrowBack />
+      </IconButton>
+
+      <Box>
+        <Typography
+          variant="h4"
+          fontWeight={800}
+          sx={{
+            letterSpacing: "-0.03em",
+          }}
+        >
+          Create your account
+        </Typography>
+
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            mt: 0.75,
+          }}
+        >
+          Join {platformName} and discover verified study spaces near you.
+        </Typography>
+      </Box>
+
+      {destination && returnState.action === "BOOK_SEAT" && (
+        <Alert severity="info">
+          Your selected membership plan, slot, date and seat will be restored
+          after registration.
+        </Alert>
+      )}
+
+      {error && (
+        <Alert severity="error" onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
+
+      <Box component="form" onSubmit={handleContinueToMobile} noValidate>
+        <Stack spacing={2.2}>
+          <TextField
+            fullWidth
+            required
+            label="Full Name"
+            name="fullName"
+            value={formData.fullName}
+            onChange={handleChange}
+            disabled={loading}
+            error={Boolean(fieldErrors.fullName)}
+            helperText={fieldErrors.fullName}
+            autoComplete="name"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <PersonOutlineOutlined color="action" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+
+          <TextField
+            fullWidth
+            required
+            label="Email"
+            name="email"
+            type="email"
+            value={formData.email}
+            onChange={handleChange}
+            disabled={loading}
+            error={Boolean(fieldErrors.email)}
+            helperText={fieldErrors.email}
+            autoComplete="email"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <EmailOutlined color="action" />
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+
+          <TextField
+            fullWidth
+            required
+            label="Password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            value={formData.password}
+            onChange={handleChange}
+            disabled={loading}
+            error={Boolean(fieldErrors.password)}
+            helperText={fieldErrors.password || "Minimum 6 characters"}
+            autoComplete="new-password"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockOutlined color="action" />
+                  </InputAdornment>
+                ),
+
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      type="button"
+                      edge="end"
+                      disabled={loading}
+                      onClick={() => setShowPassword((previous) => !previous)}
+                    >
+                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+
+          <TextField
+            fullWidth
+            required
+            label="Confirm Password"
+            name="confirmPassword"
+            type={showConfirmPassword ? "text" : "password"}
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            disabled={loading}
+            error={Boolean(fieldErrors.confirmPassword)}
+            helperText={fieldErrors.confirmPassword}
+            autoComplete="new-password"
+            slotProps={{
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LockOutlined color="action" />
+                  </InputAdornment>
+                ),
+
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton
+                      type="button"
+                      edge="end"
+                      disabled={loading}
+                      onClick={() =>
+                        setShowConfirmPassword((previous) => !previous)
+                      }
+                    >
+                      {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              },
+            }}
+          />
+
+          <Button
+            fullWidth
+            type="submit"
+            size="large"
+            variant="contained"
+            disabled={loading}
+            sx={{
+              minHeight: 50,
+
+              mt: 1,
+
+              textTransform: "none",
+
+              fontWeight: 800,
+            }}
+          >
+            Continue
+          </Button>
+        </Stack>
+      </Box>
+
+      <Typography variant="body2" textAlign="center">
+        Already have an account?{" "}
+        <Link
+          component="button"
+          type="button"
+          underline="hover"
+          onClick={handleBack}
+          sx={{
+            fontWeight: 800,
+          }}
+        >
+          Sign in
+        </Link>
+      </Typography>
+    </Stack>
+  );
+
+  // ==========================================================
+
+  // MOBILE
+
+  // ==========================================================
+
+  const renderMobileVerification = () => (
+    <Stack spacing={3}>
+      <IconButton
+        onClick={handleBack}
+        disabled={loading}
+        sx={{
+          alignSelf: "flex-start",
+
+          ml: -1,
+        }}
+      >
+        <ArrowBack />
+      </IconButton>
+
+      <Box>
+        <Typography
+          variant="h4"
+          fontWeight={800}
+          sx={{
+            letterSpacing: "-0.03em",
+          }}
+        >
+          Verify your mobile
+        </Typography>
+
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{
+            mt: 0.75,
+          }}
+        >
+          This verified number will be used for secure WhatsApp OTP login.
+        </Typography>
+      </Box>
+
+      {error && (
+        <Alert severity="error" onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
+
+      <Box
+        sx={{
+          display: "flex",
+
+          alignItems: "center",
+
+          borderBottom: "1px solid",
+
+          borderColor: "divider",
+
+          py: 1,
+        }}
+      >
+        <Typography
+          sx={{
+            fontSize: 20,
+
+            mr: 1,
+          }}
+        >
+          🇮🇳
+        </Typography>
+
+        <Typography
+          fontWeight={700}
+          sx={{
+            mr: 1.5,
+          }}
+        >
+          +91
+        </Typography>
+
+        <Box
+          component="input"
+          autoFocus
+          inputMode="numeric"
+          value={phone}
+          onChange={handlePhoneChange}
+          disabled={loading}
+          placeholder="Enter mobile number"
+          sx={{
+            flex: 1,
+
+            border: "none",
+
+            outline: "none",
+
+            bgcolor: "transparent",
+
+            color: "text.primary",
+
+            fontSize: 16,
+
+            py: 1,
+
+            "&::placeholder": {
+              color: "text.disabled",
+            },
+          }}
+        />
+      </Box>
+
+      <Button
+        fullWidth
+        size="large"
+        variant="contained"
+        startIcon={<WhatsApp />}
+        disabled={loading || phone.length !== 10 || !WHATSAPP_AUTH_ENABLED}
+        onClick={requestRegistrationOtp}
+        sx={{
+          minHeight: 50,
+
+          textTransform: "none",
+
+          fontWeight: 800,
+        }}
+      >
+        {loading ? <CircularProgress size={22} color="inherit" /> : "Continue"}
+      </Button>
+
+      {!WHATSAPP_AUTH_ENABLED && (
+        <Alert severity="info">
+          WhatsApp phone verification is currently disabled in this environment.
+        </Alert>
+      )}
+    </Stack>
+  );
+
+  // ==========================================================
+
+  // OTP
+
+  // ==========================================================
+
+  const renderOtpVerification = () => (
+    <Stack spacing={2}>
+      {error && (
+        <Alert severity="error" onClose={() => setError("")}>
+          {error}
+        </Alert>
+      )}
+
+      <OtpVerificationForm
+        phone={phone}
+        loading={loading}
+        resendAfterSeconds={resendSeconds}
+        title="Verify your number"
+        description="Enter the 6-digit verification code sent to your WhatsApp number."
+        submitLabel="Verify & Create Account"
+        loadingLabel="Creating account..."
+        onVerify={verifyRegistrationOtp}
+        onResend={handleResendOtp}
+        onChangeNumber={handleBack}
+      />
+    </Stack>
+  );
+
+  // ==========================================================
+
   // UI
+
   // ==========================================================
 
   return (
-    <Box
+    <Modal
+      open
+      onClose={loading ? undefined : handleClose}
+      disableAutoFocus
       sx={{
-        minHeight: "100vh",
-
-        background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)",
-
         display: "flex",
 
         alignItems: "center",
 
-        py: 6,
+        justifyContent: "center",
+
+        p: {
+          xs: 1.5,
+
+          sm: 3,
+        },
+
+        overflowY: "auto",
+
+        "& .MuiBackdrop-root": {
+          backgroundColor: "rgba(15, 23, 42, 0.66)",
+
+          backdropFilter: "blur(1.5px)",
+        },
       }}
     >
-      <Container maxWidth="sm">
-        {/* =================================================== */}
-        {/* BACK */}
-        {/* =================================================== */}
+      <Paper
+        elevation={24}
+        sx={{
+          position: "relative",
 
-        <Button
-          startIcon={<ArrowBack />}
-          onClick={handleBack}
+          width: "100%",
+
+          maxWidth: 510,
+
+          maxHeight: "calc(100vh - 40px)",
+
+          minHeight: {
+            xs: "auto",
+
+            sm: screen === SCREEN.DETAILS ? 650 : 570,
+          },
+
+          overflowY: "auto",
+
+          borderRadius: 3,
+
+          p: {
+            xs: 3,
+
+            sm: 4.5,
+          },
+
+          bgcolor: "#FFFFFF",
+
+          color: "#111827",
+
+          outline: "none",
+
+          boxShadow: "0 24px 80px rgba(0,0,0,0.32)",
+        }}
+      >
+        <IconButton
+          type="button"
+          onClick={handleClose}
+          disabled={loading}
+          aria-label="Close registration"
           sx={{
-            mb: 3,
+            position: "absolute",
+
+            top: 14,
+
+            right: 14,
 
             color: "text.secondary",
+
+            zIndex: 2,
           }}
         >
-          {destination ? "Back to Sign In" : "Back to LibraryHub"}
-        </Button>
+          <Close />
+        </IconButton>
 
-        <Paper
-          elevation={0}
-          sx={{
-            border: "1px solid",
+        {screen === SCREEN.DETAILS && renderAccountDetails()}
 
-            borderColor: "divider",
+        {screen === SCREEN.MOBILE && renderMobileVerification()}
 
-            borderRadius: 3,
+        {screen === SCREEN.OTP && renderOtpVerification()}
 
-            p: {
-              xs: 3,
-
-              sm: 5,
-            },
-          }}
-        >
-          {/* ================================================= */}
-          {/* HEADER */}
-          {/* ================================================= */}
-
-          <Stack
-            spacing={1}
+        {screen === SCREEN.DETAILS && (
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            textAlign="center"
+            display="block"
             sx={{
-              mb: 4,
+              mt: 3,
             }}
           >
-            <Box
-              sx={{
-                width: 46,
-
-                height: 46,
-
-                borderRadius: 2,
-
-                backgroundColor: "primary.main",
-
-                display: "flex",
-
-                alignItems: "center",
-
-                justifyContent: "center",
-
-                mb: 1,
-              }}
-            >
-              <Typography
-                sx={{
-                  color: "#FFFFFF",
-
-                  fontWeight: 800,
-
-                  fontSize: 22,
-                }}
-              >
-                L
-              </Typography>
-            </Box>
-
-            <Typography
-              variant="h4"
-              sx={{
-                fontWeight: 800,
-
-                letterSpacing: "-0.02em",
-              }}
-            >
-              Create your account
-            </Typography>
-
-            <Typography color="text.secondary">
-              Join LibraryHub and start discovering libraries and available
-              study seats.
-            </Typography>
-          </Stack>
-
-          {/* ================================================= */}
-          {/* BOOKING CONTEXT */}
-          {/* ================================================= */}
-
-          {destination && returnState.action === "BOOK_SEAT" && (
-            <Alert
-              severity="info"
-              sx={{
-                mb: 3,
-
-                borderRadius: 2.5,
-              }}
-            >
-              Create your account to continue booking. Your selected membership
-              plan, floor, slot, date and seat will be restored automatically.
-            </Alert>
-          )}
-
-          {/* ================================================= */}
-          {/* ERROR */}
-          {/* ================================================= */}
-
-          {error && (
-            <Alert
-              severity="error"
-              sx={{
-                mb: 3,
-              }}
-              onClose={() => setError("")}
-            >
-              {error}
-            </Alert>
-          )}
-
-          {/* ================================================= */}
-          {/* SUCCESS */}
-          {/* ================================================= */}
-
-          {success && (
-            <Alert
-              severity="success"
-              sx={{
-                mb: 3,
-              }}
-            >
-              {success}
-            </Alert>
-          )}
-
-          {/* ================================================= */}
-          {/* FORM */}
-          {/* ================================================= */}
-
-          <Box component="form" onSubmit={handleSubmit} noValidate>
-            <Stack spacing={2.5}>
-              {/* ============================================= */}
-              {/* FULL NAME */}
-              {/* ============================================= */}
-
-              <TextField
-                fullWidth
-                required
-                label="Full Name"
-                name="fullName"
-                value={formData.fullName}
-                onChange={handleChange}
-                error={Boolean(fieldErrors.fullName)}
-                helperText={fieldErrors.fullName}
-                disabled={loading}
-                placeholder="Enter your full name"
-                autoComplete="name"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <PersonOutlineOutlined color="action" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-
-              {/* ============================================= */}
-              {/* EMAIL */}
-              {/* ============================================= */}
-
-              <TextField
-                fullWidth
-                required
-                label="Email Address"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                error={Boolean(fieldErrors.email)}
-                helperText={fieldErrors.email}
-                disabled={loading}
-                placeholder="you@example.com"
-                autoComplete="email"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EmailOutlined color="action" />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-
-              {/* ============================================= */}
-              {/* PASSWORD */}
-              {/* ============================================= */}
-
-              <TextField
-                fullWidth
-                required
-                label="Password"
-                name="password"
-                type={showPassword ? "text" : "password"}
-                value={formData.password}
-                onChange={handleChange}
-                error={Boolean(fieldErrors.password)}
-                helperText={fieldErrors.password || "Minimum 6 characters"}
-                disabled={loading}
-                placeholder="Create a password"
-                autoComplete="new-password"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LockOutlined color="action" />
-                      </InputAdornment>
-                    ),
-
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          type="button"
-                          edge="end"
-                          onClick={() =>
-                            setShowPassword((previous) => !previous)
-                          }
-                          disabled={loading}
-                          aria-label={
-                            showPassword ? "Hide password" : "Show password"
-                          }
-                        >
-                          {showPassword ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-
-              {/* ============================================= */}
-              {/* CONFIRM PASSWORD */}
-              {/* ============================================= */}
-
-              <TextField
-                fullWidth
-                required
-                label="Confirm Password"
-                name="confirmPassword"
-                type={showConfirmPassword ? "text" : "password"}
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                error={Boolean(fieldErrors.confirmPassword)}
-                helperText={fieldErrors.confirmPassword}
-                disabled={loading}
-                placeholder="Confirm your password"
-                autoComplete="new-password"
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <LockOutlined color="action" />
-                      </InputAdornment>
-                    ),
-
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          type="button"
-                          edge="end"
-                          onClick={() =>
-                            setShowConfirmPassword((previous) => !previous)
-                          }
-                          disabled={loading}
-                          aria-label={
-                            showConfirmPassword
-                              ? "Hide password confirmation"
-                              : "Show password confirmation"
-                          }
-                        >
-                          {showConfirmPassword ? (
-                            <VisibilityOff />
-                          ) : (
-                            <Visibility />
-                          )}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  },
-                }}
-              />
-
-              {/* ============================================= */}
-              {/* REGISTER */}
-              {/* ============================================= */}
-
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                fullWidth
-                disabled={loading}
-                sx={{
-                  minHeight: 48,
-
-                  mt: 1,
-
-                  fontWeight: 800,
-
-                  borderRadius: 2.25,
-                }}
-              >
-                {loading ? (
-                  <CircularProgress size={23} color="inherit" />
-                ) : destination && returnState.action === "BOOK_SEAT" ? (
-                  "Create Account & Continue Booking"
-                ) : (
-                  "Create Account"
-                )}
-              </Button>
-            </Stack>
-          </Box>
-
-          <Divider
-            sx={{
-              my: 3,
-            }}
-          />
-
-          {/* ================================================= */}
-          {/* LOGIN */}
-          {/* ================================================= */}
-
-          <Typography variant="body2" color="text.secondary" textAlign="center">
-            Already have an account?{" "}
-            <Link
-              component={RouterLink}
-              to="/login"
-              state={{
-                from: destination,
-
-                ...returnState,
-              }}
-              underline="hover"
-              sx={{
-                fontWeight: 700,
-              }}
-            >
-              Sign in
+            By creating an account, you agree to our{" "}
+            <Link href="/terms" underline="hover" color="inherit">
+              Terms & Conditions
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" underline="hover" color="inherit">
+              Privacy Policy
             </Link>
           </Typography>
-        </Paper>
-
-        {/* =================================================== */}
-        {/* FOOTER */}
-        {/* =================================================== */}
-
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          textAlign="center"
-          display="block"
-          sx={{
-            mt: 3,
-          }}
-        >
-          By creating an account, you agree to the LibraryHub terms and
-          policies.
-        </Typography>
-      </Container>
-    </Box>
+        )}
+      </Paper>
+    </Modal>
   );
 }
 

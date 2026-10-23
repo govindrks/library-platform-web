@@ -34,42 +34,54 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../../context/AuthContext";
 
+
 import studentLibraryApi from "../../../api/studentLibraryApi";
+import usePlatformConfig from "../../../api/usePlatformConfig";
 
 // ============================================================
+
 // NAVIGATION
+
 // ============================================================
 
 const navigationItems = [
   {
     label: "Home",
+
     path: "/",
+
     exact: true,
   },
 
   {
     label: "Libraries",
+
     path: "/libraries",
   },
 
   {
     label: "How It Works",
+
     path: "/how-it-works",
   },
 
   {
     label: "Membership Plans",
+
     path: "/membership-plans",
   },
 
   {
     label: "About",
+
     path: "/about",
   },
 ];
 
 // ============================================================
+
 // HELPERS
+
 // ============================================================
 
 const normalizeList = (response) => {
@@ -89,7 +101,9 @@ const normalizeList = (response) => {
 };
 
 // ============================================================
+
 // COMPONENT
+
 // ============================================================
 
 function PublicHeader() {
@@ -101,8 +115,12 @@ function PublicHeader() {
 
   const { isAuthenticated } = useAuth();
 
+  const { platformName, brandInitial } = usePlatformConfig();
+
   // ==========================================================
+
   // STATE
+
   // ==========================================================
 
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -114,7 +132,9 @@ function PublicHeader() {
   const [loadingCities, setLoadingCities] = useState(false);
 
   // ==========================================================
+
   // CURRENT CITY
+
   // ==========================================================
 
   const currentCity = useMemo(() => {
@@ -124,7 +144,9 @@ function PublicHeader() {
   }, [location.search]);
 
   // ==========================================================
+
   // ACTIVE ROUTE
+
   // ==========================================================
 
   const isActiveRoute = useCallback(
@@ -138,11 +160,14 @@ function PublicHeader() {
         location.pathname.startsWith(`${item.path}/`)
       );
     },
+
     [location.pathname],
   );
 
   // ==========================================================
+
   // LOAD PUBLIC CITIES
+
   // ==========================================================
 
   useEffect(() => {
@@ -163,7 +188,9 @@ function PublicHeader() {
         const uniqueCities = [
           ...new Set(
             list
+
               .map((library) => String(library?.city || "").trim())
+
               .filter(Boolean),
           ),
         ].sort((first, second) => first.localeCompare(second));
@@ -190,7 +217,9 @@ function PublicHeader() {
   }, []);
 
   // ==========================================================
+
   // NAVIGATION
+
   // ==========================================================
 
   const handleNavigation = (path) => {
@@ -200,7 +229,9 @@ function PublicHeader() {
   };
 
   // ==========================================================
+
   // LOCATION
+
   // ==========================================================
 
   const handleLocationOpen = (event) => {
@@ -226,7 +257,9 @@ function PublicHeader() {
   };
 
   // ==========================================================
+
   // REGISTER LIBRARY
+
   // ==========================================================
 
   const handleRegisterLibrary = () => {
@@ -236,7 +269,9 @@ function PublicHeader() {
   };
 
   // ==========================================================
+
   // AUTH
+
   // ==========================================================
 
   const handleAuthNavigation = () => {
@@ -246,7 +281,9 @@ function PublicHeader() {
   };
 
   // ==========================================================
+
   // HEADER
+
   // ==========================================================
 
   return (
@@ -278,12 +315,15 @@ function PublicHeader() {
 
               gap: {
                 xs: 1,
+
                 lg: 2,
               },
             }}
           >
             {/* ================================================= */}
+
             {/* MOBILE MENU */}
+
             {/* ================================================= */}
 
             <IconButton
@@ -291,6 +331,7 @@ function PublicHeader() {
               sx={{
                 display: {
                   xs: "flex",
+
                   lg: "none",
                 },
 
@@ -307,7 +348,9 @@ function PublicHeader() {
             </IconButton>
 
             {/* ================================================= */}
+
             {/* LOGO */}
+
             {/* ================================================= */}
 
             <Stack
@@ -322,6 +365,7 @@ function PublicHeader() {
 
                 mr: {
                   xs: "auto",
+
                   lg: 1,
                 },
               }}
@@ -340,11 +384,12 @@ function PublicHeader() {
 
                   boxShadow: `0 7px 18px ${alpha(
                     theme.palette.primary.main,
+
                     0.24,
                   )}`,
                 }}
               >
-                L
+                {brandInitial}
               </Avatar>
 
               <Box>
@@ -359,21 +404,14 @@ function PublicHeader() {
                     lineHeight: 1,
                   }}
                 >
-                  Library
-                  <Box
-                    component="span"
-                    sx={{
-                      color: "primary.main",
-                    }}
-                  >
-                    Hub
-                  </Box>
+                  {platformName}
                 </Typography>
 
                 <Typography
                   sx={{
                     display: {
                       xs: "none",
+
                       sm: "block",
                     },
 
@@ -396,7 +434,9 @@ function PublicHeader() {
             </Stack>
 
             {/* ================================================= */}
+
             {/* DESKTOP NAV */}
+
             {/* ================================================= */}
 
             <Stack
@@ -405,6 +445,7 @@ function PublicHeader() {
               sx={{
                 display: {
                   xs: "none",
+
                   lg: "flex",
                 },
 
@@ -467,7 +508,9 @@ function PublicHeader() {
             </Stack>
 
             {/* ================================================= */}
+
             {/* CITY SELECTOR */}
+
             {/* ================================================= */}
 
             <Button
@@ -483,6 +526,7 @@ function PublicHeader() {
               sx={{
                 display: {
                   xs: "none",
+
                   md: "inline-flex",
                 },
 
@@ -589,7 +633,9 @@ function PublicHeader() {
             </Menu>
 
             {/* ================================================= */}
+
             {/* REGISTER */}
+
             {/* ================================================= */}
 
             <Button
@@ -599,6 +645,7 @@ function PublicHeader() {
               sx={{
                 display: {
                   xs: "none",
+
                   xl: "inline-flex",
                 },
 
@@ -617,7 +664,9 @@ function PublicHeader() {
             </Button>
 
             {/* ================================================= */}
+
             {/* AUTH */}
+
             {/* ================================================= */}
 
             <Button
@@ -631,6 +680,7 @@ function PublicHeader() {
 
                 px: {
                   xs: 1.5,
+
                   sm: 2,
                 },
 
@@ -648,6 +698,7 @@ function PublicHeader() {
                 sx={{
                   display: {
                     xs: "none",
+
                     sm: "inline",
                   },
                 }}
@@ -660,6 +711,7 @@ function PublicHeader() {
                 sx={{
                   display: {
                     xs: "inline",
+
                     sm: "none",
                   },
                 }}
@@ -672,7 +724,9 @@ function PublicHeader() {
       </AppBar>
 
       {/* ====================================================== */}
+
       {/* MOBILE DRAWER */}
+
       {/* ====================================================== */}
 
       <Drawer
@@ -684,6 +738,7 @@ function PublicHeader() {
             sx: {
               width: {
                 xs: 290,
+
                 sm: 330,
               },
 
@@ -704,7 +759,9 @@ function PublicHeader() {
           }}
         >
           {/* ================================================== */}
+
           {/* DRAWER HEADER */}
+
           {/* ================================================== */}
 
           <Stack
@@ -727,7 +784,7 @@ function PublicHeader() {
                   fontWeight: 900,
                 }}
               >
-                L
+                {brandInitial}
               </Avatar>
 
               <Typography variant="h6" fontWeight={900}>
@@ -744,7 +801,9 @@ function PublicHeader() {
           </Stack>
 
           {/* ================================================== */}
+
           {/* MOBILE LOCATION */}
+
           {/* ================================================== */}
 
           <Box
@@ -778,7 +837,9 @@ function PublicHeader() {
           </Box>
 
           {/* ================================================== */}
+
           {/* MOBILE NAV */}
+
           {/* ================================================== */}
 
           <Stack spacing={0.6}>
@@ -825,7 +886,9 @@ function PublicHeader() {
           />
 
           {/* ================================================== */}
+
           {/* CITY LIST MOBILE */}
+
           {/* ================================================== */}
 
           <Typography
@@ -888,7 +951,9 @@ function PublicHeader() {
           />
 
           {/* ================================================== */}
+
           {/* MOBILE ACTIONS */}
+
           {/* ================================================== */}
 
           <Stack spacing={1.2}>

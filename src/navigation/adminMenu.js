@@ -3,15 +3,24 @@ import {
   AdminPanelSettingsOutlined,
   AssessmentOutlined,
   DashboardOutlined,
+  DescriptionOutlined,
+  ErrorOutlineOutlined,
   ForumOutlined,
   LocalLibraryOutlined,
   PaymentsOutlined,
   PeopleOutlineOutlined,
   SupportAgentOutlined,
+  WhatsApp,
   WorkspacePremiumOutlined,
 } from "@mui/icons-material";
 
+
+// ============================================================
+// ADMIN MENU
+// ============================================================
+
 const adminMenu = [
+
   // =========================================================
   // OVERVIEW
   // =========================================================
@@ -27,6 +36,7 @@ const adminMenu = [
       },
     ],
   },
+
 
   // =========================================================
   // PLATFORM MANAGEMENT
@@ -50,6 +60,7 @@ const adminMenu = [
     ],
   },
 
+
   // =========================================================
   // SUBSCRIPTIONS
   // =========================================================
@@ -72,6 +83,7 @@ const adminMenu = [
     ],
   },
 
+
   // =========================================================
   // FINANCE
   // =========================================================
@@ -87,6 +99,36 @@ const adminMenu = [
       },
     ],
   },
+
+
+  // =========================================================
+  // WHATSAPP
+  // =========================================================
+
+  {
+    section: "WHATSAPP",
+
+    items: [
+      {
+        label: "WhatsApp Overview",
+        path: "/admin/whatsapp/overview",
+        icon: WhatsApp,
+      },
+
+      {
+        label: "WhatsApp Templates",
+        path: "/admin/whatsapp/templates",
+        icon: DescriptionOutlined,
+      },
+
+      {
+        label: "WhatsApp Failures",
+        path: "/admin/whatsapp/failures",
+        icon: ErrorOutlineOutlined,
+      },
+    ],
+  },
+
 
   // =========================================================
   // SUPPORT
@@ -110,6 +152,7 @@ const adminMenu = [
     ],
   },
 
+
   // =========================================================
   // INSIGHTS
   // =========================================================
@@ -125,6 +168,7 @@ const adminMenu = [
       },
     ],
   },
+
 
   // =========================================================
   // SYSTEM
@@ -142,5 +186,6 @@ const adminMenu = [
     ],
   },
 ];
+
 
 export default adminMenu;

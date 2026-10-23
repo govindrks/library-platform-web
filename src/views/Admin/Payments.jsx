@@ -1,28 +1,29 @@
 import {
   AccountBalanceWalletOutlined,
   Close,
+  DownloadOutlined,
   ErrorOutlineOutlined,
   HourglassEmptyOutlined,
   PaymentsOutlined,
   ReceiptLongOutlined,
+  Refresh,
   ReplayOutlined,
   Search,
   TrendingUpOutlined,
   VisibilityOutlined,
+  WarningAmberOutlined,
+  WorkspacePremiumOutlined,
 } from "@mui/icons-material";
 
 import {
   Alert,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
-  DialogTitle,
   Divider,
   FormControl,
   Grid,
@@ -30,7 +31,9 @@ import {
   InputAdornment,
   InputLabel,
   MenuItem,
+  Paper,
   Select,
+  Skeleton,
   Stack,
   Table,
   TableBody,
@@ -41,21 +44,29 @@ import {
   TextField,
   Tooltip,
   Typography,
+  alpha,
+  useTheme,
 } from "@mui/material";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import adminApi from "../../api/adminApi";
+import invoiceApi from "../../api/invoiceApi";
+import usePlatformConfig from "../../api/usePlatformConfig";
+
 
 // ============================================================
 // STATUS
 // ============================================================
-//
-// These are statuses confirmed by your current
-// PaymentTransactionServiceImpl.
-//
 
-const STATUS_OPTIONS = ["PENDING", "CREATED", "SUCCESS", "FAILED", "REFUNDED"];
+const STATUS_OPTIONS = [
+  "PENDING",
+  "CREATED",
+  "SUCCESS",
+  "FAILED",
+  "REFUNDED",
+];
+
 
 // ============================================================
 // REFERENCE TYPES
@@ -70,6 +81,7 @@ const REFERENCE_TYPES = [
   "LATE_FEE",
   "OTHER",
 ];
+
 
 // ============================================================
 // HELPERS
@@ -87,19 +99,23 @@ const displayEnum = (value) => {
     .join(" ");
 };
 
+
 const formatMoney = (amount, currency = "INR") => {
-  if (amount === null || amount === undefined) {
+  if (
+    amount === null
+    || amount === undefined
+    || amount === ""
+  ) {
     return "-";
   }
 
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
-
     currency: currency || "INR",
-
     maximumFractionDigits: 2,
   }).format(Number(amount));
 };
+
 
 const formatDateTime = (value) => {
   if (!value) {
@@ -108,16 +124,13 @@ const formatDateTime = (value) => {
 
   return new Date(value).toLocaleString("en-IN", {
     day: "2-digit",
-
     month: "short",
-
     year: "numeric",
-
     hour: "2-digit",
-
     minute: "2-digit",
   });
 };
+
 
 const getStatusColor = (status) => {
   switch (status) {
@@ -139,94 +152,222 @@ const getStatusColor = (status) => {
   }
 };
 
+
+const getStatusTone = (status, theme) => {
+  switch (status) {
+    case "SUCCESS":
+      return theme.palette.success;
+
+    case "PENDING":
+    case "CREATED":
+      return theme.palette.warning;
+
+    case "FAILED":
+      return theme.palette.error;
+
+    case "REFUNDED":
+      return theme.palette.info;
+
+    default:
+      return theme.palette.primary;
+  }
+};
+
+
+
 // ============================================================
 // STAT CARD
 // ============================================================
 
-function StatCard({ label, value, subtitle, icon }) {
+function StatCard({
+  label,
+  value,
+  helper,
+  icon,
+  tone = "primary",
+}) {
+  const theme = useTheme();
+
+  const palette =
+    tone === "success"
+      ? theme.palette.success
+      : tone === "warning"
+        ? theme.palette.warning
+        : tone === "error"
+          ? theme.palette.error
+          : tone === "info"
+            ? theme.palette.info
+            : theme.palette.primary;
+
   return (
-    <Card
-      variant="outlined"
+    <Paper
+      elevation={0}
       sx={{
         height: "100%",
+        p: 2.35,
+        position: "relative",
+        overflow: "hidden",
+        borderRadius: 3.5,
+        border: "1px solid",
+        borderColor: alpha(palette.main, 0.12),
+        background: `linear-gradient(
+          145deg,
+          ${theme.palette.background.paper} 0%,
+          ${alpha(palette.main, 0.04)} 100%
+        )`,
+        transition: "all .2s ease",
+        "&:hover": {
+          transform: "translateY(-3px)",
+          borderColor: alpha(palette.main, 0.24),
+          boxShadow: `0 16px 34px ${alpha(
+            theme.palette.common.black,
+            0.07,
+          )}`,
+        },
       }}
     >
-      <CardContent>
-        <Stack
-          direction="row"
-          justifyContent="space-between"
-          alignItems="flex-start"
-          spacing={2}
-        >
-          <Box>
-            <Typography variant="body2" color="text.secondary">
-              {label}
-            </Typography>
+      <Box
+        sx={{
+          position: "absolute",
+          width: 92,
+          height: 92,
+          borderRadius: "50%",
+          right: -30,
+          top: -34,
+          bgcolor: alpha(palette.main, 0.07),
+        }}
+      />
 
-            <Typography variant="h4" fontWeight={800} mt={0.5}>
-              {value}
-            </Typography>
+      <Stack
+        direction="row"
+        justifyContent="space-between"
+        spacing={2}
+      >
+        <Box>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            fontWeight={750}
+          >
+            {label}
+          </Typography>
 
-            {subtitle && (
-              <Typography variant="caption" color="text.secondary">
-                {subtitle}
-              </Typography>
-            )}
-          </Box>
-
-          <Box
+          <Typography
+            variant="h4"
             sx={{
-              width: 46,
-
-              height: 46,
-
-              borderRadius: 2,
-
-              bgcolor: "action.hover",
-
-              display: "flex",
-
-              alignItems: "center",
-
-              justifyContent: "center",
-
-              color: "primary.main",
+              mt: 0.55,
+              fontWeight: 900,
+              letterSpacing: "-0.035em",
             }}
           >
-            {icon}
-          </Box>
-        </Stack>
-      </CardContent>
-    </Card>
+            {value}
+          </Typography>
+
+          <Typography
+            variant="caption"
+            color="text.secondary"
+          >
+            {helper}
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            width: 44,
+            height: 44,
+            borderRadius: 2.3,
+            display: "grid",
+            placeItems: "center",
+            bgcolor: alpha(palette.main, 0.1),
+            color: palette.main,
+            flexShrink: 0,
+          }}
+        >
+          {icon}
+        </Box>
+      </Stack>
+    </Paper>
   );
 }
+
+
+// ============================================================
+// INFO TILE
+// ============================================================
+
+function InfoTile({
+  title,
+  value,
+  helper,
+}) {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        height: "100%",
+        p: 1.8,
+        borderRadius: 2.6,
+        border: "1px solid",
+        borderColor: "divider",
+        bgcolor: "background.paper",
+      }}
+    >
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        fontWeight={700}
+      >
+        {title}
+      </Typography>
+
+      <Typography
+        variant="body1"
+        fontWeight={850}
+        sx={{
+          mt: 0.4,
+          wordBreak: "break-word",
+        }}
+      >
+        {value}
+      </Typography>
+
+      {helper && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{
+            display: "block",
+            mt: 0.35,
+            wordBreak: "break-word",
+          }}
+        >
+          {helper}
+        </Typography>
+      )}
+    </Paper>
+  );
+}
+
 
 // ============================================================
 // COMPONENT
 // ============================================================
 
 function Payments() {
+  const theme = useTheme();
+
   const [payments, setPayments] = useState([]);
 
   const [summary, setSummary] = useState({
     totalTransactions: 0,
-
     successfulTransactions: 0,
-
     pendingTransactions: 0,
-
     createdTransactions: 0,
-
     failedTransactions: 0,
-
     refundedTransactions: 0,
-
     grossSuccessfulAmount: 0,
-
     platformSubscriptionRevenue: 0,
-
     refundedAmount: 0,
-
     averageSuccessfulTransaction: 0,
   });
 
@@ -238,11 +379,21 @@ function Payments() {
 
   const [loading, setLoading] = useState(true);
 
+  const [summaryLoading, setSummaryLoading] = useState(true);
+
   const [error, setError] = useState("");
 
   const [selectedPayment, setSelectedPayment] = useState(null);
 
   const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const { platformName } = usePlatformConfig();
+
+  const [downloadingInvoicePaymentId, setDownloadingInvoicePaymentId] =
+    useState(null);
+
 
   // =========================================================
   // SUMMARY
@@ -250,13 +401,22 @@ function Payments() {
 
   const loadSummary = useCallback(async () => {
     try {
-      const response = await adminApi.getPaymentSummary();
+      setSummaryLoading(true);
+
+      const response =
+        await adminApi.getPaymentSummary();
 
       setSummary(response || {});
     } catch (requestError) {
-      console.error("Payment summary failed:", requestError);
+      console.error(
+        "Payment summary failed:",
+        requestError,
+      );
+    } finally {
+      setSummaryLoading(false);
     }
   }, []);
+
 
   // =========================================================
   // PAYMENTS
@@ -265,37 +425,44 @@ function Payments() {
   const loadPayments = useCallback(async () => {
     try {
       setLoading(true);
-
       setError("");
 
-      const response = await adminApi.getPayments({
-        search,
+      const response =
+        await adminApi.getPayments({
+          search,
+          status: statusFilter,
+          referenceType: referenceTypeFilter,
+        });
 
-        status: statusFilter,
-
-        referenceType: referenceTypeFilter,
-      });
-
-      setPayments(Array.isArray(response) ? response : []);
+      setPayments(
+        Array.isArray(response)
+          ? response
+          : [],
+      );
     } catch (requestError) {
-      console.error("Admin payments load failed:", requestError);
+      console.error(
+        "Admin payments load failed:",
+        requestError,
+      );
 
       setError(
-        requestError?.response?.data?.message ||
-          "Unable to load payment transactions.",
+        requestError?.response?.data?.message
+        || "Unable to load payment transactions.",
       );
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, referenceTypeFilter]);
+  }, [
+    search,
+    statusFilter,
+    referenceTypeFilter,
+  ]);
 
-  // =========================================================
-  // INITIAL LOAD
-  // =========================================================
 
   useEffect(() => {
     loadSummary();
   }, [loadSummary]);
+
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -305,111 +472,445 @@ function Payments() {
     return () => clearTimeout(timer);
   }, [loadPayments]);
 
+
+  const refreshAll = async () => {
+    await Promise.all([
+      loadSummary(),
+      loadPayments(),
+    ]);
+  };
+
+
+  // =========================================================
+  // REAL DERIVED HEALTH
+  // =========================================================
+
+  const health = useMemo(() => {
+    const total =
+      Number(summary.totalTransactions || 0);
+
+    const successful =
+      Number(summary.successfulTransactions || 0);
+
+    const pending =
+      Number(summary.pendingTransactions || 0)
+      + Number(summary.createdTransactions || 0);
+
+    const failed =
+      Number(summary.failedTransactions || 0);
+
+    const refunded =
+      Number(summary.refundedTransactions || 0);
+
+    const successRate =
+      total > 0
+        ? Math.round(
+            (successful / total) * 100,
+          )
+        : 0;
+
+    return {
+      successRate,
+      pending,
+      failed,
+      refunded,
+      attention:
+        pending + failed,
+    };
+  }, [summary]);
+
+
   // =========================================================
   // DETAILS
   // =========================================================
 
   const handleView = async (paymentId) => {
     try {
+      setDetailsLoading(true);
       setError("");
 
-      const response = await adminApi.getPayment(paymentId);
+      const response =
+        await adminApi.getPayment(
+          paymentId,
+        );
 
       setSelectedPayment(response);
-
       setDetailsOpen(true);
     } catch (requestError) {
       setError(
-        requestError?.response?.data?.message ||
-          "Unable to load payment details.",
+        requestError?.response?.data?.message
+        || "Unable to load payment details.",
+      );
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+
+  // =========================================================
+  // PAYMENT INVOICE PDF
+  // =========================================================
+
+  const handleDownloadInvoice = async (payment) => {
+    const paymentTransactionId = Number(
+      payment?.paymentId
+      ?? payment?.transactionId
+      ?? payment?.id,
+    );
+
+    if (!Number.isFinite(paymentTransactionId)) {
+      setError("Payment transaction ID is unavailable.");
+      return;
+    }
+
+    if (payment?.status !== "SUCCESS") {
+      setError("Invoice PDF is available only for a successful payment.");
+      return;
+    }
+
+    try {
+      setDownloadingInvoicePaymentId(
+        paymentTransactionId,
+      );
+
+      setError("");
+
+      /*
+       * Admin list responses may already include libraryId.
+       * If they do not, load the real payment details first
+       * and resolve the owning tenant from that record.
+       */
+      let libraryId =
+        payment?.libraryId != null
+          ? Number(payment.libraryId)
+          : null;
+
+      let paymentDetails = payment;
+
+      if (
+        !Number.isFinite(libraryId)
+      ) {
+        paymentDetails =
+          await adminApi.getPayment(
+            paymentTransactionId,
+          );
+
+        libraryId =
+          paymentDetails?.libraryId != null
+            ? Number(
+                paymentDetails.libraryId,
+              )
+            : null;
+      }
+
+      if (
+        !Number.isFinite(libraryId)
+      ) {
+        throw new Error(
+          `Library ID is unavailable for payment #${paymentTransactionId}.`,
+        );
+      }
+
+      const invoice =
+        await invoiceApi.generateInvoice(
+          paymentTransactionId,
+        );
+
+      if (!invoice?.id) {
+        throw new Error(
+          `Invoice ID was not returned for payment #${paymentTransactionId}.`,
+        );
+      }
+
+      await invoiceApi.downloadInvoice(
+        libraryId,
+        invoice.id,
+        invoice.invoiceNumber,
+      );
+    } catch (requestError) {
+      console.error(
+        "Admin invoice download failed:",
+        requestError,
+      );
+
+      setError(
+        requestError?.response?.data?.message
+        || requestError?.response?.data?.error
+        || requestError?.message
+        || "Unable to download the payment invoice PDF.",
+      );
+    } finally {
+      setDownloadingInvoicePaymentId(
+        null,
       );
     }
   };
+
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("");
+    setReferenceTypeFilter("");
+  };
+
+
+  const hasFilters =
+    Boolean(search.trim())
+    || Boolean(statusFilter)
+    || Boolean(referenceTypeFilter);
+
 
   // =========================================================
   // UI
   // =========================================================
 
   return (
-    <Box
-      sx={{
-        pb: 5,
-      }}
-    >
-      {/* HEADER */}
+    <Box sx={{ pb: 5 }}>
+      {/* =================================================== */}
+      {/* HERO */}
+      {/* =================================================== */}
 
-      <Box mb={3}>
-        <Typography variant="h4" fontWeight={800}>
-          Payments
-        </Typography>
+      <Paper
+        elevation={0}
+        sx={{
+          position: "relative",
+          overflow: "hidden",
+          mb: 3,
+          p: {
+            xs: 2.6,
+            md: 3.2,
+          },
+          borderRadius: 4,
+          border: "1px solid",
+          borderColor: alpha(
+            theme.palette.primary.main,
+            0.12,
+          ),
+          background:
+            "linear-gradient(135deg, #F8FAFF 0%, #F3F1FF 48%, #EEF5FF 100%)",
+        }}
+      >
+        <Box
+          sx={{
+            position: "absolute",
+            width: 230,
+            height: 230,
+            borderRadius: "50%",
+            right: -80,
+            top: -120,
+            bgcolor: alpha(
+              theme.palette.primary.main,
+              0.07,
+            ),
+          }}
+        />
 
-        <Typography color="text.secondary" mt={0.5}>
-          Monitor payment transactions, gateway status, platform subscription
-          revenue and refunds.
-        </Typography>
-      </Box>
+        <Stack
+          direction={{
+            xs: "column",
+            md: "row",
+          }}
+          justifyContent="space-between"
+          alignItems={{
+            xs: "flex-start",
+            md: "center",
+          }}
+          spacing={2}
+          sx={{
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
+          <Box>
+            <Chip
+              label="FINANCIAL OPERATIONS"
+              size="small"
+              icon={<WorkspacePremiumOutlined />}
+              sx={{
+                mb: 1.3,
+                fontWeight: 850,
+                letterSpacing: 0.7,
+                bgcolor: alpha(
+                  theme.palette.primary.main,
+                  0.08,
+                ),
+                color: "primary.main",
+                "& .MuiChip-icon": {
+                  color: "inherit",
+                },
+              }}
+            />
+
+            <Typography
+              variant="h4"
+              sx={{
+                fontWeight: 900,
+                letterSpacing: "-0.04em",
+              }}
+            >
+              Payments
+            </Typography>
+
+            <Typography
+              color="text.secondary"
+              sx={{
+                mt: 0.65,
+                maxWidth: 820,
+                lineHeight: 1.7,
+              }}
+            >
+              Monitor real payment transactions,
+              platform revenue, gateway state,
+              refunds and failures across {platformName}.
+            </Typography>
+          </Box>
+
+          <Stack
+            direction="row"
+            spacing={1}
+            useFlexGap
+            flexWrap="wrap"
+          >
+            <Chip
+              label={`${health.successRate}% success rate`}
+              color={
+                health.successRate >= 85
+                  ? "success"
+                  : health.successRate >= 60
+                    ? "warning"
+                    : "error"
+              }
+              variant="outlined"
+              sx={{
+                fontWeight: 800,
+                bgcolor: "#FFFFFF",
+              }}
+            />
+
+            <Tooltip title="Refresh live payment data">
+              <IconButton
+                onClick={refreshAll}
+                disabled={
+                  loading || summaryLoading
+                }
+                sx={{
+                  width: 44,
+                  height: 44,
+                  bgcolor: "#FFFFFF",
+                  border: "1px solid",
+                  borderColor: alpha(
+                    theme.palette.primary.main,
+                    0.12,
+                  ),
+                }}
+              >
+                {loading || summaryLoading ? (
+                  <CircularProgress
+                    size={18}
+                  />
+                ) : (
+                  <Refresh />
+                )}
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </Stack>
+      </Paper>
+
+
+      {/* =================================================== */}
+      {/* ERROR */}
+      {/* =================================================== */}
 
       {error && (
         <Alert
           severity="error"
           sx={{
             mb: 2,
+            borderRadius: 2.5,
           }}
-          onClose={() => setError("")}
+          onClose={() =>
+            setError("")
+          }
         >
           {error}
         </Alert>
       )}
 
-      {/* SUMMARY */}
 
-      <Grid container spacing={2} mb={3}>
+      {/* =================================================== */}
+      {/* KPI */}
+      {/* =================================================== */}
+
+      <Grid
+        container
+        spacing={2}
+        sx={{
+          mb: 2,
+        }}
+      >
         <Grid
           size={{
             xs: 12,
-
             sm: 6,
-
-            lg: 4,
+            lg: 3,
           }}
         >
           <StatCard
             label="Platform Revenue"
-            value={formatMoney(summary.platformSubscriptionRevenue)}
-            subtitle="Platform plans & renewals"
-            icon={<TrendingUpOutlined />}
+            value={
+              summaryLoading
+                ? "—"
+                : formatMoney(
+                    summary.platformSubscriptionRevenue,
+                  )
+            }
+            helper="Platform subscriptions & renewals"
+            icon={
+              <TrendingUpOutlined />
+            }
+            tone="success"
           />
         </Grid>
 
         <Grid
           size={{
             xs: 12,
-
             sm: 6,
-
-            lg: 4,
+            lg: 3,
           }}
         >
           <StatCard
             label="Gross Successful"
-            value={formatMoney(summary.grossSuccessfulAmount)}
-            subtitle="All successful transactions"
-            icon={<AccountBalanceWalletOutlined />}
+            value={
+              summaryLoading
+                ? "—"
+                : formatMoney(
+                    summary.grossSuccessfulAmount,
+                  )
+            }
+            helper="All successful payment value"
+            icon={
+              <AccountBalanceWalletOutlined />
+            }
           />
         </Grid>
 
         <Grid
           size={{
             xs: 12,
-
             sm: 6,
-
-            lg: 4,
+            lg: 3,
           }}
         >
           <StatCard
             label="Total Transactions"
-            value={summary.totalTransactions || 0}
+            value={
+              summaryLoading
+                ? "—"
+                : summary.totalTransactions || 0
+            }
+            helper="All payment transaction records"
             icon={<PaymentsOutlined />}
           />
         </Grid>
@@ -417,512 +918,1235 @@ function Payments() {
         <Grid
           size={{
             xs: 12,
-
             sm: 6,
-
             lg: 3,
           }}
         >
           <StatCard
-            label="Successful"
-            value={summary.successfulTransactions || 0}
-            icon={<ReceiptLongOutlined />}
-          />
-        </Grid>
-
-        <Grid
-          size={{
-            xs: 12,
-
-            sm: 6,
-
-            lg: 3,
-          }}
-        >
-          <StatCard
-            label="Pending / Created"
+            label="Average Success"
             value={
-              (summary.pendingTransactions || 0) +
-              (summary.createdTransactions || 0)
+              summaryLoading
+                ? "—"
+                : formatMoney(
+                    summary.averageSuccessfulTransaction,
+                  )
             }
-            icon={<HourglassEmptyOutlined />}
-          />
-        </Grid>
-
-        <Grid
-          size={{
-            xs: 12,
-
-            sm: 6,
-
-            lg: 3,
-          }}
-        >
-          <StatCard
-            label="Failed"
-            value={summary.failedTransactions || 0}
-            icon={<ErrorOutlineOutlined />}
-          />
-        </Grid>
-
-        <Grid
-          size={{
-            xs: 12,
-
-            sm: 6,
-
-            lg: 3,
-          }}
-        >
-          <StatCard
-            label="Refunded"
-            value={formatMoney(summary.refundedAmount)}
-            subtitle={`${summary.refundedTransactions || 0} transactions`}
-            icon={<ReplayOutlined />}
+            helper="Average successful transaction value"
+            icon={<ReceiptLongOutlined />}
           />
         </Grid>
       </Grid>
 
-      {/* FILTERS */}
 
-      <Card
-        variant="outlined"
+      {/* =================================================== */}
+      {/* HEALTH STRIP */}
+      {/* =================================================== */}
+
+      <Paper
+        elevation={0}
         sx={{
           mb: 3,
+          p: 1.5,
+          borderRadius: 3.2,
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: "#FFFFFF",
         }}
       >
-        <CardContent>
+        <Grid
+          container
+          spacing={1}
+        >
+          <Grid
+            size={{
+              xs: 6,
+              md: 3,
+            }}
+          >
+            <InfoTile
+              title="Successful"
+              value={
+                summary.successfulTransactions || 0
+              }
+              helper="Completed successfully"
+            />
+          </Grid>
+
+          <Grid
+            size={{
+              xs: 6,
+              md: 3,
+            }}
+          >
+            <InfoTile
+              title="Pending / Created"
+              value={health.pending}
+              helper="Waiting for completion"
+            />
+          </Grid>
+
+          <Grid
+            size={{
+              xs: 6,
+              md: 3,
+            }}
+          >
+            <InfoTile
+              title="Failed"
+              value={health.failed}
+              helper="Transactions requiring review"
+            />
+          </Grid>
+
+          <Grid
+            size={{
+              xs: 6,
+              md: 3,
+            }}
+          >
+            <InfoTile
+              title="Refunded"
+              value={formatMoney(
+                summary.refundedAmount,
+              )}
+              helper={`${health.refunded} transaction${
+                health.refunded === 1
+                  ? ""
+                  : "s"
+              }`}
+            />
+          </Grid>
+        </Grid>
+      </Paper>
+
+
+      {/* =================================================== */}
+      {/* FILTERS */}
+      {/* =================================================== */}
+
+      <Paper
+        elevation={0}
+        sx={{
+          mb: 3,
+          p: 1.5,
+          borderRadius: 3.5,
+          border: "1px solid",
+          borderColor: alpha(
+            theme.palette.primary.main,
+            0.1,
+          ),
+          bgcolor: "#FFFFFF",
+          boxShadow:
+            "0 8px 24px rgba(15,23,42,0.035)",
+        }}
+      >
+        <Stack
+          direction={{
+            xs: "column",
+            lg: "row",
+          }}
+          spacing={1.25}
+          alignItems={{
+            xs: "stretch",
+            lg: "center",
+          }}
+        >
+          <TextField
+            fullWidth
+            placeholder="Search transaction, gateway ID, library or customer..."
+            value={search}
+            onChange={(event) =>
+              setSearch(
+                event.target.value,
+              )
+            }
+            sx={{
+              "& .MuiOutlinedInput-root": {
+                height: 48,
+                borderRadius: 2.7,
+                bgcolor: "#FFFFFF",
+                "& fieldset": {
+                  borderColor: alpha(
+                    theme.palette.divider,
+                    0.95,
+                  ),
+                },
+                "&:hover fieldset": {
+                  borderColor: alpha(
+                    theme.palette.primary.main,
+                    0.32,
+                  ),
+                },
+                "&.Mui-focused": {
+                  boxShadow: `0 0 0 3px ${alpha(
+                    theme.palette.primary.main,
+                    0.08,
+                  )}`,
+                },
+                "&.Mui-focused fieldset": {
+                  borderColor:
+                    theme.palette.primary.main,
+                  borderWidth: 1,
+                },
+              },
+              "& .MuiInputBase-input": {
+                py: 0,
+                height: 48,
+                boxSizing: "border-box",
+                fontSize: 14,
+                fontWeight: 550,
+              },
+            }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Box
+                    sx={{
+                      width: 32,
+                      height: 32,
+                      display: "grid",
+                      placeItems: "center",
+                      borderRadius: 1.8,
+                      bgcolor: alpha(
+                        theme.palette.primary.main,
+                        0.06,
+                      ),
+                      color: "primary.main",
+                    }}
+                  >
+                    <Search
+                      sx={{
+                        fontSize: 19,
+                      }}
+                    />
+                  </Box>
+                </InputAdornment>
+              ),
+            }}
+          />
+
+          <FormControl
+            sx={{
+              minWidth: {
+                xs: "100%",
+                lg: 190,
+              },
+            }}
+          >
+            <InputLabel>
+              Status
+            </InputLabel>
+
+            <Select
+              label="Status"
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  event.target.value,
+                )
+              }
+              sx={{
+                height: 48,
+                borderRadius: 2.7,
+                bgcolor: "#FFFFFF",
+                fontWeight: 650,
+              }}
+            >
+              <MenuItem value="">
+                All Statuses
+              </MenuItem>
+
+              {STATUS_OPTIONS.map(
+                (status) => (
+                  <MenuItem
+                    key={status}
+                    value={status}
+                  >
+                    {displayEnum(
+                      status,
+                    )}
+                  </MenuItem>
+                ),
+              )}
+            </Select>
+          </FormControl>
+
+          <FormControl
+            sx={{
+              minWidth: {
+                xs: "100%",
+                lg: 240,
+              },
+            }}
+          >
+            <InputLabel>
+              Payment Type
+            </InputLabel>
+
+            <Select
+              label="Payment Type"
+              value={
+                referenceTypeFilter
+              }
+              onChange={(event) =>
+                setReferenceTypeFilter(
+                  event.target.value,
+                )
+              }
+              sx={{
+                height: 48,
+                borderRadius: 2.7,
+                bgcolor: "#FFFFFF",
+                fontWeight: 650,
+              }}
+            >
+              <MenuItem value="">
+                All Payment Types
+              </MenuItem>
+
+              {REFERENCE_TYPES.map(
+                (type) => (
+                  <MenuItem
+                    key={type}
+                    value={type}
+                  >
+                    {displayEnum(type)}
+                  </MenuItem>
+                ),
+              )}
+            </Select>
+          </FormControl>
+
+          {hasFilters && (
+            <Button
+              variant="outlined"
+              onClick={clearFilters}
+              sx={{
+                height: 48,
+                minWidth: 118,
+                borderRadius: 2.7,
+                textTransform: "none",
+                fontWeight: 750,
+              }}
+            >
+              Clear filters
+            </Button>
+          )}
+        </Stack>
+      </Paper>
+
+
+      {/* =================================================== */}
+      {/* TABLE */}
+      {/* =================================================== */}
+
+      <Paper
+        elevation={0}
+        sx={{
+          overflow: "hidden",
+          borderRadius: 3.5,
+          border: "1px solid",
+          borderColor: "divider",
+          bgcolor: "#FFFFFF",
+        }}
+      >
+        <Box
+          sx={{
+            px: {
+              xs: 2,
+              md: 2.5,
+            },
+            py: 2,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+          }}
+        >
           <Stack
             direction={{
               xs: "column",
-
-              lg: "row",
+              sm: "row",
             }}
-            spacing={2}
+            justifyContent="space-between"
+            spacing={1}
+            alignItems={{
+              xs: "flex-start",
+              sm: "center",
+            }}
           >
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="Search transaction, gateway ID, library, customer..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search />
-                  </InputAdornment>
-                ),
-              }}
-            />
-
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 190,
-              }}
-            >
-              <InputLabel>Status</InputLabel>
-
-              <Select
-                label="Status"
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
+            <Box>
+              <Typography
+                fontWeight={900}
               >
-                <MenuItem value="">All Statuses</MenuItem>
+                Transaction Directory
+              </Typography>
 
-                {STATUS_OPTIONS.map((status) => (
-                  <MenuItem key={status} value={status}>
-                    {displayEnum(status)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl
-              size="small"
-              sx={{
-                minWidth: 230,
-              }}
-            >
-              <InputLabel>Payment Type</InputLabel>
-
-              <Select
-                label="Payment Type"
-                value={referenceTypeFilter}
-                onChange={(event) => setReferenceTypeFilter(event.target.value)}
+              <Typography
+                variant="caption"
+                color="text.secondary"
               >
-                <MenuItem value="">All Payment Types</MenuItem>
+                Real gateway, customer, reference and status records.
+              </Typography>
+            </Box>
 
-                {REFERENCE_TYPES.map((type) => (
-                  <MenuItem key={type} value={type}>
-                    {displayEnum(type)}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            {!loading && (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={`${payments.length} result${
+                  payments.length === 1
+                    ? ""
+                    : "s"
+                }`}
+                sx={{
+                  fontWeight: 750,
+                }}
+              />
+            )}
           </Stack>
-        </CardContent>
-      </Card>
+        </Box>
 
-      {/* TABLE */}
-
-      <Card variant="outlined">
         <TableContainer>
-          <Table>
+          <Table
+            sx={{
+              minWidth: 1180,
+            }}
+          >
             <TableHead>
-              <TableRow>
-                <TableCell>Transaction</TableCell>
+              <TableRow
+                sx={{
+                  bgcolor: alpha(
+                    theme.palette.primary.main,
+                    0.025,
+                  ),
+                }}
+              >
+                {[
+                  "Transaction",
+                  "Library / Customer",
+                  "Type",
+                  "Gateway",
+                  "Amount",
+                  "Status",
+                  "Created",
+                ].map((heading) => (
+                  <TableCell
+                    key={heading}
+                    sx={{
+                      py: 1.5,
+                      fontSize: 12,
+                      fontWeight: 850,
+                      color: "text.secondary",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {heading}
+                  </TableCell>
+                ))}
 
-                <TableCell>Library / Customer</TableCell>
-
-                <TableCell>Type</TableCell>
-
-                <TableCell>Gateway</TableCell>
-
-                <TableCell>Amount</TableCell>
-
-                <TableCell>Status</TableCell>
-
-                <TableCell>Created</TableCell>
-
-                <TableCell align="right">Action</TableCell>
+                <TableCell
+                  align="right"
+                  sx={{
+                    py: 1.5,
+                    fontSize: 12,
+                    fontWeight: 850,
+                    color: "text.secondary",
+                  }}
+                >
+                  Action
+                </TableCell>
               </TableRow>
             </TableHead>
 
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    align="center"
-                    sx={{
-                      py: 6,
-                    }}
+                Array.from({
+                  length: 5,
+                }).map((_, index) => (
+                  <TableRow
+                    key={`loading-${index}`}
                   >
-                    <CircularProgress />
-                  </TableCell>
-                </TableRow>
+                    {Array.from({
+                      length: 7,
+                    }).map((__, cell) => (
+                      <TableCell
+                        key={cell}
+                      >
+                        <Skeleton
+                          width={
+                            cell === 0
+                              ? 115
+                              : cell === 1
+                                ? 150
+                                : 95
+                          }
+                        />
+                      </TableCell>
+                    ))}
+
+                    <TableCell
+                      align="right"
+                    >
+                      <Skeleton
+                        variant="circular"
+                        width={32}
+                        height={32}
+                        sx={{
+                          ml: "auto",
+                        }}
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))
               ) : payments.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={8}
                     align="center"
                     sx={{
-                      py: 6,
+                      py: 9,
                     }}
                   >
-                    <Typography fontWeight={700}>
+                    <Box
+                      sx={{
+                        width: 58,
+                        height: 58,
+                        mx: "auto",
+                        borderRadius: 3,
+                        display: "grid",
+                        placeItems: "center",
+                        bgcolor: alpha(
+                          theme.palette.primary.main,
+                          0.06,
+                        ),
+                        color: "primary.main",
+                      }}
+                    >
+                      <PaymentsOutlined
+                        sx={{
+                          fontSize: 30,
+                        }}
+                      />
+                    </Box>
+
+                    <Typography
+                      variant="h6"
+                      fontWeight={850}
+                      sx={{
+                        mt: 1.5,
+                      }}
+                    >
                       No payment transactions found
                     </Typography>
 
-                    <Typography variant="body2" color="text.secondary">
-                      Try changing your filters.
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{
+                        mt: 0.5,
+                      }}
+                    >
+                      Try changing your search or filters.
                     </Typography>
+
+                    {hasFilters && (
+                      <Button
+                        onClick={clearFilters}
+                        sx={{
+                          mt: 1.5,
+                          textTransform: "none",
+                          fontWeight: 750,
+                        }}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
-                payments.map((payment) => (
-                  <TableRow hover key={payment.id}>
-                    <TableCell>
-                      <Typography fontWeight={700}>#{payment.id}</Typography>
+                payments.map(
+                  (payment) => {
+                    const tone =
+                      getStatusTone(
+                        payment.status,
+                        theme,
+                      );
 
-                      <Typography variant="caption" color="text.secondary">
-                        {payment.gatewayOrderId || payment.receiptNumber || "-"}
-                      </Typography>
-                    </TableCell>
+                    return (
+                      <TableRow
+                        hover
+                        key={payment.id}
+                        sx={{
+                          "&:last-child td": {
+                            borderBottom: 0,
+                          },
+                          bgcolor:
+                            payment.status === "FAILED"
+                              ? alpha(
+                                  theme.palette.error.main,
+                                  0.012,
+                                )
+                              : "transparent",
+                        }}
+                      >
+                        <TableCell>
+                          <Stack
+                            direction="row"
+                            spacing={1.1}
+                            alignItems="center"
+                          >
+                            <Box
+                              sx={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 2,
+                                display: "grid",
+                                placeItems: "center",
+                                bgcolor: alpha(
+                                  tone.main
+                                  || theme.palette.primary.main,
+                                  0.08,
+                                ),
+                                color:
+                                  tone.main
+                                  || theme.palette.primary.main,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <ReceiptLongOutlined
+                                sx={{
+                                  fontSize: 19,
+                                }}
+                              />
+                            </Box>
 
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
-                        {payment.libraryName || "-"}
-                      </Typography>
+                            <Box>
+                              <Typography
+                                fontWeight={800}
+                              >
+                                #{payment.id}
+                              </Typography>
 
-                      <Typography variant="caption" color="text.secondary">
-                        {payment.customerName || payment.customerEmail || "-"}
-                      </Typography>
-                    </TableCell>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                              >
+                                {payment.gatewayOrderId
+                                  || payment.receiptNumber
+                                  || "-"}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                        </TableCell>
 
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={displayEnum(payment.referenceType)}
-                      />
-                    </TableCell>
+                        <TableCell>
+                          <Typography
+                            variant="body2"
+                            fontWeight={750}
+                          >
+                            {payment.libraryName || "-"}
+                          </Typography>
 
-                    <TableCell>
-                      <Typography variant="body2">
-                        {displayEnum(payment.paymentGateway)}
-                      </Typography>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            {payment.customerName
+                              || payment.customerEmail
+                              || "-"}
+                          </Typography>
+                        </TableCell>
 
-                      <Typography variant="caption" color="text.secondary">
-                        {displayEnum(payment.paymentMethod)}
-                      </Typography>
-                    </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            label={displayEnum(
+                              payment.referenceType,
+                            )}
+                            sx={{
+                              fontWeight: 750,
+                              maxWidth: 190,
+                            }}
+                          />
+                        </TableCell>
 
-                    <TableCell>
-                      <Typography fontWeight={700}>
-                        {formatMoney(payment.amount, payment.currency)}
-                      </Typography>
+                        <TableCell>
+                          <Typography
+                            variant="body2"
+                            fontWeight={700}
+                          >
+                            {displayEnum(
+                              payment.paymentGateway,
+                            )}
+                          </Typography>
 
-                      {payment.couponDiscountAmount > 0 && (
-                        <Typography variant="caption" color="success.main">
-                          Discount{" "}
-                          {formatMoney(
-                            payment.couponDiscountAmount,
-                            payment.currency,
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                          >
+                            {displayEnum(
+                              payment.paymentMethod,
+                            )}
+                          </Typography>
+                        </TableCell>
+
+                        <TableCell>
+                          <Typography
+                            fontWeight={850}
+                            color="primary.main"
+                          >
+                            {formatMoney(
+                              payment.amount,
+                              payment.currency,
+                            )}
+                          </Typography>
+
+                          {Number(
+                            payment.couponDiscountAmount || 0,
+                          ) > 0 && (
+                            <Typography
+                              variant="caption"
+                              color="success.main"
+                              fontWeight={700}
+                            >
+                              Discount{" "}
+                              {formatMoney(
+                                payment.couponDiscountAmount,
+                                payment.currency,
+                              )}
+                            </Typography>
                           )}
-                        </Typography>
-                      )}
-                    </TableCell>
+                        </TableCell>
 
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        color={getStatusColor(payment.status)}
-                        label={displayEnum(payment.status)}
-                      />
-                    </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            color={getStatusColor(
+                              payment.status,
+                            )}
+                            label={displayEnum(
+                              payment.status,
+                            )}
+                            variant={
+                              payment.status === "SUCCESS"
+                                ? "filled"
+                                : "outlined"
+                            }
+                            sx={{
+                              fontWeight: 800,
+                              minWidth: 88,
+                            }}
+                          />
+                        </TableCell>
 
-                    <TableCell>{formatDateTime(payment.createdAt)}</TableCell>
+                        <TableCell>
+                          <Typography
+                            variant="body2"
+                            fontWeight={650}
+                          >
+                            {formatDateTime(
+                              payment.createdAt,
+                            )}
+                          </Typography>
+                        </TableCell>
 
-                    <TableCell align="right">
-                      <Tooltip title="View payment">
-                        <IconButton onClick={() => handleView(payment.id)}>
-                          <VisibilityOutlined />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
+                        <TableCell align="right">
+                          <Stack
+                            direction="row"
+                            spacing={0.75}
+                            justifyContent="flex-end"
+                            alignItems="center"
+                          >
+                            {payment.status === "SUCCESS" && (
+                              <Tooltip title="Download payment invoice">
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={
+                                      downloadingInvoicePaymentId ===
+                                      Number(
+                                        payment.paymentId
+                                        ?? payment.transactionId
+                                        ?? payment.id,
+                                      ) ? (
+                                        <CircularProgress
+                                          size={14}
+                                          color="inherit"
+                                        />
+                                      ) : (
+                                        <DownloadOutlined
+                                          fontSize="small"
+                                        />
+                                      )
+                                    }
+                                    disabled={
+                                      downloadingInvoicePaymentId ===
+                                      Number(
+                                        payment.paymentId
+                                        ?? payment.transactionId
+                                        ?? payment.id,
+                                      )
+                                    }
+                                    onClick={() =>
+                                      handleDownloadInvoice(
+                                        payment,
+                                      )
+                                    }
+                                    sx={{
+                                      height: 34,
+                                      borderRadius: 2,
+                                      textTransform: "none",
+                                      fontWeight: 800,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    {downloadingInvoicePaymentId ===
+                                    Number(
+                                      payment.paymentId
+                                      ?? payment.transactionId
+                                      ?? payment.id,
+                                    )
+                                      ? "Downloading..."
+                                      : "Invoice"}
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            )}
+
+                            <Tooltip title="Open payment details">
+                              <IconButton
+                                onClick={() =>
+                                  handleView(
+                                    payment.id,
+                                  )
+                                }
+                                disabled={
+                                  detailsLoading
+                                }
+                                sx={{
+                                  bgcolor: alpha(
+                                    theme.palette.primary.main,
+                                    0.055,
+                                  ),
+                                  color: "primary.main",
+                                  "&:hover": {
+                                    bgcolor: alpha(
+                                      theme.palette.primary.main,
+                                      0.11,
+                                    ),
+                                  },
+                                }}
+                              >
+                                <VisibilityOutlined />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  },
+                )
               )}
             </TableBody>
           </Table>
         </TableContainer>
-      </Card>
+      </Paper>
 
+
+      {/* =================================================== */}
       {/* DETAILS DIALOG */}
+      {/* =================================================== */}
 
       <Dialog
         open={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
+        onClose={() =>
+          setDetailsOpen(false)
+        }
         fullWidth
         maxWidth="md"
+        PaperProps={{
+          sx: {
+            borderRadius: 4,
+            overflow: "hidden",
+            boxShadow:
+              "0 30px 90px rgba(15,23,42,.22)",
+          },
+        }}
       >
-        <DialogTitle>
-          <Stack
-            direction="row"
-            justifyContent="space-between"
-            alignItems="center"
+        <Box
+          sx={{
+            position: "relative",
+            px: {
+              xs: 2.5,
+              md: 3.2,
+            },
+            py: 2.6,
+            color: "#FFFFFF",
+            background:
+              "linear-gradient(135deg, #312E81 0%, #4F46E5 60%, #2563EB 100%)",
+          }}
+        >
+          <IconButton
+            onClick={() =>
+              setDetailsOpen(false)
+            }
+            sx={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              color:
+                "rgba(255,255,255,.88)",
+              "&:hover": {
+                bgcolor:
+                  "rgba(255,255,255,.10)",
+              },
+            }}
           >
-            <Box>
-              <Typography variant="h6" fontWeight={800}>
-                Payment Details
-              </Typography>
+            <Close />
+          </IconButton>
 
-              <Typography variant="body2" color="text.secondary">
-                Transaction #{selectedPayment?.id}
-              </Typography>
-            </Box>
+          <Typography
+            variant="overline"
+            sx={{
+              opacity: 0.72,
+              fontWeight: 850,
+              letterSpacing: 0.8,
+            }}
+          >
+            PAYMENT OPERATIONS
+          </Typography>
 
-            <IconButton onClick={() => setDetailsOpen(false)}>
-              <Close />
-            </IconButton>
-          </Stack>
-        </DialogTitle>
+          <Typography
+            variant="h5"
+            fontWeight={900}
+          >
+            Payment Details
+          </Typography>
 
-        <DialogContent dividers>
+          <Typography
+            variant="body2"
+            sx={{
+              mt: 0.4,
+              color:
+                "rgba(255,255,255,.74)",
+            }}
+          >
+            Transaction #{selectedPayment?.id ?? "-"}
+          </Typography>
+        </Box>
+
+        <DialogContent
+          dividers
+          sx={{
+            p: {
+              xs: 2.2,
+              md: 3,
+            },
+            bgcolor: "#F8FAFD",
+          }}
+        >
           {selectedPayment && (
-            <Stack spacing={3}>
-              <Stack
-                direction="row"
-                justifyContent="space-between"
-                alignItems="center"
+            <Stack spacing={2.4}>
+              {/* AMOUNT / STATUS */}
+
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.3,
+                  borderRadius: 3.2,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "#FFFFFF",
+                }}
               >
-                <Box>
-                  <Typography variant="h4" fontWeight={900}>
-                    {formatMoney(
-                      selectedPayment.amount,
-                      selectedPayment.currency,
+                <Stack
+                  direction={{
+                    xs: "column",
+                    sm: "row",
+                  }}
+                  justifyContent="space-between"
+                  alignItems={{
+                    xs: "flex-start",
+                    sm: "center",
+                  }}
+                  spacing={1.4}
+                >
+                  <Box>
+                    <Typography
+                      variant="h4"
+                      fontWeight={950}
+                      color="primary.main"
+                    >
+                      {formatMoney(
+                        selectedPayment.amount,
+                        selectedPayment.currency,
+                      )}
+                    </Typography>
+
+                    <Typography
+                      color="text.secondary"
+                      sx={{
+                        mt: 0.35,
+                      }}
+                    >
+                      {displayEnum(
+                        selectedPayment.referenceType,
+                      )}
+                    </Typography>
+                  </Box>
+
+                  <Chip
+                    label={displayEnum(
+                      selectedPayment.status,
                     )}
-                  </Typography>
+                    color={getStatusColor(
+                      selectedPayment.status,
+                    )}
+                    sx={{
+                      fontWeight: 850,
+                    }}
+                  />
+                </Stack>
+              </Paper>
 
-                  <Typography color="text.secondary">
-                    {displayEnum(selectedPayment.referenceType)}
-                  </Typography>
-                </Box>
 
-                <Chip
-                  label={displayEnum(selectedPayment.status)}
-                  color={getStatusColor(selectedPayment.status)}
-                />
-              </Stack>
+              {/* LIBRARY / CUSTOMER */}
 
-              <Divider />
-
-              <Grid container spacing={2}>
+              <Grid
+                container
+                spacing={2}
+              >
                 <Grid
                   size={{
                     xs: 12,
-
                     md: 6,
                   }}
                 >
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Typography variant="caption" color="text.secondary">
-                        Library
-                      </Typography>
-
-                      <Typography fontWeight={700}>
-                        {selectedPayment.libraryName || "-"}
-                      </Typography>
-
-                      <Typography variant="body2" color="text.secondary">
-                        {[
-                          selectedPayment.libraryCity,
-                          selectedPayment.libraryState,
-                        ]
-                          .filter(Boolean)
-                          .join(", ") || "-"}
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                  <InfoTile
+                    title="Library"
+                    value={
+                      selectedPayment.libraryName
+                      || "-"
+                    }
+                    helper={
+                      [
+                        selectedPayment.libraryCity,
+                        selectedPayment.libraryState,
+                      ]
+                        .filter(Boolean)
+                        .join(", ")
+                      || "Location unavailable"
+                    }
+                  />
                 </Grid>
 
                 <Grid
                   size={{
                     xs: 12,
-
                     md: 6,
                   }}
                 >
-                  <Card variant="outlined">
-                    <CardContent>
-                      <Typography variant="caption" color="text.secondary">
-                        Customer
-                      </Typography>
-
-                      <Typography fontWeight={700}>
-                        {selectedPayment.customerName || "-"}
-                      </Typography>
-
-                      <Typography variant="body2" color="text.secondary">
-                        {selectedPayment.customerEmail || "-"}
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                  <InfoTile
+                    title="Customer"
+                    value={
+                      selectedPayment.customerName
+                      || "-"
+                    }
+                    helper={
+                      selectedPayment.customerEmail
+                      || "-"
+                    }
+                  />
                 </Grid>
               </Grid>
 
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography fontWeight={700} mb={2}>
-                    Gateway Information
-                  </Typography>
 
-                  <Grid container spacing={2}>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Gateway
-                      </Typography>
+              {/* GATEWAY */}
 
-                      <Typography>
-                        {displayEnum(selectedPayment.paymentGateway)}
-                      </Typography>
-                    </Grid>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.3,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "#FFFFFF",
+                }}
+              >
+                <Typography
+                  fontWeight={900}
+                  sx={{
+                    mb: 1.6,
+                  }}
+                >
+                  Gateway Information
+                </Typography>
 
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Payment Method
-                      </Typography>
-
-                      <Typography>
-                        {displayEnum(selectedPayment.paymentMethod)}
-                      </Typography>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Gateway Order ID
-                      </Typography>
-
-                      <Typography
-                        sx={{
-                          wordBreak: "break-all",
-                        }}
-                      >
-                        {selectedPayment.gatewayOrderId || "-"}
-                      </Typography>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Gateway Payment ID
-                      </Typography>
-
-                      <Typography
-                        sx={{
-                          wordBreak: "break-all",
-                        }}
-                      >
-                        {selectedPayment.gatewayPaymentId || "-"}
-                      </Typography>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Gateway Transaction ID
-                      </Typography>
-
-                      <Typography
-                        sx={{
-                          wordBreak: "break-all",
-                        }}
-                      >
-                        {selectedPayment.gatewayTransactionId || "-"}
-                      </Typography>
-                    </Grid>
-
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        Receipt
-                      </Typography>
-
-                      <Typography>
-                        {selectedPayment.receiptNumber || "-"}
-                      </Typography>
-                    </Grid>
+                <Grid
+                  container
+                  spacing={1.3}
+                >
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Gateway"
+                      value={displayEnum(
+                        selectedPayment.paymentGateway,
+                      )}
+                      helper={displayEnum(
+                        selectedPayment.paymentMethod,
+                      )}
+                    />
                   </Grid>
-                </CardContent>
-              </Card>
 
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography fontWeight={700} mb={2}>
-                    Business Reference
-                  </Typography>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Receipt"
+                      value={
+                        selectedPayment.receiptNumber
+                        || "-"
+                      }
+                    />
+                  </Grid>
 
-                  <Typography>
-                    Type:{" "}
-                    <strong>
-                      {displayEnum(selectedPayment.referenceType)}
-                    </strong>
-                  </Typography>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Gateway Order ID"
+                      value={
+                        selectedPayment.gatewayOrderId
+                        || "-"
+                      }
+                    />
+                  </Grid>
 
-                  <Typography mt={1}>
-                    Reference ID:{" "}
-                    <strong>{selectedPayment.referenceId ?? "-"}</strong>
-                  </Typography>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Gateway Payment ID"
+                      value={
+                        selectedPayment.gatewayPaymentId
+                        || "-"
+                      }
+                    />
+                  </Grid>
 
-                  <Typography mt={1}>
-                    Created:{" "}
-                    <strong>{formatDateTime(selectedPayment.createdAt)}</strong>
-                  </Typography>
-                </CardContent>
-              </Card>
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Gateway Transaction ID"
+                      value={
+                        selectedPayment.gatewayTransactionId
+                        || "-"
+                      }
+                    />
+                  </Grid>
+
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Created"
+                      value={formatDateTime(
+                        selectedPayment.createdAt,
+                      )}
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
+
+
+              {/* BUSINESS REFERENCE */}
+
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.3,
+                  borderRadius: 3,
+                  border: "1px solid",
+                  borderColor: "divider",
+                  bgcolor: "#FFFFFF",
+                }}
+              >
+                <Typography
+                  fontWeight={900}
+                  sx={{
+                    mb: 1.6,
+                  }}
+                >
+                  Business Reference
+                </Typography>
+
+                <Grid
+                  container
+                  spacing={1.3}
+                >
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Reference Type"
+                      value={displayEnum(
+                        selectedPayment.referenceType,
+                      )}
+                    />
+                  </Grid>
+
+                  <Grid
+                    size={{
+                      xs: 12,
+                      md: 6,
+                    }}
+                  >
+                    <InfoTile
+                      title="Reference ID"
+                      value={
+                        selectedPayment.referenceId
+                        ?? "-"
+                      }
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
+
+
+              {/* REFUND / FAILURE / NOTES */}
 
               {selectedPayment.refunded && (
-                <Alert severity="info">
+                <Alert
+                  severity="info"
+                  sx={{
+                    borderRadius: 2.5,
+                  }}
+                >
                   Refunded amount:{" "}
                   <strong>
                     {formatMoney(
@@ -934,27 +2158,107 @@ function Payments() {
               )}
 
               {selectedPayment.failureReason && (
-                <Alert severity="error">
+                <Alert
+                  severity="error"
+                  sx={{
+                    borderRadius: 2.5,
+                  }}
+                >
                   <strong>Failure reason:</strong>{" "}
                   {selectedPayment.failureReason}
                 </Alert>
               )}
 
               {selectedPayment.notes && (
-                <Alert severity="info">
-                  <strong>Notes:</strong> {selectedPayment.notes}
+                <Alert
+                  severity="info"
+                  sx={{
+                    borderRadius: 2.5,
+                  }}
+                >
+                  <strong>Notes:</strong>{" "}
+                  {selectedPayment.notes}
                 </Alert>
               )}
             </Stack>
           )}
         </DialogContent>
 
-        <DialogActions>
-          <Button onClick={() => setDetailsOpen(false)}>Close</Button>
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 1.7,
+            justifyContent: "space-between",
+          }}
+        >
+          <Box>
+            {selectedPayment?.status === "SUCCESS" && (
+              <Button
+                variant="contained"
+                startIcon={
+                  downloadingInvoicePaymentId ===
+                  Number(
+                    selectedPayment.paymentId
+                    ?? selectedPayment.transactionId
+                    ?? selectedPayment.id,
+                  ) ? (
+                    <CircularProgress
+                      size={15}
+                      color="inherit"
+                    />
+                  ) : (
+                    <DownloadOutlined />
+                  )
+                }
+                disabled={
+                  downloadingInvoicePaymentId ===
+                  Number(
+                    selectedPayment.paymentId
+                    ?? selectedPayment.transactionId
+                    ?? selectedPayment.id,
+                  )
+                }
+                onClick={() =>
+                  handleDownloadInvoice(
+                    selectedPayment,
+                  )
+                }
+                sx={{
+                  borderRadius: 2.2,
+                  textTransform: "none",
+                  fontWeight: 850,
+                }}
+              >
+                {downloadingInvoicePaymentId ===
+                Number(
+                  selectedPayment.paymentId
+                  ?? selectedPayment.transactionId
+                  ?? selectedPayment.id,
+                )
+                  ? "Downloading Invoice..."
+                  : "Download Invoice"}
+              </Button>
+            )}
+          </Box>
+
+          <Button
+            onClick={() =>
+              setDetailsOpen(false)
+            }
+            variant="outlined"
+            sx={{
+              borderRadius: 2.2,
+              textTransform: "none",
+              fontWeight: 750,
+            }}
+          >
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
 }
+
 
 export default Payments;
